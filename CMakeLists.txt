@@ -12,10 +12,14 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(APPLE)
-  # Homebrew keg-only packages aren't on the default prefix path.
-  list(APPEND CMAKE_PREFIX_PATH /usr/local/opt/qt)
-  list(APPEND CMAKE_PREFIX_PATH /usr/local/opt/poppler-qt6)
-  list(APPEND CMAKE_PREFIX_PATH /usr/local/opt/libzip)
+  # Homebrew keg-only packages aren't on the default prefix path. Cover both
+  # the Intel (/usr/local) and Apple Silicon (/opt/homebrew) Homebrew prefixes,
+  # since only one will exist on any given machine.
+  foreach(_brew_prefix /usr/local/opt /opt/homebrew/opt)
+    list(APPEND CMAKE_PREFIX_PATH ${_brew_prefix}/qt)
+    list(APPEND CMAKE_PREFIX_PATH ${_brew_prefix}/poppler-qt6)
+    list(APPEND CMAKE_PREFIX_PATH ${_brew_prefix}/libzip)
+  endforeach()
 endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Test WebEngineWidgets)
@@ -39,7 +43,7 @@ if(UNIX AND NOT APPLE)
   set(CPACK_PACKAGE_CONTACT "geovanny.avelar@gmail.com")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "PDF, EPUB, and HTML reader")
   set(CPACK_DEBIAN_PACKAGE_SECTION "graphics")
-  set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/geovannyavelar/mnemosyne")
+  set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/geovannyAvelar/mnemosyne")
   set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
   set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
   set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
