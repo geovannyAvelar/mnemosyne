@@ -66,15 +66,20 @@ target_link_libraries(mnemosynecore PUBLIC
 
 target_include_directories(mnemosynecore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-qt_add_executable(Mnemosyne main.cpp)
+qt_add_executable(Mnemosyne main.cpp ${CMAKE_SOURCE_DIR}/resources/icons.qrc)
 
 target_link_libraries(Mnemosyne PRIVATE mnemosynecore)
 
 if(APPLE)
+    set(MNEMOSYNE_ICNS ${CMAKE_SOURCE_DIR}/resources/icons/mnemosyne.icns)
+    target_sources(Mnemosyne PRIVATE ${MNEMOSYNE_ICNS})
+    set_source_files_properties(${MNEMOSYNE_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+
     set_target_properties(Mnemosyne PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.geovannyavelar.Mnemosyne"
         MACOSX_BUNDLE_BUNDLE_NAME "Mnemosyne"
+        MACOSX_BUNDLE_ICON_FILE "mnemosyne.icns"
     )
 endif()
 
@@ -85,4 +90,13 @@ if(UNIX AND NOT APPLE)
 
     install(FILES ${CMAKE_SOURCE_DIR}/resources/mnemosyne.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+
+    foreach(_icon_size 16 32 48 64 128 256 512)
+        install(FILES ${CMAKE_SOURCE_DIR}/resources/icons/mnemosyne_${_icon_size}.png
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${_icon_size}x${_icon_size}/apps
+            RENAME mnemosyne.png)
+    endforeach()
+
+    install(FILES ${CMAKE_SOURCE_DIR}/resources/icons/mnemosyne.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
 endif()

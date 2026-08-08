@@ -3,6 +3,7 @@ Type=Application
 Name=Mnemosyne
 Comment=PDF, EPUB, and HTML reader
 Exec=Mnemosyne %F
+Icon=mnemosyne
 Terminal=false
 Categories=Office;Viewer;
 MimeType=application/pdf;application/epub+zip;text/html;

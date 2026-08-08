@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QIcon>
 
 #include "ui/MainWindow.h"
 
@@ -12,6 +13,12 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName("Mnemosyne");
     QApplication::setOrganizationName("Mnemosyne");
+
+    QIcon appIcon;
+    for (int size : {16, 32, 48, 64, 128, 256, 512}) {
+        appIcon.addFile(QString(":/icons/mnemosyne_%1.png").arg(size), QSize(size, size));
+    }
+    QApplication::setWindowIcon(appIcon);
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Mnemosyne — a PDF, EPUB, and HTML reader");

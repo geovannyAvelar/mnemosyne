@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file alias="mnemosyne_16.png">icons/mnemosyne_16.png</file>
+        <file alias="mnemosyne_32.png">icons/mnemosyne_32.png</file>
+        <file alias="mnemosyne_48.png">icons/mnemosyne_48.png</file>
+        <file alias="mnemosyne_64.png">icons/mnemosyne_64.png</file>
+        <file alias="mnemosyne_128.png">icons/mnemosyne_128.png</file>
+        <file alias="mnemosyne_256.png">icons/mnemosyne_256.png</file>
+        <file alias="mnemosyne_512.png">icons/mnemosyne_512.png</file>
+    </qresource>
+</RCC>
