@@ -37,6 +37,13 @@ target_compile_definitions(epub_zoom_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_
 
 add_test(NAME EpubZoomTest COMMAND epub_zoom_test)
 
+qt_add_executable(pdf_text_selection_test PdfTextSelectionTest.cpp)
+
+target_link_libraries(pdf_text_selection_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(pdf_text_selection_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME PdfTextSelectionTest COMMAND pdf_text_selection_test)
+
 if(MNEMOSYNE_ENABLE_HTML)
     qt_add_executable(html_view_test HtmlViewTest.cpp)
 

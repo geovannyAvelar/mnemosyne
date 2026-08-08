@@ -46,7 +46,7 @@ private:
     void setupUi();
     void renderCurrentPage();
     void updateNavigationState();
-    void updateSelectedText();
+    void updateSelectionFromDrag();
     void showCanvasContextMenu(const QPoint &pos);
     void addHighlightForSelection();
     void refreshHighlightOverlay();
@@ -62,6 +62,7 @@ private:
     bool m_pageTurnCooldown = false; // guards against one fast scroll gesture skipping multiple pages
     qreal m_zoom = 1.5;
     QString m_selectedText;
+    QVector<TextWord> m_currentPageWords; // words on m_currentPage, in reading order
     QVector<Highlight> m_highlights; // all highlights for this document
 
     PdfPageCanvas *m_canvas = nullptr;

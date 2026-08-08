@@ -46,12 +46,31 @@ QImage PopplerPdfPage::renderToImage(qreal scale) const
     return m_page->renderToImage(dpi, dpi);
 }
 
-QString PopplerPdfPage::text(const QRectF &rect) const
+QString PopplerPdfPage::text() const
 {
     if (!m_page) {
         return {};
     }
-    return m_page->text(rect); // null rect => whole page
+    return m_page->text(QRectF()); // null rect => whole page
+}
+
+QVector<TextWord> PopplerPdfPage::words() const
+{
+    QVector<TextWord> result;
+    if (!m_page) {
+        return result;
+    }
+
+    const std::vector<std::unique_ptr<Poppler::TextBox>> boxes = m_page->textList();
+    result.reserve(static_cast<int>(boxes.size()));
+    for (const auto &box : boxes) {
+        TextWord word;
+        word.text = box->text();
+        word.boundingBox = box->boundingBox();
+        word.hasSpaceAfter = box->hasSpaceAfter();
+        result.append(word);
+    }
+    return result;
 }
 
 PopplerPdfDocument::PopplerPdfDocument(std::unique_ptr<Poppler::Document> doc, QString fallbackTitle)

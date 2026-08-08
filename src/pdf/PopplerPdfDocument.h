@@ -13,7 +13,8 @@ public:
 
     QSizeF sizePoints() const override;
     QImage renderToImage(qreal scale) const override;
-    QString text(const QRectF &rect) const override;
+    QString text() const override;
+    QVector<TextWord> words() const override;
 
 private:
     std::unique_ptr<Poppler::Page> m_page;

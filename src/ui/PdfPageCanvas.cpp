@@ -34,6 +34,13 @@ void PdfPageCanvas::clearSelection()
 {
     m_selecting = false;
     m_hasSelection = false;
+    m_selectionRects.clear();
+    update();
+}
+
+void PdfPageCanvas::setSelectionRects(const QVector<QRect> &rects)
+{
+    m_selectionRects = rects;
     update();
 }
 
@@ -52,11 +59,11 @@ void PdfPageCanvas::paintEvent(QPaintEvent *)
         painter.fillRect(rect, QColor(255, 235, 59, 110));
     }
 
-    if (m_selecting || m_hasSelection) {
-        const QRect rect = QRect(m_selectionStart, m_selectionEnd).normalized();
+    // No outline, unlike the old single-rectangle overlay: a plain fill per
+    // word reads as normal text selection (as in any text field) instead of
+    // a boxed-off region.
+    for (const QRect &rect : m_selectionRects) {
         painter.fillRect(rect, QColor(60, 130, 230, 90));
-        painter.setPen(QColor(40, 100, 200));
-        painter.drawRect(rect.adjusted(0, 0, -1, -1));
     }
 }
 
@@ -71,6 +78,7 @@ void PdfPageCanvas::mousePressEvent(QMouseEvent *event)
     m_selectionStart = event->pos();
     m_selectionEnd = event->pos();
     update();
+    emit selectionChanged();
 }
 
 void PdfPageCanvas::mouseMoveEvent(QMouseEvent *event)
@@ -80,6 +88,7 @@ void PdfPageCanvas::mouseMoveEvent(QMouseEvent *event)
     }
     m_selectionEnd = event->pos();
     update();
+    emit selectionChanged();
 }
 
 void PdfPageCanvas::mouseReleaseEvent(QMouseEvent *event)
@@ -90,8 +99,12 @@ void PdfPageCanvas::mouseReleaseEvent(QMouseEvent *event)
     m_selecting = false;
     m_selectionEnd = event->pos();
 
+    // OR, not AND: a plain drag across one line of text has ~0 height (every
+    // word on a line shares nearly the same vertical extent), so requiring
+    // both dimensions to clear the threshold meant a purely horizontal
+    // selection could fail to commit at all.
     const QRect rect = QRect(m_selectionStart, m_selectionEnd).normalized();
-    m_hasSelection = rect.width() >= kMinSelectionPixels && rect.height() >= kMinSelectionPixels;
+    m_hasSelection = rect.width() >= kMinSelectionPixels || rect.height() >= kMinSelectionPixels;
     update();
     emit selectionChanged();
 }

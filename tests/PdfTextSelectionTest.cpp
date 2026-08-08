@@ -1,0 +1,166 @@
+#include "pdf/PopplerPdfDocument.h"
+#include "ui/PdfPageCanvas.h"
+#include "ui/PdfView.h"
+
+#include <QApplication>
+#include <QClipboard>
+#include <QCoreApplication>
+#include <QMouseEvent>
+#include <QTest>
+
+// FIXTURES_DIR is injected by CMake (see tests/CMakeLists.txt).
+namespace {
+
+QString fixturePath(const QString &name)
+{
+    return QStringLiteral(FIXTURES_DIR) + QLatin1Char('/') + name;
+}
+
+void sendDrag(QWidget *target, const QPoint &from, const QPoint &to)
+{
+    QMouseEvent press(QEvent::MouseButtonPress, from, target->mapToGlobal(from), Qt::LeftButton,
+                       Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &press);
+
+    QMouseEvent move(QEvent::MouseMove, to, target->mapToGlobal(to), Qt::LeftButton, Qt::LeftButton,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &move);
+
+    QMouseEvent release(QEvent::MouseButtonRelease, to, target->mapToGlobal(to), Qt::LeftButton,
+                         Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &release);
+}
+
+} // namespace
+
+// Selection is resolved word-by-word from Poppler's text boxes (see
+// PdfView::updateSelectionFromDrag), not one rectangle spanning whatever
+// pixels the drag happened to cover — these tests exercise that end to end
+// through real synthetic mouse events on the actual canvas widget, the same
+// way a user's click-drag arrives.
+class PdfTextSelectionTest : public QObject
+{
+    Q_OBJECT
+
+private slots:
+    void initTestCase();
+
+    void dragOverWholePageSelectsAllWordsInOrder();
+    void clickOnSingleWordSelectsOnlyThatWord();
+    void copySelectionPutsSelectedTextOnClipboard();
+    void selectionMovesLiveDuringDragBeforeRelease();
+
+private:
+    std::unique_ptr<PdfView> makePdfView();
+    // Center of the given word's bounding box, in canvas pixels, computed
+    // independently via Poppler — not hardcoded — so the test stays valid if
+    // the fixture text or rendering changes.
+    QPoint wordCenterPixel(int wordIndex, qreal zoom = 1.5);
+};
+
+void PdfTextSelectionTest::initTestCase()
+{
+    QCoreApplication::setOrganizationName(QStringLiteral("MnemosyneTest"));
+    QCoreApplication::setApplicationName(QStringLiteral("MnemosyneTest"));
+}
+
+std::unique_ptr<PdfView> PdfTextSelectionTest::makePdfView()
+{
+    QString error;
+    auto doc = PopplerPdfDocument::load(fixturePath("test.pdf"), &error);
+    Q_ASSERT_X(doc, "makePdfView", qPrintable(error));
+    auto view = std::make_unique<PdfView>(std::move(doc), fixturePath("test.pdf"));
+    view->resize(900, 700);
+    view->show();
+    static_cast<void>(QTest::qWaitForWindowExposed(view.get()));
+    return view;
+}
+
+QPoint PdfTextSelectionTest::wordCenterPixel(int wordIndex, qreal zoom)
+{
+    QString error;
+    auto doc = PopplerPdfDocument::load(fixturePath("test.pdf"), &error);
+    Q_ASSERT_X(doc, "wordCenterPixel", qPrintable(error));
+    std::unique_ptr<IPage> page = doc->page(0);
+    Q_ASSERT(page);
+    const QVector<TextWord> words = page->words();
+    Q_ASSERT(wordIndex >= 0 && wordIndex < words.size());
+    const QPointF center = words[wordIndex].boundingBox.center();
+    return QPoint(static_cast<int>(center.x() * zoom), static_cast<int>(center.y() * zoom));
+}
+
+void PdfTextSelectionTest::dragOverWholePageSelectsAllWordsInOrder()
+{
+    auto view = makePdfView();
+    auto *canvas = view->findChild<PdfPageCanvas *>();
+    QVERIFY(canvas);
+
+    sendDrag(canvas, QPoint(0, 0), QPoint(2000, 2000));
+
+    // Fixture text (tests/fixtures/test.pdf):
+    // "Searchable PDF fixture text for full text search testing."
+    QCOMPARE(view->selectedText(), QStringLiteral("Searchable PDF fixture text for full text search testing."));
+}
+
+void PdfTextSelectionTest::clickOnSingleWordSelectsOnlyThatWord()
+{
+    auto view = makePdfView();
+    auto *canvas = view->findChild<PdfPageCanvas *>();
+    QVERIFY(canvas);
+
+    // Word 0 is "Searchable". A small drag fully contained within its box
+    // (real movement, but short of reaching word 1) should select just that
+    // one word, not the whole line — this is the behavior a single
+    // bounding-rectangle selection couldn't give you.
+    const QPoint point = wordCenterPixel(0);
+    sendDrag(canvas, point - QPoint(3, 0), point + QPoint(3, 0));
+
+    QCOMPARE(view->selectedText(), QStringLiteral("Searchable"));
+}
+
+void PdfTextSelectionTest::copySelectionPutsSelectedTextOnClipboard()
+{
+    auto view = makePdfView();
+    auto *canvas = view->findChild<PdfPageCanvas *>();
+    QVERIFY(canvas);
+
+    const QPoint point = wordCenterPixel(1); // "PDF"
+    sendDrag(canvas, point - QPoint(3, 0), point + QPoint(3, 0));
+    QCOMPARE(view->selectedText(), QStringLiteral("PDF"));
+
+    QApplication::clipboard()->clear();
+    view->copySelection();
+
+    QCOMPARE(QApplication::clipboard()->text(), QStringLiteral("PDF"));
+}
+
+void PdfTextSelectionTest::selectionMovesLiveDuringDragBeforeRelease()
+{
+    auto view = makePdfView();
+    auto *canvas = view->findChild<PdfPageCanvas *>();
+    QVERIFY(canvas);
+
+    const QPoint start = wordCenterPixel(0); // "Searchable"
+    const QPoint mid = wordCenterPixel(2); // "fixture"
+
+    QMouseEvent press(QEvent::MouseButtonPress, start, canvas->mapToGlobal(start), Qt::LeftButton,
+                       Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(canvas, &press);
+
+    QMouseEvent move(QEvent::MouseMove, mid, canvas->mapToGlobal(mid), Qt::LeftButton, Qt::LeftButton,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(canvas, &move);
+
+    // Still mid-drag — no release yet — but the selection should already
+    // reflect words 0..2, not be empty until the button comes up.
+    QCOMPARE(view->selectedText(), QStringLiteral("Searchable PDF fixture"));
+
+    QMouseEvent release(QEvent::MouseButtonRelease, mid, canvas->mapToGlobal(mid), Qt::LeftButton,
+                         Qt::LeftButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(canvas, &release);
+
+    QCOMPARE(view->selectedText(), QStringLiteral("Searchable PDF fixture"));
+}
+
+QTEST_MAIN(PdfTextSelectionTest)
+#include "PdfTextSelectionTest.moc"

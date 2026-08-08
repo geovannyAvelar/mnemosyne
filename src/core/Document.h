@@ -16,6 +16,17 @@ struct TocNode
 };
 Q_DECLARE_METATYPE(TocNode)
 
+// A single word's bounding box, in page-space points, in reading order.
+// Used to render click-drag selection shaped to the actual text (a run of
+// per-word highlight rects) instead of one rectangle spanning whatever it
+// happens to overlap.
+struct TextWord
+{
+    QString text;
+    QRectF boundingBox;
+    bool hasSpaceAfter = false;
+};
+
 class IPage
 {
 public:
@@ -27,10 +38,12 @@ public:
     // scale 1.0 corresponds to 72 DPI; callers multiply by desired zoom.
     virtual QImage renderToImage(qreal scale) const = 0;
 
-    // Plain text content of the page. If rect is null, returns all text on
-    // the page (used for search); otherwise returns text within that
-    // page-space rectangle, in points (used for click-drag selection).
-    virtual QString text(const QRectF &rect = QRectF()) const = 0;
+    // Plain text content of the whole page (used for search).
+    virtual QString text() const = 0;
+
+    // Word boxes for the whole page, in reading order (used to resolve
+    // click-drag selection into the actual words it spans).
+    virtual QVector<TextWord> words() const = 0;
 };
 
 class IDocument
