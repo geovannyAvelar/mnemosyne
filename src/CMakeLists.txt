@@ -70,8 +70,19 @@ qt_add_executable(Mnemosyne main.cpp)
 
 target_link_libraries(Mnemosyne PRIVATE mnemosynecore)
 
-set_target_properties(Mnemosyne PROPERTIES
-    MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.geovannyavelar.Mnemosyne"
-    MACOSX_BUNDLE_BUNDLE_NAME "Mnemosyne"
-)
+if(APPLE)
+    set_target_properties(Mnemosyne PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.geovannyavelar.Mnemosyne"
+        MACOSX_BUNDLE_BUNDLE_NAME "Mnemosyne"
+    )
+endif()
+
+if(UNIX AND NOT APPLE)
+    include(GNUInstallDirs)
+
+    install(TARGETS Mnemosyne RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+    install(FILES ${CMAKE_SOURCE_DIR}/resources/mnemosyne.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+endif()

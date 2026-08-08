@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Mnemosyne
+Comment=PDF, EPUB, and HTML reader
+Exec=Mnemosyne %F
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/pdf;application/epub+zip;text/html;

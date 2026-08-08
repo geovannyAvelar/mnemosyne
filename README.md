@@ -62,6 +62,30 @@ The test suite uses Qt Test and is registered with CTest:
 ctest --test-dir build --output-on-failure
 ```
 
+## Packaging (Linux / .deb)
+
+On Linux, the build additionally installs a binary and a `.desktop` file, and CPack can produce a `.deb`:
+
+```bash
+cmake -S . -B build
+cmake --build build
+cd build
+cpack -G DEB
+```
+
+This produces `mnemosyne_1.0.0_<arch>.deb` in `build/`, installable with:
+
+```bash
+sudo dpkg -i mnemosyne_1.0.0_<arch>.deb
+sudo apt -f install   # pull in any missing runtime dependencies
+```
+
+Runtime dependencies (Qt6 Widgets/WebEngineWidgets, Poppler-Qt6, libzip) are detected automatically via `dpkg-shlibdeps` at package-build time.
+
+## License
+
+GPLv3 — see [LICENSE](LICENSE). QtWebEngine and Poppler are both GPL-licensed, so this project is too.
+
 ## Syncing reading progress
 
 Sync is opt-in and configured per-machine from the **Sync** menu: choose a folder that's already synced by a cloud provider (e.g. a Google Drive or iCloud Drive folder on disk). Mnemosyne creates a `MnemosyneSync/` subfolder there and writes one JSONL log file per device — each device only ever appends to its own file, so there's no write-write conflict between devices. When another device's log has a newer position for a book you're currently viewing, a banner prompts you to jump to it; nothing is applied automatically.
