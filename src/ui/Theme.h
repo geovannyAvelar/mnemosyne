@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QIcon>
 #include <QPalette>
 #include <QString>
 
@@ -12,5 +13,10 @@ QPalette lightPalette();
 QPalette darkPalette();
 
 QString styleSheet(bool dark);
+
+// Hand-drawn glyphs for the window's top bar, styled to match the theme
+// (a muted neutral gray that reads on both the light and dark palettes).
+QIcon sidebarToggleIcon();
+QIcon searchIcon();
 
 } // namespace Theme

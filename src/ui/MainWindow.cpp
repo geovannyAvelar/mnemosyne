@@ -16,18 +16,22 @@
 #include "ui/SearchDock.h"
 #include "ui/Theme.h"
 #include "ui/TocDock.h"
+#include "ui/TopBar.h"
+#include "ui/TrafficLightButton.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QDateTime>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QHBoxLayout>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QSettings>
+#include <QSizePolicy>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -38,6 +42,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_darkPalette(Theme::darkPalette())
 {
     setWindowTitle(tr("Mnemosyne"));
+
     setupDocks();
     setupTabs();
     setupSidebarToggle();
@@ -133,14 +138,57 @@ void MainWindow::setupDocks()
 
 void MainWindow::setupSidebarToggle()
 {
-    auto *toolbar = new QToolBar(tr("Sidebar"), this);
-    toolbar->setMovable(false);
-    toolbar->setFloatable(false);
-    addToolBar(Qt::LeftToolBarArea, toolbar);
+    // On macOS the native title bar is hidden entirely (see MacWindowChrome)
+    // and this bar draws its own close/minimize/fullscreen buttons instead,
+    // so the window chrome is genuinely part of the app's own GUI.
+    auto *topBar = new TopBar(tr("Window"), this);
+    topBar->setObjectName(QStringLiteral("windowTopBar"));
+    topBar->setMovable(false);
+    topBar->setFloatable(false);
+    topBar->setIconSize(QSize(18, 18));
+    topBar->setMinimumWidth(300);
+#ifdef Q_OS_MACOS
+    topBar->setFixedHeight(52);
 
-    m_sidebarToggleAction = toolbar->addAction(QStringLiteral("‹"));
+    auto *trafficLights = new QWidget(topBar);
+    auto *trafficLightsLayout = new QHBoxLayout(trafficLights);
+    trafficLightsLayout->setContentsMargins(0, 0, 0, 0);
+    trafficLightsLayout->setSpacing(8);
+
+    auto *closeButton = new TrafficLightButton(QColor(0xFF, 0x5F, 0x57), TrafficLightButton::Glyph::Close, trafficLights);
+    auto *minimizeButton = new TrafficLightButton(QColor(0xFE, 0xBC, 0x2E), TrafficLightButton::Glyph::Minimize, trafficLights);
+    auto *zoomButton = new TrafficLightButton(QColor(0x28, 0xC8, 0x40), TrafficLightButton::Glyph::Zoom, trafficLights);
+    closeButton->setToolTip(tr("Close"));
+    minimizeButton->setToolTip(tr("Minimize"));
+    zoomButton->setToolTip(tr("Full Screen"));
+
+    connect(closeButton, &QAbstractButton::clicked, this, &QWidget::close);
+    connect(minimizeButton, &QAbstractButton::clicked, this, &QWidget::showMinimized);
+    connect(zoomButton, &QAbstractButton::clicked, this, [this] {
+        setWindowState(windowState() ^ Qt::WindowFullScreen);
+    });
+
+    trafficLightsLayout->addWidget(closeButton);
+    trafficLightsLayout->addWidget(minimizeButton);
+    trafficLightsLayout->addWidget(zoomButton);
+    topBar->addWidget(trafficLights);
+
+    auto *trafficLightSpacer = new QWidget(topBar);
+    trafficLightSpacer->setFixedWidth(16);
+    topBar->addWidget(trafficLightSpacer);
+#endif
+
+    m_sidebarToggleAction = topBar->addAction(Theme::sidebarToggleIcon(), QString());
     m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));
     connect(m_sidebarToggleAction, &QAction::triggered, this, &MainWindow::toggleSidebar);
+
+    QAction *searchAction = topBar->addAction(Theme::searchIcon(), QString());
+    searchAction->setToolTip(tr("Search"));
+    connect(searchAction, &QAction::triggered, this, &MainWindow::focusSearch);
+
+    auto *spacer = new QWidget(topBar);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    topBar->addWidget(spacer);
 }
 
 void MainWindow::toggleSidebar()
@@ -151,14 +199,12 @@ void MainWindow::toggleSidebar()
         m_tocDock->hide();
         m_bookmarksDock->hide();
         m_searchDock->hide();
-        m_sidebarToggleAction->setText(QStringLiteral("›"));
         m_sidebarToggleAction->setToolTip(tr("Show Sidebar"));
     } else {
         m_tocDock->show();
         m_bookmarksDock->show();
         m_searchDock->show();
         m_tocDock->raise();
-        m_sidebarToggleAction->setText(QStringLiteral("‹"));
         m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));
     }
 }

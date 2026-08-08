@@ -53,12 +53,23 @@ set(MNEMOSYNE_CORE_SOURCES
     ui/SyncPromptBar.cpp
     ui/Theme.h
     ui/Theme.cpp
+    ui/TopBar.h
+    ui/TopBar.cpp
+    ui/TrafficLightButton.h
+    ui/TrafficLightButton.cpp
 )
 
 if(MNEMOSYNE_ENABLE_HTML)
     list(APPEND MNEMOSYNE_CORE_SOURCES
         ui/HtmlView.h
         ui/HtmlView.cpp
+    )
+endif()
+
+if(APPLE)
+    list(APPEND MNEMOSYNE_CORE_SOURCES
+        platform/MacWindowChrome.h
+        platform/MacWindowChrome.mm
     )
 endif()
 
@@ -69,6 +80,10 @@ target_link_libraries(mnemosynecore PUBLIC
     PkgConfig::POPPLER_QT6
     PkgConfig::LIBZIP
 )
+
+if(APPLE)
+    target_link_libraries(mnemosynecore PUBLIC "-framework Cocoa")
+endif()
 
 if(MNEMOSYNE_ENABLE_HTML)
     target_link_libraries(mnemosynecore PUBLIC Qt6::WebEngineWidgets)

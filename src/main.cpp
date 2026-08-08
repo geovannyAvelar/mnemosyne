@@ -1,8 +1,15 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QIcon>
+#include <QStyleFactory>
+#ifdef Q_OS_MACOS
+#include <QTimer>
+#endif
 
 #include "ui/MainWindow.h"
+#ifdef Q_OS_MACOS
+#include "platform/MacWindowChrome.h"
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -11,6 +18,12 @@ int main(int argc, char *argv[])
     // constructed. Used for HtmlView's QWebEngineView.
     QApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 #endif
+
+    // Fusion draws all its own controls (no native-style icons like the
+    // toolbar overflow chevron, which currently crashes via AppKit's symbol
+    // image renderer on this machine) and matches better with Theme's heavy
+    // QSS reskinning anyway.
+    QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
     QApplication app(argc, argv);
     QApplication::setApplicationName("Mnemosyne");
@@ -42,6 +55,15 @@ int main(int argc, char *argv[])
     MainWindow window;
     window.resize(1024, 768);
     window.show();
+
+#ifdef Q_OS_MACOS
+    // Deferred to the next event-loop iteration: Qt's Cocoa platform plugin
+    // finishes its own native window setup asynchronously around show(), and
+    // applying this any earlier gets silently overwritten by that setup.
+    QTimer::singleShot(0, &window, [&window] {
+        MacWindowChrome::integrateTitleBar(window.windowHandle());
+    });
+#endif
 
     for (const QString &path : parser.positionalArguments()) {
         window.openPath(path);

@@ -1,5 +1,9 @@
 #include "Theme.h"
 
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmap>
+
 namespace Theme {
 
 namespace {
@@ -240,6 +244,10 @@ QToolButton:hover {
     background: $RAISED_HOVER$;
 }
 
+QToolBar#windowTopBar QToolButton {
+    padding: 9px 10px;
+}
+
 QScrollBar:vertical {
     background: transparent;
     width: 12px;
@@ -326,6 +334,69 @@ QPalette darkPalette()
 QString styleSheet(bool dark)
 {
     return buildStyleSheet(dark ? darkColors() : lightColors());
+}
+
+namespace {
+
+QPixmap newIconPixmap(int logicalSize, qreal devicePixelRatio)
+{
+    QPixmap pixmap(QSize(logicalSize, logicalSize) * devicePixelRatio);
+    pixmap.setDevicePixelRatio(devicePixelRatio);
+    pixmap.fill(Qt::transparent);
+    return pixmap;
+}
+
+} // namespace
+
+QIcon sidebarToggleIcon()
+{
+    const int size = 18;
+    QPixmap pixmap = newIconPixmap(size, 2.0);
+
+    const QColor stroke(0x8A, 0x87, 0x80);
+    const QColor fill(0x8A, 0x87, 0x80, 90);
+
+    const QRectF rect(2.0, 3.0, size - 4.0, size - 6.0);
+    const qreal dividerX = rect.left() + rect.width() * 0.36;
+
+    QPainterPath outline;
+    outline.addRoundedRect(rect, 3, 3);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    painter.save();
+    painter.setClipPath(outline);
+    painter.fillRect(QRectF(rect.left(), rect.top(), dividerX - rect.left(), rect.height()), fill);
+    painter.restore();
+
+    painter.setPen(QPen(stroke, 1.3));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(outline);
+    painter.drawLine(QPointF(dividerX, rect.top()), QPointF(dividerX, rect.bottom()));
+
+    return QIcon(pixmap);
+}
+
+QIcon searchIcon()
+{
+    const int size = 18;
+    QPixmap pixmap = newIconPixmap(size, 2.0);
+
+    const QColor stroke(0x8A, 0x87, 0x80);
+    QPen pen(stroke, 1.4);
+    pen.setCapStyle(Qt::RoundCap);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(pen);
+    painter.setBrush(Qt::NoBrush);
+
+    const QRectF circle(3.0, 3.0, 9.0, 9.0);
+    painter.drawEllipse(circle);
+    painter.drawLine(QPointF(circle.right() - 1.0, circle.bottom() - 1.0), QPointF(size - 2.5, size - 2.5));
+
+    return QIcon(pixmap);
 }
 
 } // namespace Theme

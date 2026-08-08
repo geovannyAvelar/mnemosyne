@@ -12,6 +12,9 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(APPLE)
+  # Needed to compile platform/MacWindowChrome.mm (native title-bar integration).
+  enable_language(OBJCXX)
+
   # Homebrew keg-only packages aren't on the default prefix path. Cover both
   # the Intel (/usr/local) and Apple Silicon (/opt/homebrew) Homebrew prefixes,
   # since only one will exist on any given machine.
