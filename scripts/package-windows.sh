@@ -35,9 +35,17 @@ echo "==> Bundling remaining MinGW/MSYS2 DLLs (Poppler, libzip, runtime, ...)"
 # under /mingw64 is either the MinGW runtime or one of our libs — Windows
 # system DLLs resolve elsewhere and are left alone. Qt DLLs windeployqt
 # already placed are silently skipped via `cp -n`.
-ntldd -R "$EXE" | grep -oE '/mingw64/[^ ]+\.dll' | sort -u | while read -r dll; do
-    cp -n "$dll" "$STAGE_DIR/"
-done
+#
+# ntldd commonly exits non-zero (e.g. an optional dependency it can't
+# resolve) even though its output is still useful, and grep exits non-zero
+# on no matches — neither should be allowed to abort the script here.
+DLL_LIST=$(ntldd -R "$EXE" 2>/dev/null || true)
+MATCHED_DLLS=$(printf '%s\n' "$DLL_LIST" | grep -oE '/mingw64/[^ ]+\.dll' || true)
+if [[ -n "$MATCHED_DLLS" ]]; then
+    printf '%s\n' "$MATCHED_DLLS" | sort -u | while read -r dll; do
+        cp -n "$dll" "$STAGE_DIR/"
+    done
+fi
 
 if ! command -v zip >/dev/null 2>&1; then
     echo "==> Installing zip"
