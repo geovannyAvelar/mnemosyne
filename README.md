@@ -71,7 +71,19 @@ Prebuilt packages for every tagged release are attached to the corresponding
 [GitHub release](https://github.com/geovannyAvelar/mnemosyne/releases). To
 build one yourself:
 
-### Linux (.deb)
+### APT repository (Debian / Ubuntu)
+
+Every release also publishes to an APT repository, updated automatically on
+each tag:
+
+```bash
+curl -fsSL https://geovannyavelar.github.io/mnemosyne/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/mnemosyne.gpg
+echo "deb [signed-by=/usr/share/keyrings/mnemosyne.gpg] https://geovannyavelar.github.io/mnemosyne stable main" | sudo tee /etc/apt/sources.list.d/mnemosyne.list
+sudo apt update
+sudo apt install mnemosyne
+```
+
+### Linux (.deb, manual build)
 
 The build additionally installs a binary and a `.desktop` file, and CPack can produce a `.deb`:
 

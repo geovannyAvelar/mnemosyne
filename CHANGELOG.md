@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-08-08
+
+### Added
+
+- APT repository, published to GitHub Pages and rebuilt automatically on every tagged release: `https://geovannyavelar.github.io/mnemosyne`. Signed with a dedicated GPG key; see the README for setup instructions.
+- CI now skips on documentation-only changes (`**.md`, `LICENSE`) to `main` and pull requests.
+
 ## [1.0.0] - 2026-08-08
 
 Initial release.
