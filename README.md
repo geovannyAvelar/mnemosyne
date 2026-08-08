@@ -1,6 +1,7 @@
 # Mnemosyne
 
 [![CI](https://github.com/geovannyAvelar/mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/geovannyAvelar/mnemosyne/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/geovannyAvelar/mnemosyne)](https://github.com/geovannyAvelar/mnemosyne/releases/latest)
 
 A native desktop reader for PDF, EPUB, and HTML files, built with C++17 and Qt6.
 
