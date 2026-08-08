@@ -64,9 +64,15 @@ The test suite uses Qt Test and is registered with CTest:
 ctest --test-dir build --output-on-failure
 ```
 
-## Packaging (Linux / .deb)
+## Packaging
 
-On Linux, the build additionally installs a binary and a `.desktop` file, and CPack can produce a `.deb`:
+Prebuilt packages for every tagged release are attached to the corresponding
+[GitHub release](https://github.com/geovannyAvelar/mnemosyne/releases). To
+build one yourself:
+
+### Linux (.deb)
+
+The build additionally installs a binary and a `.desktop` file, and CPack can produce a `.deb`:
 
 ```bash
 cmake -S . -B build
@@ -83,6 +89,39 @@ sudo apt -f install   # pull in any missing runtime dependencies
 ```
 
 Runtime dependencies (Qt6 Widgets/WebEngineWidgets, Poppler-Qt6, libzip) are detected automatically via `dpkg-shlibdeps` at package-build time.
+
+### macOS (.dmg)
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./scripts/package-macos.sh build
+```
+
+Produces `build/Mnemosyne-macos.dmg` — a self-contained, drag-and-drop
+install with Qt and all other dependencies bundled in (`macdeployqt` +
+`dylibbundler`), so Homebrew isn't required on the machine running it.
+
+### Windows (.zip)
+
+Built with [MSYS2](https://www.msys2.org/)'s MinGW64 environment (`pacman -S
+mingw-w64-x86_64-{toolchain,cmake,ninja,qt6-base,poppler-qt6,libzip,pkgconf,ntldd}
+zip`):
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+./scripts/package-windows.sh build
+```
+
+Produces `build/Mnemosyne-windows.zip`, with Qt and all other dependencies
+bundled in (`windeployqt6` + `ntldd`).
+
+**HTML support is not available on Windows** — QtWebEngine (Chromium) ships
+no prebuilt Windows binaries at all, for either MinGW or MSVC, only a
+multi-hour from-source build. PDF and EPUB are unaffected. This is
+controlled by the `MNEMOSYNE_ENABLE_HTML` CMake option, which defaults to
+`OFF` on Windows and `ON` everywhere else.
 
 ## License
 
