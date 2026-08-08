@@ -50,3 +50,8 @@ if(UNIX AND NOT APPLE)
 
   include(CPack)
 endif()
+
+# macOS packaging (.dmg) doesn't go through CPack: see scripts/package-macos.sh,
+# which uses `cmake --install` + macdeployqt/dylibbundler + hdiutil directly.
+# CPack's own install-time RPATH rewriting conflicts with dylibbundler having
+# already rewritten it.

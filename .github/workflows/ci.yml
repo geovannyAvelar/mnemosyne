@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: brew install qt poppler-qt6 libzip ninja
+        run: brew install qt poppler-qt6 libzip ninja dylibbundler
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -68,12 +68,12 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
 
-      - name: Zip app bundle
-        run: ditto -c -k --sequesterRsrc --keepParent build/src/Mnemosyne.app Mnemosyne-macos.zip
+      - name: Package .dmg
+        run: ./scripts/package-macos.sh build
 
-      - name: Upload app bundle artifact
+      - name: Upload .dmg artifact
         uses: actions/upload-artifact@v4
         with:
           name: mnemosyne-macos
-          path: Mnemosyne-macos.zip
+          path: build/Mnemosyne-*.dmg
           if-no-files-found: error

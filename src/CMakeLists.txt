@@ -80,7 +80,22 @@ if(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.geovannyavelar.Mnemosyne"
         MACOSX_BUNDLE_BUNDLE_NAME "Mnemosyne"
         MACOSX_BUNDLE_ICON_FILE "mnemosyne.icns"
+        # Homebrew's Qt/Poppler/libzip aren't on end-user machines, so the
+        # installed (packaged) copy needs to look for its dependencies next
+        # to itself instead of in Homebrew's prefix. macdeployqt/dylibbundler
+        # (scripts/package-macos.sh) then copy those dependencies in under
+        # Contents/Frameworks. The build-tree copy keeps the Homebrew rpath
+        # so `cmake --build` + run still works for local development.
+        INSTALL_RPATH "@executable_path/../Frameworks"
     )
+
+    install(TARGETS Mnemosyne BUNDLE DESTINATION .)
+
+    # Drag-and-drop install target shown next to the app in the .dmg.
+    install(CODE "
+        file(REMOVE \"\${CMAKE_INSTALL_PREFIX}/Applications\")
+        execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink /Applications \"\${CMAKE_INSTALL_PREFIX}/Applications\")
+    ")
 endif()
 
 if(UNIX AND NOT APPLE)
