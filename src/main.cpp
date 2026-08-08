@@ -16,11 +16,17 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName("Mnemosyne");
     QApplication::setOrganizationName("Mnemosyne");
 
+#ifndef Q_OS_MACOS
+    // On macOS the app bundle's .icns (see MACOSX_BUNDLE_ICON_FILE) already
+    // provides the Dock/Finder icon, and the OS applies its own rounded-square
+    // mask and shadow to it. Setting a window icon here would override that
+    // with the flat, background-less icon used for the Windows/Linux taskbar.
     QIcon appIcon;
     for (int size : {16, 32, 48, 64, 128, 256, 512}) {
         appIcon.addFile(QString(":/icons/mnemosyne_%1.png").arg(size), QSize(size, size));
     }
     QApplication::setWindowIcon(appIcon);
+#endif
 
     QCommandLineParser parser;
 #ifdef MNEMOSYNE_ENABLE_HTML
