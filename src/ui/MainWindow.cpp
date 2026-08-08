@@ -231,6 +231,21 @@ void MainWindow::setupMenus()
 
     m_syncMenu = menuBar()->addMenu(tr("&Sync"));
     connect(m_syncMenu, &QMenu::aboutToShow, this, &MainWindow::populateSyncMenu);
+
+    QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
+    QAction *aboutAction = helpMenu->addAction(tr("&About Mnemosyne"));
+    aboutAction->setMenuRole(QAction::AboutRole);
+    connect(aboutAction, &QAction::triggered, this, &MainWindow::showAbout);
+}
+
+void MainWindow::showAbout()
+{
+    QMessageBox::about(
+        this, tr("About Mnemosyne"),
+        tr("<h3>Mnemosyne</h3>"
+           "<p>Version %1</p>"
+           "<p>A PDF, EPUB, and HTML reader.</p>")
+            .arg(QStringLiteral(MNEMOSYNE_VERSION)));
 }
 
 void MainWindow::openFile()

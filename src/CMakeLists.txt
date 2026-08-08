@@ -73,6 +73,8 @@ if(MNEMOSYNE_ENABLE_HTML)
     target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_HTML)
 endif()
 
+target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_VERSION="${PROJECT_VERSION}")
+
 target_include_directories(mnemosynecore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 qt_add_executable(Mnemosyne main.cpp ${CMAKE_SOURCE_DIR}/resources/icons.qrc)

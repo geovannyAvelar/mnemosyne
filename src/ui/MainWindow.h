@@ -35,6 +35,7 @@ private slots:
     void chooseSyncFolder();
     void disableSync();
     void toggleSidebar();
+    void showAbout();
 
 private:
     void setupMenus();
