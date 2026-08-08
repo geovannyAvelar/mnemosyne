@@ -1,0 +1,65 @@
+qt_add_executable(epub_document_test EpubDocumentTest.cpp)
+
+target_link_libraries(epub_document_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(epub_document_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME EpubDocumentTest COMMAND epub_document_test)
+
+qt_add_executable(app_persistence_test AppPersistenceTest.cpp)
+
+target_link_libraries(app_persistence_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME AppPersistenceTest COMMAND app_persistence_test)
+
+qt_add_executable(search_util_test SearchUtilTest.cpp)
+
+target_link_libraries(search_util_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME SearchUtilTest COMMAND search_util_test)
+
+qt_add_executable(view_search_test ViewSearchTest.cpp)
+
+target_link_libraries(view_search_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(view_search_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME ViewSearchTest COMMAND view_search_test)
+
+qt_add_executable(coordinate_util_test CoordinateUtilTest.cpp)
+
+target_link_libraries(coordinate_util_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME CoordinateUtilTest COMMAND coordinate_util_test)
+
+qt_add_executable(epub_zoom_test EpubZoomTest.cpp)
+
+target_link_libraries(epub_zoom_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(epub_zoom_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME EpubZoomTest COMMAND epub_zoom_test)
+
+qt_add_executable(html_view_test HtmlViewTest.cpp)
+
+target_link_libraries(html_view_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(html_view_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME HtmlViewTest COMMAND html_view_test)
+
+qt_add_executable(sync_test SyncTest.cpp)
+
+target_link_libraries(sync_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME SyncTest COMMAND sync_test)
+
+qt_add_executable(progress_sync_integration_test ProgressSyncIntegrationTest.cpp)
+
+target_link_libraries(progress_sync_integration_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(progress_sync_integration_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME ProgressSyncIntegrationTest COMMAND progress_sync_integration_test)
+
+qt_add_executable(scroll_page_turn_test ScrollPageTurnTest.cpp)
+
+target_link_libraries(scroll_page_turn_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(scroll_page_turn_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME ScrollPageTurnTest COMMAND scroll_page_turn_test)

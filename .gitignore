@@ -1,0 +1,38 @@
+# Build output
+build/
+out/
+
+# In-source CMake configure artifacts (should always be out-of-source in build/,
+# but ignore them here too in case a stray in-source `cmake .` happens)
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+_deps/
+
+# Qt Creator / Qt tooling metadata
+.qt/
+*.pro.user
+*.pro.user.*
+CMakeLists.txt.user
+CMakeLists.txt.user.*
+
+# macOS
+.DS_Store
+
+# Editors / IDEs
+.vscode/
+.idea/
+
+# Compiled object files / binaries
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.app/

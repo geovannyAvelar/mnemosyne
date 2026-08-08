@@ -1,0 +1,73 @@
+#pragma once
+
+#include "core/Document.h"
+#include "core/Highlight.h"
+#include "core/ReaderView.h"
+
+#include <QWidget>
+
+#include <memory>
+
+class QLabel;
+class QScrollArea;
+class QSpinBox;
+class QTimer;
+class PdfPageCanvas;
+class SyncPromptBar;
+
+class PdfView : public QWidget, public IReaderView
+{
+    Q_OBJECT
+
+public:
+    explicit PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget *parent = nullptr);
+
+    QString documentTitle() const override;
+    QVector<TocNode> tableOfContents() const override;
+    void goToTocNode(const TocNode &node) override;
+    int currentPosition() const override;
+    QVector<SearchResult> search(const QString &query) const override;
+
+    QString selectedText() const { return m_selectedText; }
+    bool hasPendingSyncPrompt() const;
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
+public slots:
+    void goToPage(int index); // 0-based
+    void nextPage();
+    void previousPage();
+    void zoomIn();
+    void zoomOut();
+    void copySelection();
+
+private:
+    void setupUi();
+    void renderCurrentPage();
+    void updateNavigationState();
+    void updateSelectedText();
+    void showCanvasContextMenu(const QPoint &pos);
+    void addHighlightForSelection();
+    void refreshHighlightOverlay();
+    int highlightIndexAtPagePoint(const QPointF &pagePoint) const;
+    void restoreProgressAndCheckSync();
+    void scheduleProgressSave();
+    void saveProgressNow();
+
+    std::unique_ptr<IDocument> m_document;
+    QString m_filePath;
+    QString m_bookHash;
+    int m_currentPage = 0;
+    bool m_pageTurnCooldown = false; // guards against one fast scroll gesture skipping multiple pages
+    qreal m_zoom = 1.5;
+    QString m_selectedText;
+    QVector<Highlight> m_highlights; // all highlights for this document
+
+    PdfPageCanvas *m_canvas = nullptr;
+    QScrollArea *m_scrollArea = nullptr;
+    QSpinBox *m_pageSpinBox = nullptr;
+    QLabel *m_pageCountLabel = nullptr;
+    SyncPromptBar *m_syncPromptBar = nullptr;
+    QTimer *m_progressSaveTimer = nullptr;
+};
