@@ -22,7 +22,21 @@ if(APPLE)
   endforeach()
 endif()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Test WebEngineWidgets)
+# QtWebEngine (Chromium) only ships prebuilt binaries for macOS/Linux; on
+# Windows it's source-build-only (multi-hour, MSVC-specific), so HTML support
+# is compiled out of the Windows build. PDF and EPUB are unaffected.
+if(WIN32)
+  set(MNEMOSYNE_ENABLE_HTML_DEFAULT OFF)
+else()
+  set(MNEMOSYNE_ENABLE_HTML_DEFAULT ON)
+endif()
+option(MNEMOSYNE_ENABLE_HTML "Enable Qt WebEngine-based HTML/HTM support" ${MNEMOSYNE_ENABLE_HTML_DEFAULT})
+
+if(MNEMOSYNE_ENABLE_HTML)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Test WebEngineWidgets)
+else()
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
+endif()
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(POPPLER_QT6 REQUIRED IMPORTED_TARGET poppler-qt6)

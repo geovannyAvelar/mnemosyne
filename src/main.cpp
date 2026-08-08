@@ -6,9 +6,11 @@
 
 int main(int argc, char *argv[])
 {
+#ifdef MNEMOSYNE_ENABLE_HTML
     // Recommended by Qt WebEngine docs; must be set before QApplication is
     // constructed. Used for HtmlView's QWebEngineView.
     QApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+#endif
 
     QApplication app(argc, argv);
     QApplication::setApplicationName("Mnemosyne");
@@ -21,9 +23,14 @@ int main(int argc, char *argv[])
     QApplication::setWindowIcon(appIcon);
 
     QCommandLineParser parser;
+#ifdef MNEMOSYNE_ENABLE_HTML
     parser.setApplicationDescription("Mnemosyne — a PDF, EPUB, and HTML reader");
-    parser.addHelpOption();
     parser.addPositionalArgument("files", "Documents to open (.pdf, .epub, .html)", "[files...]");
+#else
+    parser.setApplicationDescription("Mnemosyne — a PDF and EPUB reader");
+    parser.addPositionalArgument("files", "Documents to open (.pdf, .epub)", "[files...]");
+#endif
+    parser.addHelpOption();
     parser.process(app);
 
     MainWindow window;

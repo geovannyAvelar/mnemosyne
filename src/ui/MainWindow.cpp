@@ -8,7 +8,9 @@
 #include "epub/EpubDocument.h"
 #include "ui/BookmarksDock.h"
 #include "ui/EpubView.h"
+#ifdef MNEMOSYNE_ENABLE_HTML
 #include "ui/HtmlView.h"
+#endif
 #include "ui/LibraryView.h"
 #include "ui/PdfView.h"
 #include "ui/SearchDock.h"
@@ -234,7 +236,12 @@ void MainWindow::setupMenus()
 void MainWindow::openFile()
 {
     const QString filePath = QFileDialog::getOpenFileName(
-        this, tr("Open Document"), QString(), tr("Documents (*.pdf *.epub *.html *.htm)"));
+        this, tr("Open Document"), QString(),
+#ifdef MNEMOSYNE_ENABLE_HTML
+        tr("Documents (*.pdf *.epub *.html *.htm)"));
+#else
+        tr("Documents (*.pdf *.epub)"));
+#endif
 
     if (filePath.isEmpty()) {
         return;
@@ -291,6 +298,7 @@ void MainWindow::openPath(const QString &filePath)
             view = epubView;
         }
     } else if (suffix == QLatin1String("html") || suffix == QLatin1String("htm")) {
+#ifdef MNEMOSYNE_ENABLE_HTML
         if (!QFileInfo::exists(filePath)) {
             errorMessage = tr("File does not exist: %1").arg(filePath);
         } else {
@@ -298,6 +306,9 @@ void MainWindow::openPath(const QString &filePath)
             widget = htmlView;
             view = htmlView;
         }
+#else
+        errorMessage = tr("HTML support is not available in this build.");
+#endif
     } else {
         errorMessage = tr("Unsupported file type: .%1").arg(suffix);
     }

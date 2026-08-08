@@ -37,12 +37,14 @@ target_compile_definitions(epub_zoom_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_
 
 add_test(NAME EpubZoomTest COMMAND epub_zoom_test)
 
-qt_add_executable(html_view_test HtmlViewTest.cpp)
+if(MNEMOSYNE_ENABLE_HTML)
+    qt_add_executable(html_view_test HtmlViewTest.cpp)
 
-target_link_libraries(html_view_test PRIVATE mnemosynecore Qt6::Test)
-target_compile_definitions(html_view_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+    target_link_libraries(html_view_test PRIVATE mnemosynecore Qt6::Test)
+    target_compile_definitions(html_view_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
-add_test(NAME HtmlViewTest COMMAND html_view_test)
+    add_test(NAME HtmlViewTest COMMAND html_view_test)
+endif()
 
 qt_add_executable(sync_test SyncTest.cpp)
 

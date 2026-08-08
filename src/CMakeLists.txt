@@ -41,8 +41,6 @@ set(MNEMOSYNE_CORE_SOURCES
     ui/PdfPageCanvas.cpp
     ui/EpubView.h
     ui/EpubView.cpp
-    ui/HtmlView.h
-    ui/HtmlView.cpp
     ui/TocDock.h
     ui/TocDock.cpp
     ui/BookmarksDock.h
@@ -55,14 +53,25 @@ set(MNEMOSYNE_CORE_SOURCES
     ui/SyncPromptBar.cpp
 )
 
+if(MNEMOSYNE_ENABLE_HTML)
+    list(APPEND MNEMOSYNE_CORE_SOURCES
+        ui/HtmlView.h
+        ui/HtmlView.cpp
+    )
+endif()
+
 add_library(mnemosynecore STATIC ${MNEMOSYNE_CORE_SOURCES})
 
 target_link_libraries(mnemosynecore PUBLIC
     Qt6::Widgets
-    Qt6::WebEngineWidgets
     PkgConfig::POPPLER_QT6
     PkgConfig::LIBZIP
 )
+
+if(MNEMOSYNE_ENABLE_HTML)
+    target_link_libraries(mnemosynecore PUBLIC Qt6::WebEngineWidgets)
+    target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_HTML)
+endif()
 
 target_include_directories(mnemosynecore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -96,6 +105,17 @@ if(APPLE)
         file(REMOVE \"\${CMAKE_INSTALL_PREFIX}/Applications\")
         execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink /Applications \"\${CMAKE_INSTALL_PREFIX}/Applications\")
     ")
+endif()
+
+if(WIN32)
+    target_sources(Mnemosyne PRIVATE ${CMAKE_SOURCE_DIR}/resources/mnemosyne.rc)
+
+    set_target_properties(Mnemosyne PROPERTIES WIN32_EXECUTABLE TRUE)
+
+    # Plain layout for windeployqt/dylib copying to fill in (see
+    # scripts/package-windows.sh) — no install(CODE) tricks needed here
+    # since there's no rpath to rewrite on Windows.
+    install(TARGETS Mnemosyne RUNTIME DESTINATION .)
 endif()
 
 if(UNIX AND NOT APPLE)
