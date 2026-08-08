@@ -7,14 +7,17 @@
 SyncPromptBar::SyncPromptBar(QWidget *parent)
     : QWidget(parent)
 {
-    setStyleSheet(QStringLiteral("SyncPromptBar { background-color: #2d5c8a; }"));
+    setStyleSheet(QStringLiteral(
+        "SyncPromptBar { background-color: #D97757; }"
+        "SyncPromptBar QPushButton { background: rgba(255,255,255,40); color: white; border: none; border-radius: 6px; padding: 5px 12px; }"
+        "SyncPromptBar QPushButton:hover { background: rgba(255,255,255,70); }"));
     setAutoFillBackground(true);
 
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(10, 6, 10, 6);
+    layout->setContentsMargins(12, 8, 12, 8);
 
     m_label = new QLabel(this);
-    m_label->setStyleSheet(QStringLiteral("color: white;"));
+    m_label->setStyleSheet(QStringLiteral("color: white; font-weight: 500;"));
 
     auto *jumpButton = new QPushButton(tr("Jump"), this);
     auto *dismissButton = new QPushButton(tr("Dismiss"), this);

@@ -12,12 +12,19 @@ LibraryView::LibraryView(QWidget *parent)
     : QWidget(parent)
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(24, 24, 24, 24);
+    layout->setContentsMargins(32, 32, 32, 32);
+    layout->setSpacing(14);
 
-    auto *title = new QLabel(tr("<h2>Library</h2>"), this);
+    auto *title = new QLabel(tr("Library"), this);
+    title->setObjectName(QStringLiteral("libraryTitle"));
 
     auto *openButton = new QPushButton(tr("Open Document..."), this);
+    openButton->setObjectName(QStringLiteral("primaryButton"));
+    openButton->setCursor(Qt::PointingHandCursor);
     connect(openButton, &QPushButton::clicked, this, &LibraryView::openRequested);
+
+    auto *recentLabel = new QLabel(tr("RECENT DOCUMENTS"), this);
+    recentLabel->setObjectName(QStringLiteral("sectionLabel"));
 
     m_list = new QListWidget(this);
     connect(m_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
@@ -25,8 +32,10 @@ LibraryView::LibraryView(QWidget *parent)
     });
 
     layout->addWidget(title);
+    layout->addSpacing(4);
     layout->addWidget(openButton, 0, Qt::AlignLeft);
-    layout->addWidget(new QLabel(tr("Recent Documents"), this));
+    layout->addSpacing(12);
+    layout->addWidget(recentLabel);
     layout->addWidget(m_list, 1);
 
     refresh();

@@ -14,6 +14,7 @@
 #include "ui/LibraryView.h"
 #include "ui/PdfView.h"
 #include "ui/SearchDock.h"
+#include "ui/Theme.h"
 #include "ui/TocDock.h"
 
 #include <QAction>
@@ -31,41 +32,10 @@
 #include <QTabWidget>
 #include <QToolBar>
 
-namespace {
-
-QPalette buildDarkPalette()
-{
-    QPalette p;
-    const QColor windowColor(53, 53, 53);
-    const QColor baseColor(35, 35, 35);
-    const QColor textColor(220, 220, 220);
-    const QColor disabledColor(120, 120, 120);
-
-    p.setColor(QPalette::Window, windowColor);
-    p.setColor(QPalette::WindowText, textColor);
-    p.setColor(QPalette::Base, baseColor);
-    p.setColor(QPalette::AlternateBase, windowColor);
-    p.setColor(QPalette::ToolTipBase, textColor);
-    p.setColor(QPalette::ToolTipText, textColor);
-    p.setColor(QPalette::Text, textColor);
-    p.setColor(QPalette::Button, windowColor);
-    p.setColor(QPalette::ButtonText, textColor);
-    p.setColor(QPalette::BrightText, Qt::red);
-    p.setColor(QPalette::Link, QColor(100, 160, 255));
-    p.setColor(QPalette::Highlight, QColor(70, 130, 220));
-    p.setColor(QPalette::HighlightedText, Qt::black);
-    p.setColor(QPalette::Disabled, QPalette::Text, disabledColor);
-    p.setColor(QPalette::Disabled, QPalette::WindowText, disabledColor);
-    p.setColor(QPalette::Disabled, QPalette::ButtonText, disabledColor);
-    return p;
-}
-
-} // namespace
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , m_lightPalette(qApp->palette()) // capture the pristine default before any override
-    , m_darkPalette(buildDarkPalette())
+    , m_lightPalette(Theme::lightPalette())
+    , m_darkPalette(Theme::darkPalette())
 {
     setWindowTitle(tr("Mnemosyne"));
     setupDocks();
@@ -74,7 +44,8 @@ MainWindow::MainWindow(QWidget *parent)
     setupMenus();
 
     const bool savedDarkMode = QSettings().value(QStringLiteral("darkMode"), false).toBool();
-    m_darkModeAction->setChecked(savedDarkMode); // triggers setDarkModeEnabled via toggled()
+    m_darkModeAction->setChecked(savedDarkMode);
+    setDarkModeEnabled(savedDarkMode); // setChecked() only emits toggled() on a change, so apply explicitly
 }
 
 void MainWindow::setupTabs()
@@ -102,6 +73,8 @@ void MainWindow::setupTabs()
 
 void MainWindow::setupDocks()
 {
+    setTabPosition(Qt::LeftDockWidgetArea, QTabWidget::North);
+
     m_tocDock = new TocDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, m_tocDock);
 
@@ -112,6 +85,12 @@ void MainWindow::setupDocks()
     m_searchDock = new SearchDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, m_searchDock);
     tabifyDockWidget(m_tocDock, m_searchDock);
+
+    // The tab strip above (from setTabPosition) already labels each dock, so
+    // each dock's own title bar would just be a redundant duplicate label.
+    m_tocDock->setTitleBarWidget(new QWidget(m_tocDock));
+    m_bookmarksDock->setTitleBarWidget(new QWidget(m_bookmarksDock));
+    m_searchDock->setTitleBarWidget(new QWidget(m_searchDock));
 
     m_tocDock->raise(); // Contents is the more useful default tab on opening a book
 
@@ -159,7 +138,7 @@ void MainWindow::setupSidebarToggle()
     toolbar->setFloatable(false);
     addToolBar(Qt::LeftToolBarArea, toolbar);
 
-    m_sidebarToggleAction = toolbar->addAction(QStringLiteral("<"));
+    m_sidebarToggleAction = toolbar->addAction(QStringLiteral("‹"));
     m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));
     connect(m_sidebarToggleAction, &QAction::triggered, this, &MainWindow::toggleSidebar);
 }
@@ -172,14 +151,14 @@ void MainWindow::toggleSidebar()
         m_tocDock->hide();
         m_bookmarksDock->hide();
         m_searchDock->hide();
-        m_sidebarToggleAction->setText(QStringLiteral(">"));
+        m_sidebarToggleAction->setText(QStringLiteral("›"));
         m_sidebarToggleAction->setToolTip(tr("Show Sidebar"));
     } else {
         m_tocDock->show();
         m_bookmarksDock->show();
         m_searchDock->show();
         m_tocDock->raise();
-        m_sidebarToggleAction->setText(QStringLiteral("<"));
+        m_sidebarToggleAction->setText(QStringLiteral("‹"));
         m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));
     }
 }
@@ -413,6 +392,7 @@ void MainWindow::focusSearch()
 void MainWindow::setDarkModeEnabled(bool enabled)
 {
     qApp->setPalette(enabled ? m_darkPalette : m_lightPalette);
+    qApp->setStyleSheet(Theme::styleSheet(enabled));
     QSettings().setValue(QStringLiteral("darkMode"), enabled);
 
     for (int i = 0; i < m_tabWidget->count(); ++i) {

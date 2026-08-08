@@ -51,6 +51,8 @@ set(MNEMOSYNE_CORE_SOURCES
     ui/SearchDock.cpp
     ui/SyncPromptBar.h
     ui/SyncPromptBar.cpp
+    ui/Theme.h
+    ui/Theme.cpp
 )
 
 if(MNEMOSYNE_ENABLE_HTML)
