@@ -31,12 +31,17 @@ jobs:
 
       # TokenStore's Linux backend talks to the Secret Service over D-Bus
       # (see src/platform/TokenStore_linux.cpp), which doesn't exist on a
-      # bare runner. dbus-run-session + an unlocked gnome-keyring gives the
-      # tests a real (if ephemeral) secret store to round-trip against.
+      # bare runner. dbus-run-session + gnome-keyring gives the tests a
+      # real (if ephemeral) secret store to round-trip against. Use
+      # --start, not --unlock: the runner's home directory has no existing
+      # "login" keyring to unlock, and --unlock against a nonexistent one
+      # falls through to a create-collection prompt with no headless
+      # handler; --start auto-creates an already-unlocked default
+      # collection on first run instead.
       - name: Run tests
         run: |
           dbus-run-session -- bash -c '
-            eval "$(echo -n "" | gnome-keyring-daemon --unlock --components=secrets)"
+            eval "$(gnome-keyring-daemon --start --components=secrets)"
             export GNOME_KEYRING_CONTROL
             ctest --test-dir build --output-on-failure
           '
