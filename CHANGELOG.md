@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] - 2026-08-12
+
+### Changed
+
+- Renamed the `.deb`/APT package from `mnemosyne` to `mnemosyne-pdf` — Ubuntu's official repos already ship an unrelated package named `mnemosyne` (a flashcard app), so ours collided with it. The application, binary, and `.desktop` entry are unaffected; only the package identifier and install instructions change (`sudo apt install mnemosyne-pdf`).
+
 ## [1.1.0] - 2026-08-08
 
 ### Added
