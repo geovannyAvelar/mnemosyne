@@ -21,7 +21,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-webengine-dev \
             libpoppler-qt6-dev libzip-dev libsecret-1-dev \
             libxkbcommon-x11-0 libxcb-cursor0 \
-            gnome-keyring dbus-x11 xvfb
+            gnome-keyring dbus-x11
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -31,17 +31,31 @@ jobs:
 
       # TokenStore's Linux backend talks to the Secret Service over D-Bus
       # (see src/platform/TokenStore_linux.cpp), which doesn't exist on a
-      # bare runner. dbus-run-session + gnome-keyring gives the tests a
-      # real (if ephemeral) secret store to round-trip against. --start
-      # (not --unlock) auto-creates an already-unlocked default collection
-      # on first run rather than trying to unlock a "login" keyring that
-      # doesn't exist yet. Creating that collection still activates
-      # gnome-keyring's org.gnome.keyring.SystemPrompter helper — a GTK
-      # dialog that needs a real display and exits(1) without one — so
-      # everything runs under Xvfb too, even though nothing ever clicks it.
+      # bare runner. Letting gnome-keyring-daemon create the default
+      # collection itself (via --unlock or --start) triggers its
+      # SystemPrompter GTK dialog, which either can't start at all (no
+      # display) or, given one via Xvfb, blocks forever waiting for a click
+      # nothing will ever send — a hang, not a failure (hit this once
+      # already). Pre-seeding an already-unlocked keyring file on disk
+      # before the daemon starts sidesteps "create a collection" entirely,
+      # so there's nothing left to prompt for. timeout-minutes is a
+      # backstop in case that ever regresses, so it fails fast instead of
+      # hanging again.
       - name: Run tests
+        timeout-minutes: 5
         run: |
-          xvfb-run -a dbus-run-session -- bash -c '
+          mkdir -p ~/.local/share/keyrings
+          printf '%s\n' \
+            '[keyring]' \
+            'display-name=Default' \
+            'ctime=0' \
+            'mtime=0' \
+            'lock-on-idle=false' \
+            'lock-after=false' \
+            > ~/.local/share/keyrings/Default_keyring.keyring
+          echo -n "Default_keyring" > ~/.local/share/keyrings/default
+
+          dbus-run-session -- bash -c '
             eval "$(gnome-keyring-daemon --start --components=secrets)"
             export GNOME_KEYRING_CONTROL
             ctest --test-dir build --output-on-failure
