@@ -34,6 +34,10 @@ private slots:
     void setDarkModeEnabled(bool enabled);
     void chooseSyncFolder();
     void disableSync();
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+    void signInWithGoogle();
+    void signOutOfGoogle();
+#endif
     void toggleSidebar();
     void showAbout();
 

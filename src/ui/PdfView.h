@@ -14,6 +14,9 @@ class QSpinBox;
 class QTimer;
 class PdfPageCanvas;
 class SyncPromptBar;
+namespace ProgressSyncLog {
+struct RemoteEntry;
+}
 
 class PdfView : public QWidget, public IReaderView
 {
@@ -52,6 +55,7 @@ private:
     void refreshHighlightOverlay();
     int highlightIndexAtPagePoint(const QPointF &pagePoint) const;
     void restoreProgressAndCheckSync();
+    void offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote);
     void scheduleProgressSave();
     void saveProgressNow();
 

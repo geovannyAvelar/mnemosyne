@@ -15,6 +15,24 @@ namespace ProgressSyncLog {
 void appendEntry(const QString &bookHash, const QString &title, int position, qreal zoom)
 {
     const QString dir = SyncFolder::dataDirectory();
+    if (dir.isEmpty()) {
+        return;
+    }
+    appendEntryToDirectory(dir, DeviceIdentity::id(), DeviceIdentity::name(), bookHash, title, position, zoom);
+}
+
+std::optional<RemoteEntry> latestFromOtherDevices(const QString &bookHash, const QString &excludeDeviceId)
+{
+    const QString dir = SyncFolder::dataDirectory();
+    if (dir.isEmpty()) {
+        return std::nullopt;
+    }
+    return latestFromDirectory(dir, bookHash, excludeDeviceId);
+}
+
+void appendEntryToDirectory(const QString &dir, const QString &deviceId, const QString &deviceName,
+                             const QString &bookHash, const QString &title, int position, qreal zoom)
+{
     if (dir.isEmpty() || bookHash.isEmpty()) {
         return;
     }
@@ -25,10 +43,10 @@ void appendEntry(const QString &bookHash, const QString &title, int position, qr
     obj["position"] = position;
     obj["zoom"] = zoom;
     obj["timestamp"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    obj["deviceId"] = DeviceIdentity::id();
-    obj["deviceName"] = DeviceIdentity::name();
+    obj["deviceId"] = deviceId;
+    obj["deviceName"] = deviceName;
 
-    const QString filePath = QDir(dir).filePath(DeviceIdentity::id() + QStringLiteral(".jsonl"));
+    const QString filePath = QDir(dir).filePath(deviceId + QStringLiteral(".jsonl"));
     QFile file(filePath);
     if (!file.open(QIODevice::Append | QIODevice::Text)) {
         return;
@@ -37,9 +55,9 @@ void appendEntry(const QString &bookHash, const QString &title, int position, qr
     file.write("\n");
 }
 
-std::optional<RemoteEntry> latestFromOtherDevices(const QString &bookHash, const QString &excludeDeviceId)
+std::optional<RemoteEntry> latestFromDirectory(const QString &dir, const QString &bookHash,
+                                                const QString &excludeDeviceId)
 {
-    const QString dir = SyncFolder::dataDirectory();
     if (dir.isEmpty() || bookHash.isEmpty()) {
         return std::nullopt;
     }

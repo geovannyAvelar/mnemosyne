@@ -73,10 +73,31 @@ if(APPLE)
     )
 endif()
 
+if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
+    list(APPEND MNEMOSYNE_CORE_SOURCES
+        app/IHttpClient.h
+        app/IHttpClient.cpp
+        app/GoogleAuth.h
+        app/GoogleAuth.cpp
+        app/GoogleDriveSync.h
+        app/GoogleDriveSync.cpp
+        platform/TokenStore.h
+    )
+
+    if(APPLE)
+        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_mac.mm)
+    elseif(WIN32)
+        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_win.cpp)
+    else()
+        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_linux.cpp)
+    endif()
+endif()
+
 add_library(mnemosynecore STATIC ${MNEMOSYNE_CORE_SOURCES})
 
 target_link_libraries(mnemosynecore PUBLIC
     Qt6::Widgets
+    Qt6::Network
     PkgConfig::POPPLER_QT6
     PkgConfig::LIBZIP
 )
@@ -88,6 +109,18 @@ endif()
 if(MNEMOSYNE_ENABLE_HTML)
     target_link_libraries(mnemosynecore PUBLIC Qt6::WebEngineWidgets)
     target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_HTML)
+endif()
+
+if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
+    target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
+
+    if(APPLE)
+        target_link_libraries(mnemosynecore PUBLIC "-framework Security")
+    elseif(WIN32)
+        target_link_libraries(mnemosynecore PUBLIC Crypt32 Advapi32)
+    else()
+        target_link_libraries(mnemosynecore PUBLIC PkgConfig::LIBSECRET)
+    endif()
 endif()
 
 target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_VERSION="${PROJECT_VERSION}")

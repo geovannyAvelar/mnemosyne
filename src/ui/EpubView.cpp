@@ -2,6 +2,9 @@
 
 #include "app/DeviceIdentity.h"
 #include "app/FileIdentity.h"
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+#include "app/GoogleDriveSync.h"
+#endif
 #include "app/HighlightStore.h"
 #include "app/ProgressSyncLog.h"
 #include "app/ReadingProgressStore.h"
@@ -367,19 +370,43 @@ void EpubView::restoreProgressAndCheckSync()
         setFontZoomSteps(static_cast<int>(std::lround(local->zoom)));
     }
 
-    if (const auto remote = ProgressSyncLog::latestFromOtherDevices(m_bookHash, DeviceIdentity::id())) {
-        if (remote->position != m_currentChapter) {
-            m_syncPromptBar->showPrompt(tr("Synced position available: chapter %1 (from %2) — jump?")
-                                             .arg(remote->position + 1)
-                                             .arg(remote->deviceName));
-            const int remotePosition = remote->position;
-            const qreal remoteZoom = remote->zoom;
-            connect(m_syncPromptBar, &SyncPromptBar::jumpRequested, this, [this, remotePosition, remoteZoom] {
-                setFontZoomSteps(static_cast<int>(std::lround(remoteZoom)));
-                goToChapter(remotePosition);
-            });
-        }
+    std::optional<ProgressSyncLog::RemoteEntry> localFolderRemote =
+        ProgressSyncLog::latestFromOtherDevices(m_bookHash, DeviceIdentity::id());
+    if (localFolderRemote) {
+        offerSyncedPosition(*localFolderRemote);
     }
+
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+    const QString bookHash = m_bookHash;
+    const QDateTime localFolderTimestamp = localFolderRemote ? localFolderRemote->timestamp : QDateTime();
+    GoogleDriveSync::latestFromOtherDevices(
+        bookHash, DeviceIdentity::id(),
+        [this, bookHash, localFolderTimestamp](std::optional<ProgressSyncLog::RemoteEntry> googleRemote) {
+            if (!googleRemote || bookHash != m_bookHash) {
+                return; // no result, or this view has since moved on to a different book
+            }
+            if (localFolderTimestamp.isValid() && googleRemote->timestamp <= localFolderTimestamp) {
+                return; // the local-folder sync already offered something at least as new
+            }
+            offerSyncedPosition(*googleRemote);
+        });
+#endif
+}
+
+void EpubView::offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote)
+{
+    if (remote.position == m_currentChapter) {
+        return;
+    }
+    m_syncPromptBar->showPrompt(tr("Synced position available: chapter %1 (from %2) — jump?")
+                                     .arg(remote.position + 1)
+                                     .arg(remote.deviceName));
+    const int remotePosition = remote.position;
+    const qreal remoteZoom = remote.zoom;
+    connect(m_syncPromptBar, &SyncPromptBar::jumpRequested, this, [this, remotePosition, remoteZoom] {
+        setFontZoomSteps(static_cast<int>(std::lround(remoteZoom)));
+        goToChapter(remotePosition);
+    });
 }
 
 void EpubView::scheduleProgressSave()
@@ -394,6 +421,9 @@ void EpubView::saveProgressNow()
     }
     ReadingProgressStore::set(m_bookHash, m_currentChapter, m_fontZoomSteps);
     ProgressSyncLog::appendEntry(m_bookHash, documentTitle(), m_currentChapter, m_fontZoomSteps);
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+    GoogleDriveSync::appendEntry(m_bookHash, documentTitle(), m_currentChapter, m_fontZoomSteps);
+#endif
 }
 
 bool EpubView::eventFilter(QObject *watched, QEvent *event)

@@ -1,6 +1,9 @@
 #include "HtmlView.h"
 
 #include "app/FileIdentity.h"
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+#include "app/GoogleDriveSync.h"
+#endif
 #include "app/ProgressSyncLog.h"
 #include "app/ReadingProgressStore.h"
 
@@ -128,4 +131,7 @@ void HtmlView::saveProgressNow()
     const qreal zoom = m_webView->zoomFactor();
     ReadingProgressStore::set(m_bookHash, 0, zoom);
     ProgressSyncLog::appendEntry(m_bookHash, documentTitle(), 0, zoom);
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+    GoogleDriveSync::appendEntry(m_bookHash, documentTitle(), 0, zoom);
+#endif
 }

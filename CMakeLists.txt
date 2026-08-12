@@ -35,15 +35,28 @@ else()
 endif()
 option(MNEMOSYNE_ENABLE_HTML "Enable Qt WebEngine-based HTML/HTM support" ${MNEMOSYNE_ENABLE_HTML_DEFAULT})
 
+# Google Drive sign-in as a second, optional sync backend alongside the
+# local-folder one (see src/app/GoogleDriveSync.*). Unlike HTML support,
+# there's no platform this can't build on, so it defaults on everywhere.
+option(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC "Enable signing in with Google Drive as a sync backend" ON)
+
 if(MNEMOSYNE_ENABLE_HTML)
-  find_package(Qt6 REQUIRED COMPONENTS Widgets Test WebEngineWidgets)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network WebEngineWidgets)
 else()
-  find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network)
 endif()
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(POPPLER_QT6 REQUIRED IMPORTED_TARGET poppler-qt6)
 pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
+
+if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC AND UNIX AND NOT APPLE)
+  # OAuth refresh tokens need a real OS secret store on every platform: macOS
+  # uses Keychain (Security.framework, already linked), Windows uses
+  # Credential Manager (wincred.h, no extra dependency); Linux uses the
+  # Secret Service API via libsecret.
+  pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1)
+endif()
 
 qt_standard_project_setup()
 

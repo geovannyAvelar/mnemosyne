@@ -12,6 +12,9 @@ class QLabel;
 class QTextBrowser;
 class QTimer;
 class SyncPromptBar;
+namespace ProgressSyncLog {
+struct RemoteEntry;
+}
 
 class EpubView : public QWidget, public IReaderView
 {
@@ -53,6 +56,7 @@ private:
     void showBrowserContextMenu(const QPoint &pos);
     void setFontZoomSteps(int steps);
     void restoreProgressAndCheckSync();
+    void offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote);
     void scheduleProgressSave();
     void saveProgressNow();
 

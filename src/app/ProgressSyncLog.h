@@ -31,4 +31,14 @@ void appendEntry(const QString &bookHash, const QString &title, int position, qr
 // excludeDeviceId, or nullopt if none exists / sync isn't configured.
 std::optional<RemoteEntry> latestFromOtherDevices(const QString &bookHash, const QString &excludeDeviceId);
 
+// Same append/merge logic as above, but against an arbitrary directory of
+// <deviceId>.jsonl files instead of SyncFolder::dataDirectory(). Lets other
+// sync backends (e.g. GoogleDriveSync's local staging directory) reuse the
+// same file format and "newest timestamp wins" merge rule without
+// duplicating it. No-op / nullopt if dir or bookHash is empty.
+void appendEntryToDirectory(const QString &dir, const QString &deviceId, const QString &deviceName,
+                             const QString &bookHash, const QString &title, int position, qreal zoom);
+std::optional<RemoteEntry> latestFromDirectory(const QString &dir, const QString &bookHash,
+                                                const QString &excludeDeviceId);
+
 } // namespace ProgressSyncLog
