@@ -21,7 +21,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-webengine-dev \
             libpoppler-qt6-dev libzip-dev libsecret-1-dev \
             libxkbcommon-x11-0 libxcb-cursor0 \
-            gnome-keyring dbus-x11
+            gnome-keyring dbus-x11 xvfb
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -32,15 +32,16 @@ jobs:
       # TokenStore's Linux backend talks to the Secret Service over D-Bus
       # (see src/platform/TokenStore_linux.cpp), which doesn't exist on a
       # bare runner. dbus-run-session + gnome-keyring gives the tests a
-      # real (if ephemeral) secret store to round-trip against. Use
-      # --start, not --unlock: the runner's home directory has no existing
-      # "login" keyring to unlock, and --unlock against a nonexistent one
-      # falls through to a create-collection prompt with no headless
-      # handler; --start auto-creates an already-unlocked default
-      # collection on first run instead.
+      # real (if ephemeral) secret store to round-trip against. --start
+      # (not --unlock) auto-creates an already-unlocked default collection
+      # on first run rather than trying to unlock a "login" keyring that
+      # doesn't exist yet. Creating that collection still activates
+      # gnome-keyring's org.gnome.keyring.SystemPrompter helper — a GTK
+      # dialog that needs a real display and exits(1) without one — so
+      # everything runs under Xvfb too, even though nothing ever clicks it.
       - name: Run tests
         run: |
-          dbus-run-session -- bash -c '
+          xvfb-run -a dbus-run-session -- bash -c '
             eval "$(gnome-keyring-daemon --start --components=secrets)"
             export GNOME_KEYRING_CONTROL
             ctest --test-dir build --output-on-failure
