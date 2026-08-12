@@ -57,10 +57,13 @@ int main(int argc, char *argv[])
     window.show();
 
 #ifdef Q_OS_MACOS
-    // Deferred to the next event-loop iteration: Qt's Cocoa platform plugin
-    // finishes its own native window setup asynchronously around show(), and
-    // applying this any earlier gets silently overwritten by that setup.
-    QTimer::singleShot(0, &window, [&window] {
+    // Deferred: Qt's Cocoa platform plugin finishes its own native window
+    // setup asynchronously around show(), and applying this any earlier gets
+    // silently overwritten by that setup. A same-tick (0ms) deferral used to
+    // be enough, but now that the window has a real toolbar (see TopBar's
+    // addToolBar() call), Qt's own async setup takes longer than one
+    // event-loop iteration, so this needs an actual delay to win the race.
+    QTimer::singleShot(100, &window, [&window] {
         MacWindowChrome::integrateTitleBar(window.windowHandle());
     });
 #endif
