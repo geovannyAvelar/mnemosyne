@@ -54,7 +54,7 @@ add_subdirectory(tests)
 
 if(UNIX AND NOT APPLE)
   set(CPACK_GENERATOR "DEB")
-  set(CPACK_PACKAGE_NAME "mnemosyne")
+  set(CPACK_PACKAGE_NAME "mnemosyne-pdf")
   set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
   set(CPACK_PACKAGE_VENDOR "Mnemosyne")
   set(CPACK_PACKAGE_CONTACT "geovanny.avelar@gmail.com")

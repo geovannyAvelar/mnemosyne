@@ -80,7 +80,7 @@ each tag:
 curl -fsSL https://geovannyavelar.github.io/mnemosyne/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/mnemosyne.gpg
 echo "deb [signed-by=/usr/share/keyrings/mnemosyne.gpg] https://geovannyavelar.github.io/mnemosyne stable main" | sudo tee /etc/apt/sources.list.d/mnemosyne.list
 sudo apt update
-sudo apt install mnemosyne
+sudo apt install mnemosyne-pdf
 ```
 
 ### Linux (.deb, manual build)
@@ -94,10 +94,10 @@ cd build
 cpack -G DEB
 ```
 
-This produces `mnemosyne_1.0.0_<arch>.deb` in `build/`, installable with:
+This produces `mnemosyne-pdf_1.0.0_<arch>.deb` in `build/`, installable with:
 
 ```bash
-sudo dpkg -i mnemosyne_1.0.0_<arch>.deb
+sudo dpkg -i mnemosyne-pdf_1.0.0_<arch>.deb
 sudo apt -f install   # pull in any missing runtime dependencies
 ```
 
