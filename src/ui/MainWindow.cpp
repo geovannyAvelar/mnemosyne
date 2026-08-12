@@ -146,7 +146,8 @@ void MainWindow::setupSidebarToggle()
     topBar->setMovable(false);
     topBar->setFloatable(false);
     topBar->setIconSize(QSize(18, 18));
-    topBar->setMinimumWidth(300);
+    topBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    addToolBar(Qt::TopToolBarArea, topBar);
 #ifdef Q_OS_MACOS
     topBar->setFixedHeight(52);
 

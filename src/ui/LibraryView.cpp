@@ -12,7 +12,11 @@ LibraryView::LibraryView(QWidget *parent)
     : QWidget(parent)
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(32, 32, 32, 32);
+    // Extra top margin beyond the other sides' 32px: on macOS the window's
+    // close/minimize/fullscreen buttons and the search action live in the
+    // TopBar toolbar directly above this view (see MainWindow::setupSidebarToggle),
+    // so the title needs enough clearance to never visually sit in that row.
+    layout->setContentsMargins(32, 64, 32, 32);
     layout->setSpacing(14);
 
     auto *title = new QLabel(tr("Library"), this);
