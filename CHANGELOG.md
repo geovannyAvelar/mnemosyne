@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-08-12
+
+### Added
+
+- Google Drive sign-in as a second, optional cross-device sync backend, alongside the existing "point at a locally-synced folder" approach. Uses OAuth 2.0 with PKCE and a system-browser/loopback-redirect flow — no embedded webview, and Mnemosyne ships no credentials of its own; see `docs/google-drive-setup.md` for creating your own Google Cloud OAuth client. Reading progress syncs through the signed-in account's hidden Drive app-data folder, and refresh tokens are stored in the OS's own secret store (Keychain on macOS, Credential Manager on Windows, Secret Service via libsecret on Linux) rather than in plain settings.
+
 ## [1.1.1] - 2026-08-12
 
 ### Changed
