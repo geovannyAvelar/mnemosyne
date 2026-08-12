@@ -20,7 +20,8 @@ jobs:
             cmake ninja-build build-essential pkg-config \
             qt6-base-dev qt6-base-dev-tools qt6-webengine-dev \
             libpoppler-qt6-dev libzip-dev libsecret-1-dev \
-            libxkbcommon-x11-0 libxcb-cursor0
+            libxkbcommon-x11-0 libxcb-cursor0 \
+            gnome-keyring dbus-x11
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -28,8 +29,17 @@ jobs:
       - name: Build
         run: cmake --build build
 
+      # TokenStore's Linux backend talks to the Secret Service over D-Bus
+      # (see src/platform/TokenStore_linux.cpp), which doesn't exist on a
+      # bare runner. dbus-run-session + an unlocked gnome-keyring gives the
+      # tests a real (if ephemeral) secret store to round-trip against.
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          dbus-run-session -- bash -c '
+            eval "$(echo -n "" | gnome-keyring-daemon --unlock --components=secrets)"
+            export GNOME_KEYRING_CONTROL
+            ctest --test-dir build --output-on-failure
+          '
 
       - name: Package .deb
         run: |
