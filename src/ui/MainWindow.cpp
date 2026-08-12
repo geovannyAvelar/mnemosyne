@@ -197,6 +197,7 @@ void MainWindow::toggleSidebar()
     const bool currentlyVisible = m_tocDock->isVisible() || m_bookmarksDock->isVisible() || m_searchDock->isVisible();
 
     if (currentlyVisible) {
+        setFocus();
         m_tocDock->hide();
         m_bookmarksDock->hide();
         m_searchDock->hide();
@@ -206,6 +207,12 @@ void MainWindow::toggleSidebar()
         m_bookmarksDock->show();
         m_searchDock->show();
         m_tocDock->raise();
+        // If the dock group was last hidden while a dock other than m_tocDock
+        // was the raised/active tab (e.g. via focusSearch()), Qt can fail to
+        // restore this area's width on show() and leave it collapsed to 0 —
+        // the docks are then technically "visible" but occupy no space.
+        // Force a sane width explicitly rather than relying on Qt to infer one.
+        resizeDocks({m_tocDock}, {260}, Qt::Horizontal);
         m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));
     }
 }
@@ -431,6 +438,11 @@ void MainWindow::addBookmarkForCurrentPosition()
 
 void MainWindow::focusSearch()
 {
+    // The three sidebar docks are tabified together and toggleSidebar()
+    // shows/hides them as one group, so showing only one here would leave
+    // that group in a state toggleSidebar() doesn't expect.
+    m_tocDock->show();
+    m_bookmarksDock->show();
     m_searchDock->show();
     m_searchDock->raise();
     m_searchDock->focusSearchField();
