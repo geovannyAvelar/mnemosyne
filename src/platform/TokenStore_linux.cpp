@@ -1,6 +1,11 @@
-#include "TokenStore.h"
-
+// libsecret pulls in glib/gio headers (gdbusintrospection.h) that use
+// "signals" as a plain struct field name. Qt's <QString> defines "signals"
+// as a macro (part of the signals/slots/emit convenience keywords), so
+// libsecret must be included before any Qt header pulls that macro in, or
+// the glib header fails to parse.
 #include <libsecret/secret.h>
+
+#include "TokenStore.h"
 
 #include <QByteArray>
 
