@@ -113,6 +113,12 @@ QVector<SearchResult> EpubView::search(const QString &query) const
     return results;
 }
 
+void EpubView::setSearchTerm(const QString &term)
+{
+    m_searchTerm = term.trimmed();
+    applyHighlightsToBrowser();
+}
+
 qreal EpubView::currentFontPointSize() const
 {
     return m_browser->document()->defaultFont().pointSizeF();
@@ -293,6 +299,20 @@ void EpubView::applyHighlightsToBrowser()
             QTextEdit::ExtraSelection selection;
             selection.cursor = occurrence;
             selection.format = format;
+            selections.append(selection);
+        }
+    }
+
+    // Bolder/more saturated than persisted highlights, and added last so it
+    // paints on top — a dauber pass marking every hit of the active search
+    // term, distinct from highlights the reader made themselves.
+    if (!m_searchTerm.isEmpty()) {
+        QTextCharFormat searchFormat;
+        searchFormat.setBackground(QColor(255, 214, 0, 170));
+        for (const QTextCursor &occurrence : findAllOccurrences(m_browser->document(), m_searchTerm)) {
+            QTextEdit::ExtraSelection selection;
+            selection.cursor = occurrence;
+            selection.format = searchFormat;
             selections.append(selection);
         }
     }

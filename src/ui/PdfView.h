@@ -30,6 +30,7 @@ public:
     void goToTocNode(const TocNode &node) override;
     int currentPosition() const override;
     QVector<SearchResult> search(const QString &query) const override;
+    void setSearchTerm(const QString &term) override;
 
     QString selectedText() const { return m_selectedText; }
     bool hasPendingSyncPrompt() const;
@@ -53,6 +54,7 @@ private:
     void showCanvasContextMenu(const QPoint &pos);
     void addHighlightForSelection();
     void refreshHighlightOverlay();
+    void refreshSearchOverlay();
     int highlightIndexAtPagePoint(const QPointF &pagePoint) const;
     void restoreProgressAndCheckSync();
     void offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote);
@@ -68,6 +70,7 @@ private:
     QString m_selectedText;
     QVector<TextWord> m_currentPageWords; // words on m_currentPage, in reading order
     QVector<Highlight> m_highlights; // all highlights for this document
+    QString m_searchTerm; // active search-dock query; empty means no search overlay
 
     PdfPageCanvas *m_canvas = nullptr;
     QScrollArea *m_scrollArea = nullptr;

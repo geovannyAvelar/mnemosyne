@@ -1,10 +1,12 @@
 #include "epub/EpubDocument.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/EpubView.h"
+#include "ui/PdfPageCanvas.h"
 #include "ui/PdfView.h"
 
 #include <QCoreApplication>
 #include <QTest>
+#include <QTextBrowser>
 
 // FIXTURES_DIR is injected by CMake (see tests/CMakeLists.txt).
 namespace {
@@ -28,6 +30,11 @@ private slots:
     void epubSearchFindsMatchesAcrossChapters();
     void epubSearchIsCaseInsensitive();
     void epubSearchReturnsEmptyForNoMatch();
+
+    void pdfSetSearchTermHighlightsMatchOnCurrentPage();
+    void pdfSetSearchTermEmptyClearsHighlight();
+    void epubSetSearchTermHighlightsMatchesInCurrentChapter();
+    void epubSetSearchTermEmptyClearsHighlight();
 };
 
 void ViewSearchTest::initTestCase()
@@ -102,6 +109,78 @@ void ViewSearchTest::epubSearchReturnsEmptyForNoMatch()
 
     EpubView view(std::move(doc), fixturePath("test.epub"));
     QVERIFY(view.search(QStringLiteral("nonexistent-xyz")).isEmpty());
+}
+
+// Exercises IReaderView::setSearchTerm() — the yellow "dauber" overlay that
+// marks every hit of the active search term, distinct from persisted
+// Highlight annotations. See PdfPageCanvas::setSearchRects() and
+// EpubView::applyHighlightsToBrowser()'s search-format branch.
+void ViewSearchTest::pdfSetSearchTermHighlightsMatchOnCurrentPage()
+{
+    QString error;
+    std::unique_ptr<IDocument> doc = PopplerPdfDocument::load(fixturePath("test.pdf"), &error);
+    QVERIFY2(doc, qPrintable(error));
+
+    PdfView view(std::move(doc), fixturePath("test.pdf"));
+    auto *canvas = view.findChild<PdfPageCanvas *>();
+    QVERIFY(canvas);
+    QVERIFY(canvas->searchRects().isEmpty()); // nothing highlighted before searching
+
+    // Fixture text: "Searchable PDF fixture text for full text search testing."
+    // — "fixture" appears exactly once.
+    view.setSearchTerm(QStringLiteral("fixture"));
+    QCOMPARE(canvas->searchRects().size(), 1);
+}
+
+void ViewSearchTest::pdfSetSearchTermEmptyClearsHighlight()
+{
+    QString error;
+    std::unique_ptr<IDocument> doc = PopplerPdfDocument::load(fixturePath("test.pdf"), &error);
+    QVERIFY2(doc, qPrintable(error));
+
+    PdfView view(std::move(doc), fixturePath("test.pdf"));
+    auto *canvas = view.findChild<PdfPageCanvas *>();
+    QVERIFY(canvas);
+
+    view.setSearchTerm(QStringLiteral("fixture"));
+    QVERIFY(!canvas->searchRects().isEmpty());
+
+    view.setSearchTerm(QString());
+    QVERIFY(canvas->searchRects().isEmpty());
+}
+
+void ViewSearchTest::epubSetSearchTermHighlightsMatchesInCurrentChapter()
+{
+    QString error;
+    std::unique_ptr<EpubDocument> doc = EpubDocument::load(fixturePath("test.epub"), &error);
+    QVERIFY2(doc, qPrintable(error));
+
+    EpubView view(std::move(doc), fixturePath("test.epub"));
+    auto *browser = view.findChild<QTextBrowser *>();
+    QVERIFY(browser);
+    QVERIFY(browser->extraSelections().isEmpty()); // nothing highlighted before searching
+
+    // Chapter 1 contains "chapter" twice, case-insensitively: the "Chapter
+    // One" heading and "the first chapter" in the intro paragraph.
+    view.setSearchTerm(QStringLiteral("CHAPTER"));
+    QCOMPARE(browser->extraSelections().size(), 2);
+}
+
+void ViewSearchTest::epubSetSearchTermEmptyClearsHighlight()
+{
+    QString error;
+    std::unique_ptr<EpubDocument> doc = EpubDocument::load(fixturePath("test.epub"), &error);
+    QVERIFY2(doc, qPrintable(error));
+
+    EpubView view(std::move(doc), fixturePath("test.epub"));
+    auto *browser = view.findChild<QTextBrowser *>();
+    QVERIFY(browser);
+
+    view.setSearchTerm(QStringLiteral("chapter"));
+    QVERIFY(!browser->extraSelections().isEmpty());
+
+    view.setSearchTerm(QString());
+    QVERIFY(browser->extraSelections().isEmpty());
 }
 
 QTEST_MAIN(ViewSearchTest)

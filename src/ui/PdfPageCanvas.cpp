@@ -50,6 +50,12 @@ void PdfPageCanvas::setHighlightRects(const QVector<QRect> &rects)
     update();
 }
 
+void PdfPageCanvas::setSearchRects(const QVector<QRect> &rects)
+{
+    m_searchRects = rects;
+    update();
+}
+
 void PdfPageCanvas::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
@@ -57,6 +63,13 @@ void PdfPageCanvas::paintEvent(QPaintEvent *)
 
     for (const QRect &rect : m_highlightRects) {
         painter.fillRect(rect, QColor(255, 235, 59, 110));
+    }
+
+    // Bolder/more saturated than persisted highlights so a dozen search hits
+    // read as a distinct "dauber" pass over the page rather than blending
+    // into any highlights the reader made themselves.
+    for (const QRect &rect : m_searchRects) {
+        painter.fillRect(rect, QColor(255, 214, 0, 170));
     }
 
     // No outline, unlike the old single-rectangle overlay: a plain fill per

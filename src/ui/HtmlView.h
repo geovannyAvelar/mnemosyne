@@ -35,6 +35,7 @@ public:
     // at-a-time) would be the right fit for this format instead, as a
     // separate feature from the cross-document SearchDock.
     QVector<SearchResult> search(const QString &query) const override;
+    void setSearchTerm(const QString &term) override; // no-op, see search() above
 
     qreal currentZoomFactor() const;
 

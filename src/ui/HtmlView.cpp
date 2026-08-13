@@ -91,6 +91,12 @@ QVector<SearchResult> HtmlView::search(const QString &) const
     return {};
 }
 
+void HtmlView::setSearchTerm(const QString &)
+{
+    // No-op: search() above never returns results for this format, so the
+    // SearchDock has nothing to drive a highlight from here.
+}
+
 qreal HtmlView::currentZoomFactor() const
 {
     return m_webView->zoomFactor();

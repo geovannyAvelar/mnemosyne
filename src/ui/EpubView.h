@@ -28,6 +28,7 @@ public:
     void goToTocNode(const TocNode &node) override;
     int currentPosition() const override;
     QVector<SearchResult> search(const QString &query) const override;
+    void setSearchTerm(const QString &term) override;
 
     void setDarkMode(bool enabled);
 
@@ -68,6 +69,7 @@ private:
     bool m_pageTurnCooldown = false; // guards against one fast scroll gesture skipping multiple chapters
     int m_fontZoomSteps = 0; // clamps how far zoomIn()/zoomOut() can go; Qt's QTextDocument keeps the actual zoomed font size across setHtml() calls on its own
     QVector<Highlight> m_highlights; // all highlights for this document
+    QString m_searchTerm; // active search-dock query; empty means no search overlay
 
     QTextBrowser *m_browser = nullptr;
     QLabel *m_chapterLabel = nullptr;

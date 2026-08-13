@@ -19,6 +19,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QPair>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
@@ -74,6 +75,35 @@ int nearestWordIndex(const QVector<TextWord> &words, const QPointF &point)
         }
     }
     return bestIndex;
+}
+
+// Mirrors PdfView::updateSelectionFromDrag()'s text reconstruction rules
+// (newline on a line break, space when hasSpaceAfter) so search matches
+// found in the concatenated text map back to the right word rects, including
+// matches that span a word boundary (e.g. a two-word query).
+QString concatenatePageWords(const QVector<TextWord> &words, QVector<QPair<int, int>> &wordSpans)
+{
+    QString text;
+    wordSpans.clear();
+    wordSpans.reserve(words.size());
+
+    for (int i = 0; i < words.size(); ++i) {
+        const TextWord &word = words[i];
+        const int start = text.size();
+        text += word.text;
+        wordSpans.append({start, text.size()});
+
+        if (i + 1 < words.size()) {
+            const TextWord &next = words[i + 1];
+            const qreal verticalGap = std::abs(next.boundingBox.center().y() - word.boundingBox.center().y());
+            if (verticalGap > word.boundingBox.height() / 2.0) {
+                text += QLatin1Char('\n');
+            } else if (word.hasSpaceAfter) {
+                text += QLatin1Char(' ');
+            }
+        }
+    }
+    return text;
 }
 }
 
@@ -139,6 +169,12 @@ QVector<SearchResult> PdfView::search(const QString &query) const
         }
     }
     return results;
+}
+
+void PdfView::setSearchTerm(const QString &term)
+{
+    m_searchTerm = term.trimmed();
+    refreshSearchOverlay();
 }
 
 void PdfView::setupUi()
@@ -267,6 +303,7 @@ void PdfView::renderCurrentPage()
     m_canvas->setPage(image, m_zoom); // also clears any stale selection from the previous page
     m_selectedText.clear();
     refreshHighlightOverlay();
+    refreshSearchOverlay();
 }
 
 void PdfView::updateNavigationState()
@@ -339,6 +376,34 @@ void PdfView::refreshHighlightOverlay()
         }
     }
     m_canvas->setHighlightRects(pixelRects);
+}
+
+void PdfView::refreshSearchOverlay()
+{
+    QVector<QRect> pixelRects;
+
+    if (!m_searchTerm.isEmpty() && !m_currentPageWords.isEmpty()) {
+        QVector<QPair<int, int>> wordSpans;
+        const QString text = concatenatePageWords(m_currentPageWords, wordSpans);
+
+        int searchFrom = 0;
+        while (true) {
+            const int matchStart = text.indexOf(m_searchTerm, searchFrom, Qt::CaseInsensitive);
+            if (matchStart < 0) {
+                break;
+            }
+            const int matchEnd = matchStart + m_searchTerm.size();
+
+            for (int i = 0; i < wordSpans.size(); ++i) {
+                if (wordSpans[i].first < matchEnd && wordSpans[i].second > matchStart) {
+                    pixelRects.append(pageRectToPixelRect(m_currentPageWords[i].boundingBox, m_zoom));
+                }
+            }
+            searchFrom = matchStart + 1; // allow overlapping matches (e.g. query "aa" in "aaa")
+        }
+    }
+
+    m_canvas->setSearchRects(pixelRects);
 }
 
 int PdfView::highlightIndexAtPagePoint(const QPointF &pagePoint) const

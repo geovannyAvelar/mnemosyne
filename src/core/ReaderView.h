@@ -31,4 +31,11 @@ public:
 
     // Case-insensitive full-text search across the whole document.
     virtual QVector<SearchResult> search(const QString &query) const = 0;
+
+    // Marks every occurrence of term on the currently displayed page/chapter
+    // in yellow, like a bingo dauber marking hits as you scan the card.
+    // Recomputed on navigation so it follows the reader to each search
+    // result; pass an empty string to clear it. Distinct from the persisted,
+    // user-created Highlight annotations.
+    virtual void setSearchTerm(const QString &term) = 0;
 };

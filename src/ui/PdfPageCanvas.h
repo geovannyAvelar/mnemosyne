@@ -47,6 +47,12 @@ public:
     // drawn under the live selection overlay.
     void setHighlightRects(const QVector<QRect> &rects);
 
+    // Search-match rects (image pixels) for the currently shown page, drawn
+    // in a bolder yellow than persisted highlights — a bingo-dauber mark for
+    // every hit of the active search term.
+    void setSearchRects(const QVector<QRect> &rects);
+    QVector<QRect> searchRects() const { return m_searchRects; }
+
 signals:
     // Emitted on press, on every move while dragging, and on release, so the
     // caller can keep the word-shaped highlight live as the drag happens —
@@ -70,4 +76,5 @@ private:
 
     QVector<QRect> m_selectionRects;
     QVector<QRect> m_highlightRects;
+    QVector<QRect> m_searchRects;
 };

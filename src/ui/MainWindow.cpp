@@ -181,6 +181,9 @@ void MainWindow::setupDocks()
 
     connect(m_searchDock, &SearchDock::searchRequested, this, [this](const QString &query) {
         m_searchDock->setResults(m_currentView ? m_currentView->search(query) : QVector<SearchResult>());
+        if (m_currentView) {
+            m_currentView->setSearchTerm(query);
+        }
     });
 
     connect(m_searchDock, &SearchDock::resultActivated, this, [this](int targetIndex) {
