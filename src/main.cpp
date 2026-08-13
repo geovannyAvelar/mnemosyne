@@ -53,8 +53,8 @@ int main(int argc, char *argv[])
     parser.process(app);
 
     MainWindow window;
-    window.resize(1024, 768);
-    window.show();
+    window.resize(1024, 768); // fallback size if the platform ever ignores showMaximized()
+    window.showMaximized();
 
 #ifdef Q_OS_MACOS
     // Deferred: Qt's Cocoa platform plugin finishes its own native window
