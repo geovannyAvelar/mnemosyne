@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-08-13
+
+### Added
+
+- Search now highlights every match on the current page/chapter in a bold yellow overlay while you search, and jumps straight to the first result instead of waiting for you to click it.
+- Search runs on a background thread with a progress spinner in the Search dock, so scanning a large document no longer freezes the UI.
+- Emoji licensing attribution (Noto Emoji, Apache 2.0) added to the About dialog.
+
+### Changed
+
+- The main window now opens maximized instead of at a fixed 1024x768.
+
 ## [1.2.0] - 2026-08-12
 
 ### Added
