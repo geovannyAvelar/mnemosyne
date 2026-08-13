@@ -32,6 +32,14 @@ public:
     QVector<SearchResult> search(const QString &query) const override;
     void setSearchTerm(const QString &term) override;
 
+    // Same search as above, but independent of any PdfView instance: opens
+    // its own Poppler document from filePath rather than touching a live
+    // view's m_document. Poppler documents aren't safe to use concurrently
+    // from multiple threads, so this is what MainWindow calls on a
+    // background thread while the view (and its m_document, used by the
+    // main thread for rendering) keeps running independently.
+    static QVector<SearchResult> searchFile(const QString &filePath, const QString &query);
+
     QString selectedText() const { return m_selectedText; }
     bool hasPendingSyncPrompt() const;
 

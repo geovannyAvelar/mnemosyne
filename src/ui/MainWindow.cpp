@@ -44,6 +44,7 @@
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolBar>
+#include <QtConcurrent/QtConcurrentRun>
 
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
 namespace {
@@ -147,6 +148,8 @@ void MainWindow::setupDocks()
     addDockWidget(Qt::LeftDockWidgetArea, m_searchDock);
     tabifyDockWidget(m_tocDock, m_searchDock);
 
+    m_searchWatcher = new QFutureWatcher<QVector<SearchResult>>(this);
+
     // The tab strip above (from setTabPosition) already labels each dock, so
     // each dock's own title bar would just be a redundant duplicate label.
     m_tocDock->setTitleBarWidget(new QWidget(m_tocDock));
@@ -180,9 +183,52 @@ void MainWindow::setupDocks()
     });
 
     connect(m_searchDock, &SearchDock::searchRequested, this, [this](const QString &query) {
-        m_searchDock->setResults(m_currentView ? m_currentView->search(query) : QVector<SearchResult>());
-        if (m_currentView) {
-            m_currentView->setSearchTerm(query);
+        if (!m_currentView) {
+            m_searchDock->setResults({});
+            return;
+        }
+
+        // The actual scan runs on the global QThreadPool via the format's
+        // searchFile() (see PdfView/EpubView), which opens its own document
+        // handle from disk instead of touching m_currentView's — Poppler and
+        // libzip aren't safe to use concurrently with the main thread's
+        // rendering of the live document. Captured by value so the task has
+        // no dependency on this (or any widget) still being alive when it runs.
+        const QString filePath = m_currentFilePath;
+        const QString suffix = QFileInfo(filePath).suffix().toLower();
+
+        m_pendingSearchFilePath = filePath;
+        m_pendingSearchQuery = query;
+        m_searchDock->setSearching(true);
+
+        m_searchWatcher->setFuture(QtConcurrent::run([filePath, suffix, query]() -> QVector<SearchResult> {
+            if (suffix == QLatin1String("pdf")) {
+                return PdfView::searchFile(filePath, query);
+            }
+            if (suffix == QLatin1String("epub")) {
+                return EpubView::searchFile(filePath, query);
+            }
+            return {}; // HTML: find-in-page search isn't supported (see HtmlView::search())
+        }));
+    });
+
+    connect(m_searchWatcher, &QFutureWatcher<QVector<SearchResult>>::finished, this, [this] {
+        m_searchDock->setSearching(false);
+        const QVector<SearchResult> results = m_searchWatcher->result();
+
+        // Discard a result that's no longer relevant: the user switched
+        // documents (or closed the tab) while the background scan was running.
+        if (m_pendingSearchFilePath != m_currentFilePath || !m_currentView) {
+            return;
+        }
+
+        m_searchDock->setResults(results);
+        m_currentView->setSearchTerm(m_pendingSearchQuery);
+
+        if (!results.isEmpty()) {
+            TocNode node;
+            node.pageNumber = results.first().targetIndex;
+            m_currentView->goToTocNode(node);
         }
     });
 

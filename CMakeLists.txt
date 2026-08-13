@@ -41,9 +41,9 @@ option(MNEMOSYNE_ENABLE_HTML "Enable Qt WebEngine-based HTML/HTM support" ${MNEM
 option(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC "Enable signing in with Google Drive as a sync backend" ON)
 
 if(MNEMOSYNE_ENABLE_HTML)
-  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network WebEngineWidgets)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent WebEngineWidgets)
 else()
-  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent)
 endif()
 
 find_package(PkgConfig REQUIRED)

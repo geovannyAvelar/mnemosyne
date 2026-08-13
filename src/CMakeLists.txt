@@ -98,6 +98,7 @@ add_library(mnemosynecore STATIC ${MNEMOSYNE_CORE_SOURCES})
 target_link_libraries(mnemosynecore PUBLIC
     Qt6::Widgets
     Qt6::Network
+    Qt6::Concurrent
     PkgConfig::POPPLER_QT6
     PkgConfig::LIBZIP
 )

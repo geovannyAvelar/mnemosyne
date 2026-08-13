@@ -93,14 +93,25 @@ bool EpubView::hasPendingSyncPrompt() const
 
 QVector<SearchResult> EpubView::search(const QString &query) const
 {
+    return searchFile(m_filePath, query);
+}
+
+QVector<SearchResult> EpubView::searchFile(const QString &filePath, const QString &query)
+{
     QVector<SearchResult> results;
-    if (!m_document || query.trimmed().isEmpty()) {
+    if (query.trimmed().isEmpty()) {
         return results;
     }
 
-    for (int i = 0; i < m_document->spineCount(); ++i) {
+    QString error;
+    const std::unique_ptr<EpubDocument> document = EpubDocument::load(filePath, &error);
+    if (!document) {
+        return results;
+    }
+
+    for (int i = 0; i < document->spineCount(); ++i) {
         QTextDocument doc;
-        doc.setHtml(m_document->chapterHtml(i));
+        doc.setHtml(document->chapterHtml(i));
         const QString text = doc.toPlainText();
         if (text.contains(query, Qt::CaseInsensitive)) {
             SearchResult result;

@@ -10,6 +10,7 @@
 #include "app/ReadingProgressStore.h"
 #include "core/CoordinateUtil.h"
 #include "core/SearchUtil.h"
+#include "pdf/PopplerPdfDocument.h"
 #include "ui/PdfPageCanvas.h"
 #include "ui/SyncPromptBar.h"
 
@@ -149,13 +150,24 @@ bool PdfView::hasPendingSyncPrompt() const
 
 QVector<SearchResult> PdfView::search(const QString &query) const
 {
+    return searchFile(m_filePath, query);
+}
+
+QVector<SearchResult> PdfView::searchFile(const QString &filePath, const QString &query)
+{
     QVector<SearchResult> results;
-    if (!m_document || query.trimmed().isEmpty()) {
+    if (query.trimmed().isEmpty()) {
         return results;
     }
 
-    for (int i = 0; i < m_document->pageCount(); ++i) {
-        std::unique_ptr<IPage> page = m_document->page(i);
+    QString error;
+    const std::unique_ptr<PopplerPdfDocument> document = PopplerPdfDocument::load(filePath, &error);
+    if (!document) {
+        return results;
+    }
+
+    for (int i = 0; i < document->pageCount(); ++i) {
+        std::unique_ptr<IPage> page = document->page(i);
         if (!page) {
             continue;
         }

@@ -30,6 +30,14 @@ public:
     QVector<SearchResult> search(const QString &query) const override;
     void setSearchTerm(const QString &term) override;
 
+    // Same search as above, but independent of any EpubView instance: opens
+    // its own EpubDocument (and zip archive handle) from filePath rather
+    // than touching a live view's m_document. libzip reads aren't safe to
+    // share across threads, so this is what MainWindow calls on a
+    // background thread while the view (and its own m_document, used by the
+    // main thread for rendering) keeps running independently.
+    static QVector<SearchResult> searchFile(const QString &filePath, const QString &query);
+
     void setDarkMode(bool enabled);
 
     // The document's current base font size, reflecting any applied zoom.

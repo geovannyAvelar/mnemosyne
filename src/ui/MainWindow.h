@@ -1,10 +1,13 @@
 #pragma once
 
 #include "core/Document.h"
+#include "core/ReaderView.h" // SearchResult
 
+#include <QFutureWatcher>
 #include <QHash>
 #include <QMainWindow>
 #include <QPalette>
+#include <QVector>
 
 class BookmarksDock;
 class IReaderView;
@@ -68,6 +71,14 @@ private:
 
     IReaderView *m_currentView = nullptr; // active tab's view; nullptr when Library is active
     QString m_currentFilePath; // active tab's file path; empty when Library is active
+
+    // Runs IReaderView::search() on the global QThreadPool so a slow scan
+    // over a large document doesn't freeze the UI; see onSearchFinished()
+    // for how a stale result (search finished after the user moved to a
+    // different tab) is detected and discarded.
+    QFutureWatcher<QVector<SearchResult>> *m_searchWatcher = nullptr;
+    QString m_pendingSearchFilePath;
+    QString m_pendingSearchQuery;
 
     QPalette m_lightPalette;
     QPalette m_darkPalette;
