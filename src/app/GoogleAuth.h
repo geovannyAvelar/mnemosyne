@@ -16,12 +16,19 @@ class IHttpClient;
 // stored via TokenStore (a real OS secret store); the access token lives in
 // memory only and is refreshed on demand via withAccessToken().
 //
-// Mnemosyne ships no OAuth credentials of its own — the user creates a
-// Google Cloud "Desktop app" OAuth client (see docs/google-drive-setup.md)
-// and enters its Client ID/Secret once via setClientCredentials().
+// Mnemosyne ships its own OAuth client (see kBundledClientId/Secret in
+// GoogleAuth.cpp) so users can just click "Sign in with Google Drive" with
+// no setup of their own. Google treats an installed app's client "secret"
+// as a public identifier rather than a confidential value — the loopback
+// redirect + PKCE flow below is what actually secures the exchange — so
+// baking it into the app is the model Google documents for desktop/mobile
+// clients. See docs/google-drive-setup.md for maintainer notes on
+// provisioning that client.
 namespace GoogleAuth {
 
-void setClientCredentials(const QString &clientId, const QString &clientSecret);
+// True once the app has a usable Client ID compiled in (i.e. a maintainer
+// has configured kBundledClientId in GoogleAuth.cpp). False only in
+// from-source builds where that step was skipped.
 bool hasClientCredentials();
 
 bool isSignedIn();

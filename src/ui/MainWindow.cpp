@@ -25,12 +25,6 @@
 #include <QAction>
 #include <QApplication>
 #include <QDateTime>
-#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
-#include <QDialog>
-#include <QDialogButtonBox>
-#include <QFormLayout>
-#include <QLabel>
-#endif
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -45,53 +39,6 @@
 #include <QTabWidget>
 #include <QToolBar>
 #include <QtConcurrent/QtConcurrentRun>
-
-#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
-namespace {
-
-// One-time setup: the user's own Google Cloud OAuth "Desktop app" Client
-// ID/Secret (see docs/google-drive-setup.md) — Mnemosyne ships no
-// credentials of its own. Returns false if the user cancelled.
-bool ensureGoogleClientCredentials(QWidget *parent)
-{
-    if (GoogleAuth::hasClientCredentials()) {
-        return true;
-    }
-
-    QDialog dialog(parent);
-    dialog.setWindowTitle(MainWindow::tr("Set Up Google Sign-In"));
-
-    auto *layout = new QFormLayout(&dialog);
-
-    auto *info = new QLabel(
-        MainWindow::tr("Paste the OAuth Client ID and Secret from your own Google Cloud project "
-                        "(\"Desktop app\" type, with the Drive API enabled). "
-                        "See docs/google-drive-setup.md for how to create one."),
-        &dialog);
-    info->setWordWrap(true);
-    layout->addRow(info);
-
-    auto *clientIdEdit = new QLineEdit(&dialog);
-    auto *clientSecretEdit = new QLineEdit(&dialog);
-    clientSecretEdit->setEchoMode(QLineEdit::Password);
-    layout->addRow(MainWindow::tr("Client ID:"), clientIdEdit);
-    layout->addRow(MainWindow::tr("Client Secret:"), clientSecretEdit);
-
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addRow(buttons);
-
-    if (dialog.exec() != QDialog::Accepted || clientIdEdit->text().trimmed().isEmpty()) {
-        return false;
-    }
-
-    GoogleAuth::setClientCredentials(clientIdEdit->text().trimmed(), clientSecretEdit->text().trimmed());
-    return true;
-}
-
-} // namespace
-#endif
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -625,7 +572,10 @@ void MainWindow::populateSyncMenu()
     googleStatusAction->setEnabled(false);
 
     QAction *googleSignInAction = m_syncMenu->addAction(tr("Sign in with Google Drive..."));
-    googleSignInAction->setEnabled(!googleSignedIn);
+    googleSignInAction->setEnabled(!googleSignedIn && GoogleAuth::hasClientCredentials());
+    if (!GoogleAuth::hasClientCredentials()) {
+        googleSignInAction->setToolTip(tr("This build wasn't compiled with Google sign-in support."));
+    }
     connect(googleSignInAction, &QAction::triggered, this, &MainWindow::signInWithGoogle);
 
     QAction *googleSignOutAction = m_syncMenu->addAction(tr("Sign out of Google Drive"));
@@ -660,10 +610,6 @@ void MainWindow::disableSync()
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
 void MainWindow::signInWithGoogle()
 {
-    if (!ensureGoogleClientCredentials(this)) {
-        return;
-    }
-
     GoogleAuth::startSignIn(this, [this](bool ok, const QString &error) {
         if (ok) {
             QMessageBox::information(this, tr("Signed In"),

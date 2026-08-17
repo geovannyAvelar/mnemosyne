@@ -30,6 +30,14 @@ const auto kAuthEndpoint = QStringLiteral("https://accounts.google.com/o/oauth2/
 const auto kTokenEndpoint = QStringLiteral("https://oauth2.googleapis.com/token");
 const auto kScope = QStringLiteral("https://www.googleapis.com/auth/drive.appdata openid email");
 
+// Mnemosyne's own Google Cloud "Desktop app" OAuth client, shared by every
+// build so users never have to create their own. Fill these in once (see
+// docs/google-drive-setup.md) before shipping a release; from-source builds
+// that skip this step simply can't offer Google sign-in (hasClientCredentials()
+// returns false and the UI hides the option).
+const auto kBundledClientId = QStringLiteral("");
+const auto kBundledClientSecret = QStringLiteral("");
+
 struct AccessTokenCache
 {
     QString token;
@@ -97,28 +105,21 @@ void applyTokenResponse(const detail::TokenResponse &parsed)
 
 } // namespace
 
-void setClientCredentials(const QString &clientId, const QString &clientSecret)
-{
-    QSettings settings;
-    settings.setValue(QStringLiteral("GoogleDrive/ClientId"), clientId);
-    settings.setValue(QStringLiteral("GoogleDrive/ClientSecret"), clientSecret);
-}
-
 bool hasClientCredentials()
 {
-    return !QSettings().value(QStringLiteral("GoogleDrive/ClientId")).toString().isEmpty();
+    return !kBundledClientId.isEmpty();
 }
 
 namespace {
 
 QString clientId()
 {
-    return QSettings().value(QStringLiteral("GoogleDrive/ClientId")).toString();
+    return kBundledClientId;
 }
 
 QString clientSecret()
 {
-    return QSettings().value(QStringLiteral("GoogleDrive/ClientSecret")).toString();
+    return kBundledClientSecret;
 }
 
 } // namespace
@@ -145,7 +146,7 @@ void startSignIn(QWidget *parent, std::function<void(bool ok, const QString &err
     Q_UNUSED(parent);
 
     if (!hasClientCredentials()) {
-        onDone(false, QObject::tr("No Google sign-in client is configured yet."));
+        onDone(false, QObject::tr("This build wasn't compiled with Google sign-in support."));
         return;
     }
 

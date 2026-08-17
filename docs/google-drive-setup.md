@@ -1,58 +1,43 @@
-# Setting up Google Drive sign-in
+# Google Drive sign-in
 
-Mnemosyne can sync your reading progress through your own Google Drive
-account instead of (or alongside) a locally-synced folder. Mnemosyne ships
-no Google credentials of its own — you create a small, free OAuth client in
-your own Google Cloud project and paste its Client ID/Secret into the app
-once. This takes about five minutes.
+Mnemosyne can sync your reading progress through your Google Drive account
+instead of (or alongside) a locally-synced folder. Sign-in is one click —
+open the **Sync** menu → **Sign in with Google Drive...**, approve access in
+the browser tab that opens, and you're done. There's nothing to create or
+paste in.
 
 Mnemosyne only ever requests access to its own hidden data folder in your
-Drive (the `drive.appdata` scope) plus your email address for display in
-the Sync menu — never your other files.
+Drive (the `drive.appdata` scope) plus your email address for display in the
+Sync menu — never your other files. Sign out any time from the same menu.
 
-## 1. Create a Google Cloud project
+## For maintainers: provisioning the shared OAuth client
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
-2. Create a new project (or reuse an existing personal one). Any name is
-   fine, e.g. "Mnemosyne Sync".
+The one-click flow above works because Mnemosyne ships with its own Google
+OAuth client baked in, so individual users never have to create one. If
+you're building Mnemosyne from source for your own use or a fork, and want
+Google Drive sign-in to work, you need to provision that client once:
 
-## 2. Enable the Drive API
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and
+   create a project (e.g. "Mnemosyne Sync").
+2. **APIs & Services → Library** → enable the **Google Drive API**.
+3. **APIs & Services → OAuth consent screen** → choose **External**, fill in
+   the required app name/support email fields, and add scopes
+   `.../auth/drive.appdata`, `openid`, `.../auth/userinfo.email`. Under
+   **Test users** (while the app is unverified), add the Google account(s)
+   you'll sign in with — Google limits unverified apps to a small test-user
+   list, which is fine for personal use; verification is only needed to
+   remove that limit for a public audience.
+4. **APIs & Services → Credentials → Create Credentials → OAuth client ID**,
+   application type **Desktop app**, and create it.
+5. Copy the **Client ID** and **Client Secret** into
+   [`src/app/GoogleAuth.cpp`](../src/app/GoogleAuth.cpp) as
+   `kBundledClientId`/`kBundledClientSecret`, then build normally.
 
-1. In the project, go to **APIs & Services → Library**.
-2. Search for **Google Drive API** and click **Enable**.
+   (Google issues a "secret" even for Desktop app clients, but — unlike a
+   server secret — doesn't treat it as confidential; the loopback-redirect +
+   PKCE flow is what actually secures the exchange. That's why it's safe to
+   compile into a binary everyone shares, per Google's own guidance for
+   installed apps.)
 
-## 3. Configure the OAuth consent screen
-
-1. Go to **APIs & Services → OAuth consent screen**.
-2. Choose **External** (unless you have a Google Workspace org and want
-   **Internal**), and fill in the required app name/support email fields.
-3. Add scopes: `.../auth/drive.appdata`, `openid`, and `.../auth/userinfo.email`.
-4. Under **Test users** (while the app is unverified), add the Google
-   account(s) you'll actually sign in with in Mnemosyne. Google limits
-   unverified apps to a small list of test users, which is fine for
-   personal/family use — verification is only needed to remove that limit
-   for a public audience.
-
-## 4. Create the OAuth client
-
-1. Go to **APIs & Services → Credentials → Create Credentials → OAuth
-   client ID**.
-2. Application type: **Desktop app**.
-3. Give it a name (e.g. "Mnemosyne Desktop") and click **Create**.
-4. Copy the **Client ID** and **Client Secret** shown — you'll paste both
-   into Mnemosyne next. (Google issues a secret even for Desktop app
-   clients, but doesn't treat it as confidential the way a server secret
-   would be — it's fine to store it locally.)
-
-## 5. Enter the credentials in Mnemosyne
-
-1. In Mnemosyne, open the **Sync** menu → **Sign in with Google Drive...**.
-2. The first time, you'll be prompted to paste the Client ID and Client
-   Secret from step 4.
-3. Mnemosyne opens your system browser to the Google consent screen. Sign
-   in and approve access.
-4. Once approved, the browser tab tells you to return to Mnemosyne, and the
-   Sync menu shows "Google Drive: signed in as \<your email\>".
-
-From then on, reading progress is synced through your Drive's hidden app
-data folder automatically. Sign out any time from the same menu.
+If `kBundledClientId` is left empty, the app still builds, but the Sync menu
+disables "Sign in with Google Drive..." rather than offering a broken flow.
