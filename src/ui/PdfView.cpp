@@ -544,6 +544,19 @@ void PdfView::saveProgressNow()
 
 bool PdfView::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == m_scrollArea->viewport() && event->type() == QEvent::Wheel) {
+        auto *wheelEvent = static_cast<QWheelEvent *>(event);
+
+        if (wheelEvent->modifiers().testFlag(Qt::ControlModifier)) {
+            if (wheelEvent->angleDelta().y() > 0) {
+                zoomIn();
+            } else if (wheelEvent->angleDelta().y() < 0) {
+                zoomOut();
+            }
+            return true;
+        }
+    }
+
     if (watched == m_scrollArea->viewport() && event->type() == QEvent::Wheel && !m_pageTurnCooldown) {
         auto *wheelEvent = static_cast<QWheelEvent *>(event);
         QScrollBar *vbar = m_scrollArea->verticalScrollBar();

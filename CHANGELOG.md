@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Windows installer (`Mnemosyne-Setup.exe`), alongside the existing portable `.zip`. Built with NSIS via `scripts/package-windows-installer.sh`; installs per-machine with a Start Menu shortcut, an optional Desktop shortcut, and a proper uninstaller in Add/Remove Programs.
+- Ctrl+scroll wheel now zooms in/out in the PDF and EPUB views, matching the convention in most other apps, instead of scrolling or turning pages.
 
 ### Changed
 
