@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Windows installer (`Mnemosyne-Setup.exe`), alongside the existing portable `.zip`. Built with NSIS via `scripts/package-windows-installer.sh`; installs per-machine with a Start Menu shortcut, an optional Desktop shortcut, and a proper uninstaller in Add/Remove Programs.
+
 ### Changed
 
 - Google Drive sign-in no longer asks each user to create their own Google Cloud OAuth client and paste in a Client ID/Secret. Mnemosyne now ships a shared OAuth client of its own, so "Sign in with Google Drive..." works with one click. (Maintainers building from source: see `docs/google-drive-setup.md` for the one-time step of provisioning that shared client.)

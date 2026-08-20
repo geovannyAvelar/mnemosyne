@@ -121,6 +121,7 @@ jobs:
             mingw-w64-x86_64-libzip
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-ntldd
+            mingw-w64-x86_64-nsis
             zip
 
       # QtWebEngine has no prebuilt Windows binaries at all (MinGW or MSVC) —
@@ -144,4 +145,14 @@ jobs:
         with:
           name: mnemosyne-windows
           path: build/Mnemosyne-windows.zip
+          if-no-files-found: error
+
+      - name: Package installer
+        run: ./scripts/package-windows-installer.sh build
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemosyne-windows-installer
+          path: build/Mnemosyne-Setup.exe
           if-no-files-found: error

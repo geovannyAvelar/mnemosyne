@@ -43,6 +43,7 @@ jobs:
             artifacts/mnemosyne-deb/*.deb \
             artifacts/mnemosyne-macos/*.dmg \
             artifacts/mnemosyne-windows/*.zip \
+            artifacts/mnemosyne-windows-installer/*.exe \
             --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md
 

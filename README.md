@@ -115,20 +115,30 @@ Produces `build/Mnemosyne-macos.dmg` — a self-contained, drag-and-drop
 install with Qt and all other dependencies bundled in (`macdeployqt` +
 `dylibbundler`), so Homebrew isn't required on the machine running it.
 
-### Windows (.zip)
+### Windows (.zip and installer)
 
 Built with [MSYS2](https://www.msys2.org/)'s MinGW64 environment (`pacman -S
-mingw-w64-x86_64-{toolchain,cmake,ninja,qt6-base,poppler-qt6,libzip,pkgconf,ntldd}
+mingw-w64-x86_64-{toolchain,cmake,ninja,qt6-base,poppler-qt6,libzip,pkgconf,ntldd,nsis}
 zip`):
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ./scripts/package-windows.sh build
+./scripts/package-windows-installer.sh build
 ```
 
-Produces `build/Mnemosyne-windows.zip`, with Qt and all other dependencies
-bundled in (`windeployqt6` + `ntldd`).
+`package-windows.sh` produces `build/Mnemosyne-windows.zip` — a portable,
+extract-and-run package with Qt and all other dependencies bundled in
+(`windeployqt6` + `ntldd`). `package-windows-installer.sh` wraps that same
+staged copy into `build/Mnemosyne-Setup.exe` (via [NSIS](https://nsis.sourceforge.io/)),
+a proper per-machine installer with a Start Menu shortcut, an optional
+Desktop shortcut, and an uninstaller registered in Add/Remove Programs.
+
+Because these DLLs are unsigned MinGW builds, Windows SmartScreen may warn
+on first run of either the installer or the unpacked `.zip` — this is
+normal for small, freshly-built open-source binaries and isn't specific to
+Mnemosyne.
 
 **HTML support is not available on Windows** — QtWebEngine (Chromium) ships
 no prebuilt Windows binaries at all, for either MinGW or MSVC, only a
