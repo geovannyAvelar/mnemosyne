@@ -35,8 +35,9 @@ const auto kScope = QStringLiteral("https://www.googleapis.com/auth/drive.appdat
 // docs/google-drive-setup.md) before shipping a release; from-source builds
 // that skip this step simply can't offer Google sign-in (hasClientCredentials()
 // returns false and the UI hides the option).
-const auto kBundledClientId = QStringLiteral("");
-const auto kBundledClientSecret = QStringLiteral("");
+const auto kBundledClientId =
+    QStringLiteral("226504444824-bdg1t0brf4il13ssqt2t3ulnf6njv6e0.apps.googleusercontent.com");
+const auto kBundledClientSecret = QStringLiteral("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");
 
 struct AccessTokenCache
 {
