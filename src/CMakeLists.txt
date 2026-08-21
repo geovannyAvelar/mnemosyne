@@ -267,6 +267,12 @@ if(ANDROID)
         quick/AndroidStorageAccess.cpp
         quick/LibraryModel.h
         quick/LibraryModel.cpp
+        quick/ContentUriCache.h
+        quick/ContentUriCache.cpp
+        quick/PdfDocumentModel.h
+        quick/PdfDocumentModel.cpp
+        quick/PdfPageImageProvider.h
+        quick/PdfPageImageProvider.cpp
     )
 
     set_source_files_properties(${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
@@ -281,9 +287,15 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/Main.qml
         ${CMAKE_SOURCE_DIR}/qml/Theme.qml
         ${CMAKE_SOURCE_DIR}/qml/LibraryScreen.qml
+        ${CMAKE_SOURCE_DIR}/qml/PdfReaderScreen.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/PdfPageItem.qml
     )
     foreach(_qml_file ${MNEMOSYNE_ANDROID_QML_FILES})
-        get_filename_component(_qml_alias ${_qml_file} NAME)
+        # Relative to qml/, not just the basename, so components/PdfPageItem.qml
+        # keeps its subdirectory — PdfReaderScreen.qml imports it as
+        # `import "components"`, which needs that structure preserved in
+        # the module's resource tree.
+        file(RELATIVE_PATH _qml_alias ${CMAKE_SOURCE_DIR}/qml ${_qml_file})
         set_source_files_properties(${_qml_file} PROPERTIES QT_RESOURCE_ALIAS ${_qml_alias})
     endforeach()
     set_source_files_properties(${CMAKE_SOURCE_DIR}/qml/Theme.qml
@@ -295,6 +307,7 @@ if(ANDROID)
     # note in the mobile-port plan for how long that took to diagnose.
     qt_policy(SET QTP0001 NEW)
     qt_policy(SET QTP0002 NEW)
+    qt_policy(SET QTP0004 NEW)
 
     qt_add_qml_module(MnemosyneAndroid
         URI MnemosyneAndroid

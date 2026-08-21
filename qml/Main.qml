@@ -22,11 +22,31 @@ ApplicationWindow {
         id: libraryScreenComponent
         LibraryScreen {
             onFileActivated: (filePath, title, format) => {
-                // Reader screens (PDF/EPUB) land in a later mobile-port
-                // stage; for now, opening a document just confirms which
-                // one was tapped, proving the library → activation wiring.
-                console.log("Activated:", title, "(" + format + ")", filePath)
+                if (format === "pdf") {
+                    if (pdfDocumentModel.open(filePath, format)) {
+                        stackView.push(pdfReaderScreenComponent)
+                    } else {
+                        console.log("Failed to open PDF:", pdfDocumentModel.errorMessage)
+                    }
+                } else {
+                    // EPUB reading lands in a later mobile-port stage.
+                    console.log("Activated:", title, "(" + format + ")", filePath)
+                }
             }
+        }
+    }
+
+    Component {
+        id: pdfReaderScreenComponent
+        PdfReaderScreen {
+            documentModel: pdfDocumentModel
+        }
+    }
+
+    onClosing: (close) => {
+        if (stackView.depth > 1) {
+            close.accepted = false
+            stackView.pop()
         }
     }
 }
