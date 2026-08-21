@@ -45,6 +45,7 @@
 #include <QSizePolicy>
 #include <QTabBar>
 #include <QTabWidget>
+#include <QTimer>
 #include <QToolBar>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -65,11 +66,19 @@ MainWindow::MainWindow(QWidget *parent)
     setDarkModeEnabled(savedDarkMode); // setChecked() only emits toggled() on a change, so apply explicitly
 
     // The docks setupDocks() just created start out visible, so only act
-    // when the saved state actually disagrees with that default.
-    const bool savedSidebarVisible = QSettings().value(QStringLiteral("sidebarVisible"), true).toBool();
-    if (!savedSidebarVisible) {
-        toggleSidebar();
-    }
+    // when the saved state actually disagrees with that default. Deferred
+    // to the next event-loop iteration (rather than called here directly):
+    // QMainWindowLayout re-asserts its own default dock visibility as part
+    // of the main window's first show() (main.cpp's showMaximized(), which
+    // hasn't happened yet at this point in the constructor), silently
+    // undoing a hide() called before then. Running after that first show
+    // cycle has completed avoids the race.
+    QTimer::singleShot(0, this, [this] {
+        const bool savedSidebarVisible = QSettings().value(QStringLiteral("sidebarVisible"), true).toBool();
+        if (!savedSidebarVisible) {
+            toggleSidebar();
+        }
+    });
 }
 
 void MainWindow::setupTabs()
@@ -270,28 +279,48 @@ void MainWindow::setupSidebarToggle()
 
 void MainWindow::toggleSidebar()
 {
-    const bool currentlyVisible = m_tocDock->isVisible() || m_bookmarksDock->isVisible() || m_searchDock->isVisible();
-    QSettings().setValue(QStringLiteral("sidebarVisible"), !currentlyVisible);
+    // Not isVisible(): that also depends on the whole ancestor chain (this
+    // dock, MainWindow itself) actually being shown on screen. The
+    // constructor calls this to restore a saved "hidden" state before
+    // MainWindow has been shown at all, at which point isVisible() is
+    // always false regardless of the dock's own state — making this always
+    // take the "currently hidden" branch and show the sidebar instead of
+    // hiding it. isHidden() reflects just the dock's own explicit
+    // show()/hide() state, independent of the window (see EpubView::
+    // hasPendingSyncPrompt() for the same distinction documented before).
+    const bool currentlyVisible = !m_tocDock->isHidden() || !m_bookmarksDock->isHidden() || !m_searchDock->isHidden();
 
     if (currentlyVisible) {
         setFocus();
         m_tocDock->hide();
         m_bookmarksDock->hide();
         m_searchDock->hide();
+        QSettings().setValue(QStringLiteral("sidebarVisible"), false);
         m_sidebarToggleAction->setToolTip(tr("Show Sidebar"));
     } else {
-        m_tocDock->show();
-        m_bookmarksDock->show();
-        m_searchDock->show();
-        m_tocDock->raise();
-        // If the dock group was last hidden while a dock other than m_tocDock
-        // was the raised/active tab (e.g. via focusSearch()), Qt can fail to
-        // restore this area's width on show() and leave it collapsed to 0 —
-        // the docks are then technically "visible" but occupy no space.
-        // Force a sane width explicitly rather than relying on Qt to infer one.
-        resizeDocks({m_tocDock}, {260}, Qt::Horizontal);
-        m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));
+        showSidebar();
     }
+}
+
+// Shared by toggleSidebar()'s show branch and focusSearch(): anywhere the
+// sidebar gets shown must keep the persisted "sidebarVisible" state and the
+// toggle button's tooltip in sync, or a restart re-hides a sidebar the user
+// last saw open (see focusSearch(), which used to show the docks directly
+// without going through here — the bug that prompted this refactor).
+void MainWindow::showSidebar()
+{
+    m_tocDock->show();
+    m_bookmarksDock->show();
+    m_searchDock->show();
+    m_tocDock->raise();
+    // If the dock group was last hidden while a dock other than m_tocDock
+    // was the raised/active tab (e.g. via focusSearch()), Qt can fail to
+    // restore this area's width on show() and leave it collapsed to 0 —
+    // the docks are then technically "visible" but occupy no space. Force a
+    // sane width explicitly rather than relying on Qt to infer one.
+    resizeDocks({m_tocDock}, {260}, Qt::Horizontal);
+    QSettings().setValue(QStringLiteral("sidebarVisible"), true);
+    m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));
 }
 
 void MainWindow::setupMenus()
@@ -550,12 +579,7 @@ void MainWindow::addBookmarkForCurrentPosition()
 
 void MainWindow::focusSearch()
 {
-    // The three sidebar docks are tabified together and toggleSidebar()
-    // shows/hides them as one group, so showing only one here would leave
-    // that group in a state toggleSidebar() doesn't expect.
-    m_tocDock->show();
-    m_bookmarksDock->show();
-    m_searchDock->show();
+    showSidebar(); // the three sidebar docks are tabified together and always shown/hidden as one group
     m_searchDock->raise();
     m_searchDock->focusSearchField();
 }

@@ -49,6 +49,7 @@ private:
     void setupDocks();
     void setupTabs();
     void setupSidebarToggle();
+    void showSidebar();
     void populateOpenRecentMenu();
     void populateSyncMenu();
     void refreshBookmarksDock();

@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- The sidebar's saved open/closed state (added in 1.4.0) never actually restored correctly on launch — the app always came up with the sidebar visible regardless of what was saved. Two compounding bugs: (1) `toggleSidebar()`'s visibility check used `isVisible()`, which depends on the whole window already being shown and is always `false` during construction, so the startup restore call always took the wrong branch; (2) even after fixing that, `QMainWindowLayout` re-asserts its own default dock visibility during the main window's first `show()`, silently undoing a `hide()` called beforehand — fixed by deferring the restore to the next event-loop iteration, after that first show cycle completes. Also fixed a related desync: clicking the search icon while the sidebar was hidden showed it again without updating the saved preference, so it would incorrectly revert to hidden on the next launch.
+
 ## [1.5.0] - 2026-08-21
 
 ### Added
