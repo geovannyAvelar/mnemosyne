@@ -252,12 +252,22 @@ endif()
 endif() # NOT ANDROID
 
 if(ANDROID)
-    # Stage 2 smoke test only: proves the Android cross-compile chain
-    # (NDK, vendored Poppler-Qt6/libzip/Freetype, androiddeployqt packaging)
-    # works end to end by rendering a bundled sample PDF's page count and
-    # title through the real mnemosynecore/Poppler pipeline. The actual
-    # Qt Quick reader UI lands in later mobile-port milestones.
-    qt_add_executable(MnemosyneAndroid quick/main_android.cpp quick/SmokeTestBridge.h quick/SmokeTestBridge.cpp)
+    # Stage 2 proved the cross-compiled Poppler-Qt6/libzip/Freetype chain
+    # works (SmokeTestBridge, still linked below for later regression
+    # checks). Stage 3 adds the real QML app shell: a Library screen backed
+    # by the same app/RecentFiles.h store the desktop LibraryView uses, and
+    # Android's Storage Access Framework document picker in place of a
+    # desktop-style native file dialog (Android apps can't browse arbitrary
+    # filesystem paths without it).
+    qt_add_executable(MnemosyneAndroid
+        quick/main_android.cpp
+        quick/SmokeTestBridge.h
+        quick/SmokeTestBridge.cpp
+        quick/AndroidStorageAccess.h
+        quick/AndroidStorageAccess.cpp
+        quick/LibraryModel.h
+        quick/LibraryModel.cpp
+    )
 
     set_source_files_properties(${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
         PROPERTIES QT_RESOURCE_ALIAS test_multipage.pdf)
@@ -267,22 +277,37 @@ if(ANDROID)
         FILES ${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
     )
 
-    set_source_files_properties(${CMAKE_SOURCE_DIR}/qml/Main.qml
-        PROPERTIES QT_RESOURCE_ALIAS Main.qml)
+    set(MNEMOSYNE_ANDROID_QML_FILES
+        ${CMAKE_SOURCE_DIR}/qml/Main.qml
+        ${CMAKE_SOURCE_DIR}/qml/Theme.qml
+        ${CMAKE_SOURCE_DIR}/qml/LibraryScreen.qml
+    )
+    foreach(_qml_file ${MNEMOSYNE_ANDROID_QML_FILES})
+        get_filename_component(_qml_alias ${_qml_file} NAME)
+        set_source_files_properties(${_qml_file} PROPERTIES QT_RESOURCE_ALIAS ${_qml_alias})
+    endforeach()
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/qml/Theme.qml
+        PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
     # Without this, the QML module's resource prefix silently falls back to
     # the pre-6.8 default and the app crashes at runtime with "Module
     # 'MnemosyneAndroid' contains no type named Main" — see the Stage 0
     # note in the mobile-port plan for how long that took to diagnose.
     qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0002 NEW)
 
     qt_add_qml_module(MnemosyneAndroid
         URI MnemosyneAndroid
         VERSION 1.0
-        QML_FILES ${CMAKE_SOURCE_DIR}/qml/Main.qml
+        QML_FILES ${MNEMOSYNE_ANDROID_QML_FILES}
     )
 
-    target_link_libraries(MnemosyneAndroid PRIVATE mnemosynecore Qt6::Quick)
+    target_link_libraries(MnemosyneAndroid PRIVATE
+        mnemosynecore
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::CorePrivate # AndroidStorageAccess uses QtAndroidPrivate::startActivity (qandroidextras_p.h)
+    )
 
     # Poppler-Qt6/libzip/Freetype are linked but not Qt libraries, so
     # androiddeployqt doesn't know to bundle them into the APK on its own —
@@ -293,7 +318,7 @@ if(ANDROID)
     )
 
     # No QT_ANDROID_PACKAGE_SOURCE_DIR yet: androiddeployqt generates a
-    # default AndroidManifest.xml for this smoke test. A real android/
-    # source dir (package id, permissions, SAF intent filters, etc.) lands
-    # with the actual reader UI in a later mobile-port milestone.
+    # default AndroidManifest.xml. A real android/ source dir (package id,
+    # permissions) lands with app packaging polish in a later stage — the
+    # ACTION_OPEN_DOCUMENT picker itself needs no manifest declaration.
 endif()

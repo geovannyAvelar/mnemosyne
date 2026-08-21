@@ -50,7 +50,7 @@ endif()
 option(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC "Enable signing in with Google Drive as a sync backend" ${MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC_DEFAULT})
 
 if(ANDROID)
-  find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Concurrent Quick)
+  find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Concurrent Quick QuickControls2)
 elseif(MNEMOSYNE_ENABLE_HTML)
   find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent WebEngineWidgets)
 else()
