@@ -124,6 +124,7 @@ jobs:
             mingw-w64-x86_64-nsis
             mingw-w64-x86_64-autotools
             mingw-w64-x86_64-libtool
+            git
             zip
 
       # MSYS2 doesn't package libmobi (MOBI/AZW support) — build it from
