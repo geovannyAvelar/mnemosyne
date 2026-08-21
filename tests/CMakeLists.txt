@@ -5,6 +5,12 @@ target_compile_definitions(epub_document_test PRIVATE FIXTURES_DIR="${CMAKE_CURR
 
 add_test(NAME EpubDocumentTest COMMAND epub_document_test)
 
+qt_add_executable(markdown_document_test MarkdownDocumentTest.cpp)
+
+target_link_libraries(markdown_document_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME MarkdownDocumentTest COMMAND markdown_document_test)
+
 qt_add_executable(app_persistence_test AppPersistenceTest.cpp)
 
 target_link_libraries(app_persistence_test PRIVATE mnemosynecore Qt6::Test)

@@ -4,8 +4,9 @@
 #include <QString>
 
 // A snapshot of "where you are" in a book: page index (PDF), spine index
-// (EPUB), or always 0 (HTML), plus a format-specific zoom value normalized
-// to a single qreal (PdfView's render scale, EpubView's font-zoom steps,
+// (EPUB), heading index (Markdown, -1 meaning "before any heading"), or
+// always 0 (HTML), plus a format-specific zoom value normalized to a single
+// qreal (PdfView's render scale, EpubView's/MarkdownView's font-zoom steps,
 // HtmlView's zoomFactor — each view converts to/from its own representation).
 struct ReadingProgress
 {

@@ -37,6 +37,8 @@ set(MNEMOSYNE_CORE_SOURCES
     epub/ZipArchive.cpp
     epub/EpubDocument.h
     epub/EpubDocument.cpp
+    markdown/MarkdownDocument.h
+    markdown/MarkdownDocument.cpp
 )
 
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
@@ -98,6 +100,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/PdfPageCanvas.cpp
     ui/EpubView.h
     ui/EpubView.cpp
+    ui/MarkdownView.h
+    ui/MarkdownView.cpp
     ui/TocDock.h
     ui/TocDock.cpp
     ui/BookmarksDock.h

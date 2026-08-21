@@ -43,11 +43,11 @@ int main(int argc, char *argv[])
 
     QCommandLineParser parser;
 #ifdef MNEMOSYNE_ENABLE_HTML
-    parser.setApplicationDescription("Mnemosyne — a PDF, EPUB, and HTML reader");
-    parser.addPositionalArgument("files", "Documents to open (.pdf, .epub, .html)", "[files...]");
+    parser.setApplicationDescription("Mnemosyne — a PDF, EPUB, HTML, and Markdown reader");
+    parser.addPositionalArgument("files", "Documents to open (.pdf, .epub, .html, .md)", "[files...]");
 #else
-    parser.setApplicationDescription("Mnemosyne — a PDF and EPUB reader");
-    parser.addPositionalArgument("files", "Documents to open (.pdf, .epub)", "[files...]");
+    parser.setApplicationDescription("Mnemosyne — a PDF, EPUB, and Markdown reader");
+    parser.addPositionalArgument("files", "Documents to open (.pdf, .epub, .md)", "[files...]");
 #endif
     parser.addHelpOption();
     parser.process(app);

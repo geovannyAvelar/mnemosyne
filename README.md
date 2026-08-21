@@ -3,13 +3,14 @@
 [![CI](https://github.com/geovannyAvelar/mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/geovannyAvelar/mnemosyne/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/geovannyAvelar/mnemosyne)](https://github.com/geovannyAvelar/mnemosyne/releases/latest)
 
-A native desktop reader for PDF, EPUB, and HTML files, built with C++17 and Qt6.
+A native desktop reader for PDF, EPUB, HTML, and Markdown files, built with C++17 and Qt6.
 
 ## Features
 
 - **PDF** — rendered via Poppler, with zoom, table of contents navigation, and text search.
 - **EPUB** — chapter navigation via table of contents / spine, zoom (font size), dark mode, and highlights.
 - **HTML** — rendered with a real Chromium engine (`QWebEngineView`), including JavaScript execution.
+- **Markdown** — rendered via Qt's own Markdown support (`QTextDocument::setMarkdown()`), with a heading-derived table of contents, search, zoom, dark mode, and highlights — same feature set as EPUB.
 - **Library / tabs** — open multiple books at once in tabs, with a persistent Library tab and recent-files list.
 - **Bookmarks and highlights**, stored locally per book.
 - **Scroll-to-turn-page** — scrolling past the top/bottom edge of a page or chapter advances to the next/previous one.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Markdown (`.md`/`.markdown`) support, with the same feature set as EPUB: heading-derived table of contents, full-text search, bookmarks and reading-progress sync (local folder + Google Drive), highlights, dark mode, and Ctrl+scroll zoom. Rendered via Qt's own Markdown support (`QTextDocument::setMarkdown()`), so no new dependency was needed.
+
 ### Changed
 
 - Split the `mnemosynecore` static library in two: a Widgets-free `mnemosynecore` (document parsing/rendering, bookmarks/highlights, sync, OAuth) and a new `mnemosynedesktopui` layered on top of it for everything Qt Widgets-based. No user-visible change — this just enforces, as a real build dependency, the boundary a future mobile (Qt Quick/QML) front end would need to link against instead of the desktop UI.

@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Mnemosyne
-Comment=PDF, EPUB, and HTML reader
+Comment=PDF, EPUB, HTML, and Markdown reader
 Exec=Mnemosyne %F
 Icon=mnemosyne
 Terminal=false
 Categories=Office;Viewer;
-MimeType=application/pdf;application/epub+zip;text/html;
+MimeType=application/pdf;application/epub+zip;text/html;text/markdown;

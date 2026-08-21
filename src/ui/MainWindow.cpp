@@ -9,12 +9,14 @@
 #include "core/Bookmark.h"
 #include "core/ReaderView.h"
 #include "epub/EpubDocument.h"
+#include "markdown/MarkdownDocument.h"
 #include "ui/BookmarksDock.h"
 #include "ui/EpubView.h"
 #ifdef MNEMOSYNE_ENABLE_HTML
 #include "ui/HtmlView.h"
 #endif
 #include "ui/LibraryView.h"
+#include "ui/MarkdownView.h"
 #include "ui/PdfView.h"
 #include "ui/SearchDock.h"
 #include "ui/Theme.h"
@@ -161,6 +163,9 @@ void MainWindow::setupDocks()
             }
             if (suffix == QLatin1String("epub")) {
                 return EpubView::searchFile(filePath, query);
+            }
+            if (suffix == QLatin1String("md") || suffix == QLatin1String("markdown")) {
+                return MarkdownView::searchFile(filePath, query);
             }
             return {}; // HTML: find-in-page search isn't supported (see HtmlView::search())
         }));
@@ -337,7 +342,7 @@ void MainWindow::showAbout()
         this, tr("About Mnemosyne"),
         tr("<h3>Mnemosyne</h3>"
            "<p>Version %1</p>"
-           "<p>A PDF, EPUB, and HTML reader.</p>"
+           "<p>A PDF, EPUB, HTML, and Markdown reader.</p>"
            "<p><small>App icon derived from the \"books\" emoji (U+1F4DA) in the "
            "<a href=\"https://github.com/googlefonts/noto-emoji\">Noto Emoji</a> project by Google, "
            "used under the <a href=\"https://github.com/googlefonts/noto-emoji/blob/main/svg/LICENSE\">"
@@ -350,9 +355,9 @@ void MainWindow::openFile()
     const QString filePath = QFileDialog::getOpenFileName(
         this, tr("Open Document"), QString(),
 #ifdef MNEMOSYNE_ENABLE_HTML
-        tr("Documents (*.pdf *.epub *.html *.htm)"));
+        tr("Documents (*.pdf *.epub *.html *.htm *.md *.markdown)"));
 #else
-        tr("Documents (*.pdf *.epub)"));
+        tr("Documents (*.pdf *.epub *.md *.markdown)"));
 #endif
 
     if (filePath.isEmpty()) {
@@ -408,6 +413,14 @@ void MainWindow::openPath(const QString &filePath)
             epubView->setDarkMode(m_darkModeAction->isChecked());
             widget = epubView;
             view = epubView;
+        }
+    } else if (suffix == QLatin1String("md") || suffix == QLatin1String("markdown")) {
+        std::unique_ptr<MarkdownDocument> document = MarkdownDocument::load(filePath, &errorMessage);
+        if (document) {
+            auto *markdownView = new MarkdownView(std::move(document), filePath, m_tabWidget);
+            markdownView->setDarkMode(m_darkModeAction->isChecked());
+            widget = markdownView;
+            view = markdownView;
         }
     } else if (suffix == QLatin1String("html") || suffix == QLatin1String("htm")) {
 #ifdef MNEMOSYNE_ENABLE_HTML
@@ -519,8 +532,11 @@ void MainWindow::setDarkModeEnabled(bool enabled)
     QSettings().setValue(QStringLiteral("darkMode"), enabled);
 
     for (int i = 0; i < m_tabWidget->count(); ++i) {
-        if (auto *epubView = dynamic_cast<EpubView *>(m_tabWidget->widget(i))) {
+        QWidget *tab = m_tabWidget->widget(i);
+        if (auto *epubView = dynamic_cast<EpubView *>(tab)) {
             epubView->setDarkMode(enabled);
+        } else if (auto *markdownView = dynamic_cast<MarkdownView *>(tab)) {
+            markdownView->setDarkMode(enabled);
         }
     }
 }

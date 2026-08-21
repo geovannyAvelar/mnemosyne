@@ -6,8 +6,8 @@
 
 struct Highlight
 {
-    int targetIndex = -1; // PDF page index or EPUB spine index
-    QRectF pageRect; // PDF only, in page points; null for EPUB
-    QString text; // the highlighted text (also used to relocate it in EPUB's reflowed HTML)
+    int targetIndex = -1; // PDF page index, EPUB spine index, or 0 for Markdown (single document)
+    QRectF pageRect; // PDF only, in page points; null for EPUB/Markdown
+    QString text; // the highlighted text (also used to relocate it in EPUB/Markdown's reflowed text)
     QDateTime createdAt;
 };
