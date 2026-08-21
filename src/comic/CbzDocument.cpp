@@ -3,7 +3,6 @@
 #include "epub/ZipArchive.h"
 
 #include <QBuffer>
-#include <QCollator>
 #include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
@@ -12,6 +11,58 @@
 #include <algorithm>
 
 namespace {
+
+// Case-insensitive natural-order comparison, so "page2.jpg" sorts before
+// "page10.jpg" instead of after it: runs of digits compare by numeric
+// value (via length first, then lexicographically — equivalent to numeric
+// value once leading zeros are stripped, without needing an actual integer
+// conversion that could overflow on a pathological filename) rather than
+// character-by-character. Hand-rolled rather than QCollator::numericMode,
+// which turned out to disagree with itself across platforms (ICU on Linux
+// vs. Windows) in testing — page order must be identical on every OS.
+bool naturalLessThan(const QString &a, const QString &b)
+{
+    int i = 0;
+    int j = 0;
+    while (i < a.size() && j < b.size()) {
+        if (a[i].isDigit() && b[j].isDigit()) {
+            const int startI = i;
+            const int startJ = j;
+            while (i < a.size() && a[i].isDigit()) {
+                ++i;
+            }
+            while (j < b.size() && b[j].isDigit()) {
+                ++j;
+            }
+
+            QStringView numA(a.constData() + startI, i - startI);
+            QStringView numB(b.constData() + startJ, j - startJ);
+            while (numA.size() > 1 && numA.front() == u'0') {
+                numA = numA.mid(1);
+            }
+            while (numB.size() > 1 && numB.front() == u'0') {
+                numB = numB.mid(1);
+            }
+
+            if (numA.size() != numB.size()) {
+                return numA.size() < numB.size();
+            }
+            if (numA != numB) {
+                return numA < numB;
+            }
+            continue; // equal numeric value — keep comparing what follows
+        }
+
+        const QChar ca = a[i].toLower();
+        const QChar cb = b[j].toLower();
+        if (ca != cb) {
+            return ca < cb;
+        }
+        ++i;
+        ++j;
+    }
+    return (a.size() - i) < (b.size() - j);
+}
 
 bool isImageEntry(const QString &entryPath)
 {
@@ -88,11 +139,7 @@ std::unique_ptr<CbzDocument> CbzDocument::load(const QString &filePath, QString 
         return nullptr;
     }
 
-    // Numeric-aware sort, so "page2.jpg" sorts before "page10.jpg" instead
-    // of after it.
-    QCollator collator;
-    collator.setNumericMode(true);
-    std::sort(pageEntries.begin(), pageEntries.end(), collator);
+    std::sort(pageEntries.begin(), pageEntries.end(), naturalLessThan);
 
     auto document = std::unique_ptr<CbzDocument>(new CbzDocument());
     document->m_archive = std::move(archive);
