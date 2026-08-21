@@ -37,6 +37,8 @@ set(MNEMOSYNE_CORE_SOURCES
     epub/ZipArchive.cpp
     epub/EpubDocument.h
     epub/EpubDocument.cpp
+    comic/CbzDocument.h
+    comic/CbzDocument.cpp
     markdown/MarkdownDocument.h
     markdown/MarkdownDocument.cpp
     mobi/MobiDocument.h
@@ -103,6 +105,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/PdfPageCanvas.cpp
     ui/EpubView.h
     ui/EpubView.cpp
+    ui/ComicView.h
+    ui/ComicView.cpp
     ui/MarkdownView.h
     ui/MarkdownView.cpp
     ui/MobiView.h

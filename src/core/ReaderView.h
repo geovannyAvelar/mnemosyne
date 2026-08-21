@@ -23,11 +23,13 @@ public:
     virtual QString documentTitle() const = 0;
     virtual QVector<TocNode> tableOfContents() const = 0;
 
-    // TocNode::pageNumber means: PDF page index for PdfView, spine index for
-    // EpubView, part index for MobiView, heading index for MarkdownView.
+    // TocNode::pageNumber means: PDF/CBZ page index for PdfView/ComicView,
+    // spine index for EpubView, part index for MobiView, heading index for
+    // MarkdownView. ComicView has no table of contents (yet), so this is
+    // moot for it in practice.
     virtual void goToTocNode(const TocNode &node) = 0;
 
-    // Current PDF page index, EPUB/MOBI spine (or "part") index, or Markdown heading index; used for bookmarking.
+    // Current PDF/CBZ page index, EPUB/MOBI spine (or "part") index, or Markdown heading index; used for bookmarking.
     virtual int currentPosition() const = 0;
 
     // Case-insensitive full-text search across the whole document.

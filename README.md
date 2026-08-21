@@ -3,7 +3,7 @@
 [![CI](https://github.com/geovannyAvelar/mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/geovannyAvelar/mnemosyne/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/geovannyAvelar/mnemosyne)](https://github.com/geovannyAvelar/mnemosyne/releases/latest)
 
-A native desktop reader for PDF, EPUB, HTML, Markdown, and MOBI/AZW files, built with C++17 and Qt6.
+A native desktop reader for PDF, EPUB, HTML, Markdown, MOBI/AZW, and CBZ comic files, built with C++17 and Qt6.
 
 ## Features
 
@@ -12,6 +12,7 @@ A native desktop reader for PDF, EPUB, HTML, Markdown, and MOBI/AZW files, built
 - **HTML** — rendered with a real Chromium engine (`QWebEngineView`), including JavaScript execution.
 - **Markdown** — rendered via Qt's own Markdown support (`QTextDocument::setMarkdown()`), with a heading-derived table of contents, search, zoom, dark mode, and highlights — same feature set as EPUB.
 - **MOBI/AZW/AZW3** — rendered via [libmobi](https://github.com/bfabiszewski/libmobi) (LGPLv3), with the same chapter/table-of-contents/zoom/dark-mode/highlight feature set as EPUB. **DRM-protected files are refused outright** — Mnemosyne never attempts to decrypt anything; it's a reader for files you already have unencrypted access to, not a DRM-removal tool. Embedded images aren't rendered yet (text/formatting only).
+- **CBZ comics** — a zip of page images, reusing the same archive-reading code EPUB uses (no new dependency). Page navigation and zoom like PDF; no table of contents, search, or highlights, since there's no text layer to drive them.
 - **Library / tabs** — open multiple books at once in tabs, with a persistent Library tab and recent-files list.
 - **Bookmarks and highlights**, stored locally per book.
 - **Scroll-to-turn-page** — scrolling past the top/bottom edge of a page or chapter advances to the next/previous one.
@@ -57,7 +58,7 @@ open build/src/Mnemosyne.app
 or pass one or more files to open on launch:
 
 ```bash
-build/src/Mnemosyne.app/Contents/MacOS/Mnemosyne path/to/book.epub path/to/document.pdf path/to/book.mobi
+build/src/Mnemosyne.app/Contents/MacOS/Mnemosyne path/to/book.epub path/to/document.pdf path/to/book.mobi path/to/comic.cbz
 ```
 
 ## Testing

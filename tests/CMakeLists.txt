@@ -11,6 +11,13 @@ target_link_libraries(markdown_document_test PRIVATE mnemosynecore Qt6::Test)
 
 add_test(NAME MarkdownDocumentTest COMMAND markdown_document_test)
 
+qt_add_executable(cbz_document_test CbzDocumentTest.cpp)
+
+target_link_libraries(cbz_document_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(cbz_document_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME CbzDocumentTest COMMAND cbz_document_test)
+
 qt_add_executable(mobi_document_test MobiDocumentTest.cpp)
 
 target_link_libraries(mobi_document_test PRIVATE mnemosynecore Qt6::Test)

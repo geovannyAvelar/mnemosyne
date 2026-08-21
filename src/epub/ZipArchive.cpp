@@ -77,3 +77,18 @@ QByteArray ZipArchive::readEntry(const QString &entryPath, bool *ok) const
     }
     return data;
 }
+
+QStringList ZipArchive::entryNames() const
+{
+    auto *archive = reinterpret_cast<zip_t *>(m_archive);
+    const zip_int64_t count = zip_get_num_entries(archive, 0);
+
+    QStringList names;
+    names.reserve(static_cast<int>(count));
+    for (zip_int64_t i = 0; i < count; ++i) {
+        if (const char *name = zip_get_name(archive, static_cast<zip_uint64_t>(i), 0)) {
+            names.append(QString::fromUtf8(name));
+        }
+    }
+    return names;
+}

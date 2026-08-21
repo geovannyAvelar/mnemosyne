@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Mnemosyne
-Comment=PDF, EPUB, HTML, Markdown, and MOBI/AZW reader
+Comment=PDF, EPUB, HTML, Markdown, MOBI/AZW, and CBZ comic reader
 Exec=Mnemosyne %F
 Icon=mnemosyne
 Terminal=false
 Categories=Office;Viewer;
-MimeType=application/pdf;application/epub+zip;text/html;text/markdown;application/x-mobipocket-ebook;
+MimeType=application/pdf;application/epub+zip;text/html;text/markdown;application/x-mobipocket-ebook;application/vnd.comicbook+zip;
