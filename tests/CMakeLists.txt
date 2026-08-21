@@ -18,6 +18,12 @@ target_compile_definitions(cbz_document_test PRIVATE FIXTURES_DIR="${CMAKE_CURRE
 
 add_test(NAME CbzDocumentTest COMMAND cbz_document_test)
 
+qt_add_executable(txt_document_test TxtDocumentTest.cpp)
+
+target_link_libraries(txt_document_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME TxtDocumentTest COMMAND txt_document_test)
+
 qt_add_executable(mobi_document_test MobiDocumentTest.cpp)
 
 target_link_libraries(mobi_document_test PRIVATE mnemosynecore Qt6::Test)

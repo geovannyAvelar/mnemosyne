@@ -7,8 +7,8 @@
 
 struct SearchResult
 {
-    int targetIndex = -1; // PDF page index, EPUB/MOBI spine (or "part") index, or Markdown heading index
-    QString label; // e.g. "Page 3", "Chapter 2", "Part 4", or a Markdown heading's title
+    int targetIndex = -1; // PDF page index, EPUB/MOBI spine (or "part") index, Markdown heading index, or TXT character offset
+    QString label; // e.g. "Page 3", "Chapter 2", "Part 4", "Line 87", or a Markdown heading's title
     QString snippet;
 };
 
@@ -25,11 +25,14 @@ public:
 
     // TocNode::pageNumber means: PDF/CBZ page index for PdfView/ComicView,
     // spine index for EpubView, part index for MobiView, heading index for
-    // MarkdownView. ComicView has no table of contents (yet), so this is
-    // moot for it in practice.
+    // MarkdownView, character offset for TxtView. ComicView/TxtView have no
+    // table of contents (TXT has no structure to derive one from; CBZ just
+    // doesn't parse ComicInfo.xml yet), so this is moot for them in practice
+    // — but TxtView still relies on the same TocNode::pageNumber field for
+    // search-result/bookmark navigation.
     virtual void goToTocNode(const TocNode &node) = 0;
 
-    // Current PDF/CBZ page index, EPUB/MOBI spine (or "part") index, or Markdown heading index; used for bookmarking.
+    // Current PDF/CBZ page index, EPUB/MOBI spine (or "part") index, Markdown heading index, or TXT character offset; used for bookmarking.
     virtual int currentPosition() const = 0;
 
     // Case-insensitive full-text search across the whole document.

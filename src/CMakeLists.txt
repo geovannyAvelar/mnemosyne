@@ -43,6 +43,8 @@ set(MNEMOSYNE_CORE_SOURCES
     markdown/MarkdownDocument.cpp
     mobi/MobiDocument.h
     mobi/MobiDocument.cpp
+    txt/TxtDocument.h
+    txt/TxtDocument.cpp
 )
 
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
@@ -111,6 +113,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/MarkdownView.cpp
     ui/MobiView.h
     ui/MobiView.cpp
+    ui/TxtView.h
+    ui/TxtView.cpp
     ui/TocDock.h
     ui/TocDock.cpp
     ui/BookmarksDock.h

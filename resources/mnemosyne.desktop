@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Mnemosyne
-Comment=PDF, EPUB, HTML, Markdown, MOBI/AZW, and CBZ comic reader
+Comment=PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and plain text reader
 Exec=Mnemosyne %F
 Icon=mnemosyne
 Terminal=false

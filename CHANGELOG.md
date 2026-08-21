@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Markdown (`.md`/`.markdown`) support, with the same feature set as EPUB: heading-derived table of contents, full-text search, bookmarks and reading-progress sync (local folder + Google Drive), highlights, dark mode, and Ctrl+scroll zoom. Rendered via Qt's own Markdown support (`QTextDocument::setMarkdown()`), so no new dependency was needed.
 - MOBI/AZW/AZW3 support, via [libmobi](https://github.com/bfabiszewski/libmobi) (LGPLv3) — same feature set as EPUB again (chapter/table-of-contents navigation, search, bookmarks/sync, highlights, dark mode, zoom). DRM-protected files are refused outright (checked before any parsing is attempted); Mnemosyne never calls libmobi's decrypt functions. Embedded images aren't rendered yet.
 - CBZ comic archive support — page-by-page image viewing (zoom, scroll-to-turn-page, bookmarks, reading-progress sync) reusing the same page-canvas widget PDF uses and the same zip-reading code EPUB uses, so no new dependency was needed. No table of contents, search, or highlights, since a comic has no text layer to drive them.
+- Plain text (`.txt`) support, with the same feature set as Markdown (search, zoom, dark mode, highlights, bookmarks, reading-progress sync — local folder + Google Drive), addressed by raw character offset instead of a heading index since plain text has no structure to derive one from.
 
 ### Changed
 

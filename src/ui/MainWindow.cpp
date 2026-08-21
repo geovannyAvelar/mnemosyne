@@ -12,6 +12,7 @@
 #include "epub/EpubDocument.h"
 #include "markdown/MarkdownDocument.h"
 #include "mobi/MobiDocument.h"
+#include "txt/TxtDocument.h"
 #include "ui/BookmarksDock.h"
 #include "ui/ComicView.h"
 #include "ui/EpubView.h"
@@ -27,6 +28,7 @@
 #include "ui/TocDock.h"
 #include "ui/TopBar.h"
 #include "ui/TrafficLightButton.h"
+#include "ui/TxtView.h"
 
 #include <QAction>
 #include <QApplication>
@@ -174,7 +176,10 @@ void MainWindow::setupDocks()
             if (suffix == QLatin1String("mobi") || suffix == QLatin1String("azw") || suffix == QLatin1String("azw3")) {
                 return MobiView::searchFile(filePath, query);
             }
-            return {}; // HTML: find-in-page search isn't supported (see HtmlView::search())
+            if (suffix == QLatin1String("txt")) {
+                return TxtView::searchFile(filePath, query);
+            }
+            return {}; // HTML/CBZ: no text layer, so find-in-page search isn't supported
         }));
     });
 
@@ -349,7 +354,7 @@ void MainWindow::showAbout()
         this, tr("About Mnemosyne"),
         tr("<h3>Mnemosyne</h3>"
            "<p>Version %1</p>"
-           "<p>A PDF, EPUB, HTML, Markdown, MOBI/AZW, and CBZ comic reader.</p>"
+           "<p>A PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and plain text reader.</p>"
            "<p><small>App icon derived from the \"books\" emoji (U+1F4DA) in the "
            "<a href=\"https://github.com/googlefonts/noto-emoji\">Noto Emoji</a> project by Google, "
            "used under the <a href=\"https://github.com/googlefonts/noto-emoji/blob/main/svg/LICENSE\">"
@@ -362,9 +367,9 @@ void MainWindow::openFile()
     const QString filePath = QFileDialog::getOpenFileName(
         this, tr("Open Document"), QString(),
 #ifdef MNEMOSYNE_ENABLE_HTML
-        tr("Documents (*.pdf *.epub *.html *.htm *.md *.markdown *.mobi *.azw *.azw3 *.cbz)"));
+        tr("Documents (*.pdf *.epub *.html *.htm *.md *.markdown *.mobi *.azw *.azw3 *.cbz *.txt)"));
 #else
-        tr("Documents (*.pdf *.epub *.md *.markdown *.mobi *.azw *.azw3 *.cbz)"));
+        tr("Documents (*.pdf *.epub *.md *.markdown *.mobi *.azw *.azw3 *.cbz *.txt)"));
 #endif
 
     if (filePath.isEmpty()) {
@@ -428,6 +433,14 @@ void MainWindow::openPath(const QString &filePath)
             markdownView->setDarkMode(m_darkModeAction->isChecked());
             widget = markdownView;
             view = markdownView;
+        }
+    } else if (suffix == QLatin1String("txt")) {
+        std::unique_ptr<TxtDocument> document = TxtDocument::load(filePath, &errorMessage);
+        if (document) {
+            auto *txtView = new TxtView(std::move(document), filePath, m_tabWidget);
+            txtView->setDarkMode(m_darkModeAction->isChecked());
+            widget = txtView;
+            view = txtView;
         }
     } else if (suffix == QLatin1String("cbz")) {
         std::unique_ptr<CbzDocument> document = CbzDocument::load(filePath, &errorMessage);
@@ -561,6 +574,8 @@ void MainWindow::setDarkModeEnabled(bool enabled)
             markdownView->setDarkMode(enabled);
         } else if (auto *mobiView = dynamic_cast<MobiView *>(tab)) {
             mobiView->setDarkMode(enabled);
+        } else if (auto *txtView = dynamic_cast<TxtView *>(tab)) {
+            txtView->setDarkMode(enabled);
         }
     }
 }
