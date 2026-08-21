@@ -55,6 +55,13 @@ MainWindow::MainWindow(QWidget *parent)
     const bool savedDarkMode = QSettings().value(QStringLiteral("darkMode"), false).toBool();
     m_darkModeAction->setChecked(savedDarkMode);
     setDarkModeEnabled(savedDarkMode); // setChecked() only emits toggled() on a change, so apply explicitly
+
+    // The docks setupDocks() just created start out visible, so only act
+    // when the saved state actually disagrees with that default.
+    const bool savedSidebarVisible = QSettings().value(QStringLiteral("sidebarVisible"), true).toBool();
+    if (!savedSidebarVisible) {
+        toggleSidebar();
+    }
 }
 
 void MainWindow::setupTabs()
@@ -247,6 +254,7 @@ void MainWindow::setupSidebarToggle()
 void MainWindow::toggleSidebar()
 {
     const bool currentlyVisible = m_tocDock->isVisible() || m_bookmarksDock->isVisible() || m_searchDock->isVisible();
+    QSettings().setValue(QStringLiteral("sidebarVisible"), !currentlyVisible);
 
     if (currentlyVisible) {
         setFocus();
