@@ -41,11 +41,20 @@ set(MNEMOSYNE_CORE_SOURCES
     comic/CbzDocument.cpp
     markdown/MarkdownDocument.h
     markdown/MarkdownDocument.cpp
-    mobi/MobiDocument.h
-    mobi/MobiDocument.cpp
     txt/TxtDocument.h
     txt/TxtDocument.cpp
 )
+
+if(NOT ANDROID)
+    # libmobi has no prebuilt Android package (see top-level CMakeLists.txt);
+    # MobiDocument is only ever constructed from ui/MobiView.cpp anyway
+    # (desktop-only, see MNEMOSYNE_DESKTOP_UI_SOURCES below), so excluding it
+    # here doesn't remove anything the Android app could reach.
+    list(APPEND MNEMOSYNE_CORE_SOURCES
+        mobi/MobiDocument.h
+        mobi/MobiDocument.cpp
+    )
+endif()
 
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
     list(APPEND MNEMOSYNE_CORE_SOURCES
@@ -75,8 +84,19 @@ target_link_libraries(mnemosynecore PUBLIC
     Qt6::Network
     PkgConfig::POPPLER_QT6
     PkgConfig::LIBZIP
-    PkgConfig::LIBMOBI
 )
+
+if(NOT ANDROID)
+    target_link_libraries(mnemosynecore PUBLIC PkgConfig::LIBMOBI)
+endif()
+
+if(ANDROID)
+    # The Android NDK toolchain file restricts find_library() to
+    # CMAKE_FIND_ROOT_PATH, so PkgConfig::POPPLER_QT6/LIBZIP's -l flags
+    # (from MNEMOSYNE_ANDROID_DEPS_PREFIX's .pc files, see top-level
+    # CMakeLists.txt) resolve without a -L unless it's added explicitly here.
+    target_link_directories(mnemosynecore PUBLIC ${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib)
+endif()
 
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
     target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
@@ -98,6 +118,8 @@ target_include_directories(mnemosynecore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # here is specific to the mouse/keyboard/windowed desktop experience — a
 # mobile front end would link mnemosynecore directly and skip this target
 # entirely rather than reusing any of it.
+if(NOT ANDROID)
+
 set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/MainWindow.cpp
     ui/MainWindow.h
@@ -225,4 +247,53 @@ if(UNIX AND NOT APPLE)
 
     install(FILES ${CMAKE_SOURCE_DIR}/resources/icons/mnemosyne.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+endif()
+
+endif() # NOT ANDROID
+
+if(ANDROID)
+    # Stage 2 smoke test only: proves the Android cross-compile chain
+    # (NDK, vendored Poppler-Qt6/libzip/Freetype, androiddeployqt packaging)
+    # works end to end by rendering a bundled sample PDF's page count and
+    # title through the real mnemosynecore/Poppler pipeline. The actual
+    # Qt Quick reader UI lands in later mobile-port milestones.
+    qt_add_executable(MnemosyneAndroid quick/main_android.cpp quick/SmokeTestBridge.h quick/SmokeTestBridge.cpp)
+
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
+        PROPERTIES QT_RESOURCE_ALIAS test_multipage.pdf)
+
+    qt_add_resources(MnemosyneAndroid smoke_test_fixtures
+        PREFIX /
+        FILES ${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
+    )
+
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/qml/Main.qml
+        PROPERTIES QT_RESOURCE_ALIAS Main.qml)
+
+    # Without this, the QML module's resource prefix silently falls back to
+    # the pre-6.8 default and the app crashes at runtime with "Module
+    # 'MnemosyneAndroid' contains no type named Main" — see the Stage 0
+    # note in the mobile-port plan for how long that took to diagnose.
+    qt_policy(SET QTP0001 NEW)
+
+    qt_add_qml_module(MnemosyneAndroid
+        URI MnemosyneAndroid
+        VERSION 1.0
+        QML_FILES ${CMAKE_SOURCE_DIR}/qml/Main.qml
+    )
+
+    target_link_libraries(MnemosyneAndroid PRIVATE mnemosynecore Qt6::Quick)
+
+    # Poppler-Qt6/libzip/Freetype are linked but not Qt libraries, so
+    # androiddeployqt doesn't know to bundle them into the APK on its own —
+    # QT_ANDROID_EXTRA_LIBS is how a target tells it to.
+    set_target_properties(MnemosyneAndroid PROPERTIES
+        QT_ANDROID_EXTRA_LIBS
+            "${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libpoppler-qt6.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libpoppler.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libzip.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libfreetype.so"
+    )
+
+    # No QT_ANDROID_PACKAGE_SOURCE_DIR yet: androiddeployqt generates a
+    # default AndroidManifest.xml for this smoke test. A real android/
+    # source dir (package id, permissions, SAF intent filters, etc.) lands
+    # with the actual reader UI in a later mobile-port milestone.
 endif()

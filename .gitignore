@@ -1,5 +1,6 @@
 # Build output
 build/
+build-android*/
 out/
 
 # In-source CMake configure artifacts (should always be out-of-source in build/,
