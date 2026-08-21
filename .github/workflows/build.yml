@@ -19,7 +19,7 @@ jobs:
           sudo apt-get install -y \
             cmake ninja-build build-essential pkg-config \
             qt6-base-dev qt6-base-dev-tools qt6-webengine-dev \
-            libpoppler-qt6-dev libzip-dev libsecret-1-dev \
+            libpoppler-qt6-dev libzip-dev libmobi-dev libsecret-1-dev \
             libxkbcommon-x11-0 libxcb-cursor0 \
             gnome-keyring dbus-x11
 
@@ -79,7 +79,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: brew install qt poppler-qt6 libzip ninja dylibbundler
+        run: brew install qt poppler-qt6 libzip libmobi ninja dylibbundler
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -122,7 +122,23 @@ jobs:
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-ntldd
             mingw-w64-x86_64-nsis
+            mingw-w64-x86_64-autotools
+            mingw-w64-x86_64-libtool
             zip
+
+      # MSYS2 doesn't package libmobi (MOBI/AZW support) — build it from
+      # source. Its CMake support is flagged upstream as "not tested and not
+      # updated regularly" and, in practice, doesn't install anything; the
+      # Autotools build is the maintained path and generates a proper
+      # libmobi.pc for the pkg_check_modules() lookup in CMakeLists.txt.
+      - name: Build libmobi
+        run: |
+          git clone --depth 1 https://github.com/bfabiszewski/libmobi.git /tmp/libmobi
+          cd /tmp/libmobi
+          ./autogen.sh
+          ./configure --prefix=/mingw64
+          make -j$(nproc)
+          make install
 
       # QtWebEngine has no prebuilt Windows binaries at all (MinGW or MSVC) —
       # source-only, multi-hour build. HTML support is compiled out of the

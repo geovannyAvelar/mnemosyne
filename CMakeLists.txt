@@ -49,6 +49,7 @@ endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(POPPLER_QT6 REQUIRED IMPORTED_TARGET poppler-qt6)
 pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
+pkg_check_modules(LIBMOBI REQUIRED IMPORTED_TARGET libmobi)
 
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC AND UNIX AND NOT APPLE)
   # OAuth refresh tokens need a real OS secret store on every platform: macOS

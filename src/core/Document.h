@@ -11,8 +11,9 @@
 struct TocNode
 {
     QString title;
-    // 0-based target: PDF page index, EPUB spine index, or Markdown heading
-    // index (see MarkdownDocument::tableOfContents()); -1 if unknown.
+    // 0-based target: PDF page index, EPUB/MOBI spine (or "part") index, or
+    // Markdown heading index (see MarkdownDocument::tableOfContents());
+    // -1 if unknown.
     int pageNumber = -1;
     QVector<TocNode> children;
 };

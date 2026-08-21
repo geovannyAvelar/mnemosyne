@@ -3,7 +3,7 @@
 [![CI](https://github.com/geovannyAvelar/mnemosyne/actions/workflows/ci.yml/badge.svg)](https://github.com/geovannyAvelar/mnemosyne/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/geovannyAvelar/mnemosyne)](https://github.com/geovannyAvelar/mnemosyne/releases/latest)
 
-A native desktop reader for PDF, EPUB, HTML, and Markdown files, built with C++17 and Qt6.
+A native desktop reader for PDF, EPUB, HTML, Markdown, and MOBI/AZW files, built with C++17 and Qt6.
 
 ## Features
 
@@ -11,6 +11,7 @@ A native desktop reader for PDF, EPUB, HTML, and Markdown files, built with C++1
 - **EPUB** — chapter navigation via table of contents / spine, zoom (font size), dark mode, and highlights.
 - **HTML** — rendered with a real Chromium engine (`QWebEngineView`), including JavaScript execution.
 - **Markdown** — rendered via Qt's own Markdown support (`QTextDocument::setMarkdown()`), with a heading-derived table of contents, search, zoom, dark mode, and highlights — same feature set as EPUB.
+- **MOBI/AZW/AZW3** — rendered via [libmobi](https://github.com/bfabiszewski/libmobi) (LGPLv3), with the same chapter/table-of-contents/zoom/dark-mode/highlight feature set as EPUB. **DRM-protected files are refused outright** — Mnemosyne never attempts to decrypt anything; it's a reader for files you already have unencrypted access to, not a DRM-removal tool. Embedded images aren't rendered yet (text/formatting only).
 - **Library / tabs** — open multiple books at once in tabs, with a persistent Library tab and recent-files list.
 - **Bookmarks and highlights**, stored locally per book.
 - **Scroll-to-turn-page** — scrolling past the top/bottom edge of a page or chapter advances to the next/previous one.
@@ -24,11 +25,12 @@ A native desktop reader for PDF, EPUB, HTML, and Markdown files, built with C++1
 - Qt6 (`Widgets`, `Test`, `WebEngineWidgets`)
 - Poppler-Qt6
 - libzip
+- libmobi
 
 On macOS with Homebrew:
 
 ```bash
-brew install qt poppler-qt6 libzip
+brew install qt poppler-qt6 libzip libmobi
 ```
 
 `qt`, `poppler-qt6`, and `libzip` are keg-only, so `CMakeLists.txt` already adds their Homebrew prefixes (`/usr/local/opt/...`) to `CMAKE_PREFIX_PATH`. If Homebrew is installed elsewhere (e.g. Apple Silicon's default `/opt/homebrew`), pass the right prefixes explicitly, e.g.:
@@ -55,7 +57,7 @@ open build/src/Mnemosyne.app
 or pass one or more files to open on launch:
 
 ```bash
-build/src/Mnemosyne.app/Contents/MacOS/Mnemosyne path/to/book.epub path/to/document.pdf
+build/src/Mnemosyne.app/Contents/MacOS/Mnemosyne path/to/book.epub path/to/document.pdf path/to/book.mobi
 ```
 
 ## Testing
@@ -102,7 +104,7 @@ sudo dpkg -i mnemosyne-pdf_1.0.0_<arch>.deb
 sudo apt -f install   # pull in any missing runtime dependencies
 ```
 
-Runtime dependencies (Qt6 Widgets/WebEngineWidgets, Poppler-Qt6, libzip) are detected automatically via `dpkg-shlibdeps` at package-build time.
+Runtime dependencies (Qt6 Widgets/WebEngineWidgets, Poppler-Qt6, libzip, libmobi) are detected automatically via `dpkg-shlibdeps` at package-build time.
 
 ### macOS (.dmg)
 
@@ -120,7 +122,19 @@ install with Qt and all other dependencies bundled in (`macdeployqt` +
 
 Built with [MSYS2](https://www.msys2.org/)'s MinGW64 environment (`pacman -S
 mingw-w64-x86_64-{toolchain,cmake,ninja,qt6-base,poppler-qt6,libzip,pkgconf,ntldd,nsis}
-zip`):
+zip`).
+
+MSYS2 doesn't package libmobi, so build it from source once (Autotools, not
+its CMake support — that's flagged upstream as "not tested and not updated
+regularly", and doesn't actually install anything):
+
+```bash
+pacman -S mingw-w64-x86_64-autotools mingw-w64-x86_64-libtool
+git clone --depth 1 https://github.com/bfabiszewski/libmobi.git
+cd libmobi && ./autogen.sh && ./configure --prefix=/mingw64 && make && make install
+```
+
+Then the regular build:
 
 ```bash
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

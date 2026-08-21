@@ -11,6 +11,13 @@ target_link_libraries(markdown_document_test PRIVATE mnemosynecore Qt6::Test)
 
 add_test(NAME MarkdownDocumentTest COMMAND markdown_document_test)
 
+qt_add_executable(mobi_document_test MobiDocumentTest.cpp)
+
+target_link_libraries(mobi_document_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(mobi_document_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME MobiDocumentTest COMMAND mobi_document_test)
+
 qt_add_executable(app_persistence_test AppPersistenceTest.cpp)
 
 target_link_libraries(app_persistence_test PRIVATE mnemosynecore Qt6::Test)

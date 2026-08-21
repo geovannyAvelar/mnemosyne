@@ -39,6 +39,8 @@ set(MNEMOSYNE_CORE_SOURCES
     epub/EpubDocument.cpp
     markdown/MarkdownDocument.h
     markdown/MarkdownDocument.cpp
+    mobi/MobiDocument.h
+    mobi/MobiDocument.cpp
 )
 
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
@@ -69,6 +71,7 @@ target_link_libraries(mnemosynecore PUBLIC
     Qt6::Network
     PkgConfig::POPPLER_QT6
     PkgConfig::LIBZIP
+    PkgConfig::LIBMOBI
 )
 
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
@@ -102,6 +105,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/EpubView.cpp
     ui/MarkdownView.h
     ui/MarkdownView.cpp
+    ui/MobiView.h
+    ui/MobiView.cpp
     ui/TocDock.h
     ui/TocDock.cpp
     ui/BookmarksDock.h

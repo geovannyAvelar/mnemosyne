@@ -7,8 +7,8 @@
 
 struct SearchResult
 {
-    int targetIndex = -1; // PDF page index, EPUB spine index, or Markdown heading index
-    QString label; // e.g. "Page 3", "Chapter 2", or a Markdown heading's title
+    int targetIndex = -1; // PDF page index, EPUB/MOBI spine (or "part") index, or Markdown heading index
+    QString label; // e.g. "Page 3", "Chapter 2", "Part 4", or a Markdown heading's title
     QString snippet;
 };
 
@@ -24,10 +24,10 @@ public:
     virtual QVector<TocNode> tableOfContents() const = 0;
 
     // TocNode::pageNumber means: PDF page index for PdfView, spine index for
-    // EpubView, heading index for MarkdownView.
+    // EpubView, part index for MobiView, heading index for MarkdownView.
     virtual void goToTocNode(const TocNode &node) = 0;
 
-    // Current PDF page index, EPUB spine index, or Markdown heading index; used for bookmarking.
+    // Current PDF page index, EPUB/MOBI spine (or "part") index, or Markdown heading index; used for bookmarking.
     virtual int currentPosition() const = 0;
 
     // Case-insensitive full-text search across the whole document.
