@@ -142,10 +142,8 @@ void signOut()
     accessTokenCache() = AccessTokenCache{};
 }
 
-void startSignIn(QWidget *parent, std::function<void(bool ok, const QString &error)> onDone)
+void startSignIn(std::function<void(bool ok, const QString &error)> onDone)
 {
-    Q_UNUSED(parent);
-
     if (!hasClientCredentials()) {
         onDone(false, QObject::tr("This build wasn't compiled with Google sign-in support."));
         return;

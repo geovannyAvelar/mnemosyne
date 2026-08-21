@@ -6,7 +6,6 @@
 #include <functional>
 #include <memory>
 
-class QWidget;
 class IHttpClient;
 
 // OAuth 2.0 Authorization Code + PKCE sign-in for a single Google account,
@@ -36,7 +35,7 @@ QString accountEmail(); // cached from the last sign-in; empty if never signed i
 
 // Opens the system browser for consent. onDone is invoked once (success or
 // failure/cancellation) with a human-readable error on failure.
-void startSignIn(QWidget *parent, std::function<void(bool ok, const QString &error)> onDone);
+void startSignIn(std::function<void(bool ok, const QString &error)> onDone);
 
 void signOut();
 

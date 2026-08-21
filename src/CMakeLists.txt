@@ -1,3 +1,7 @@
+# Widgets-free layer: document parsing/rendering, bookmarks/highlights,
+# reading-progress + Drive sync, OAuth. Nothing here may depend on
+# Qt6::Widgets — this is the boundary a future mobile (Qt Quick/QML) front
+# end would link against instead of mnemosynedesktopui.
 set(MNEMOSYNE_CORE_SOURCES
     core/Bookmark.h
     core/Highlight.h
@@ -33,6 +37,59 @@ set(MNEMOSYNE_CORE_SOURCES
     epub/ZipArchive.cpp
     epub/EpubDocument.h
     epub/EpubDocument.cpp
+)
+
+if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
+    list(APPEND MNEMOSYNE_CORE_SOURCES
+        app/IHttpClient.h
+        app/IHttpClient.cpp
+        app/GoogleAuth.h
+        app/GoogleAuth.cpp
+        app/GoogleDriveSync.h
+        app/GoogleDriveSync.cpp
+        platform/TokenStore.h
+    )
+
+    if(APPLE)
+        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_mac.mm)
+    elseif(WIN32)
+        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_win.cpp)
+    else()
+        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_linux.cpp)
+    endif()
+endif()
+
+add_library(mnemosynecore STATIC ${MNEMOSYNE_CORE_SOURCES})
+
+target_link_libraries(mnemosynecore PUBLIC
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    PkgConfig::POPPLER_QT6
+    PkgConfig::LIBZIP
+)
+
+if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
+    target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
+
+    if(APPLE)
+        target_link_libraries(mnemosynecore PUBLIC "-framework Security")
+    elseif(WIN32)
+        target_link_libraries(mnemosynecore PUBLIC Crypt32 Advapi32)
+    else()
+        target_link_libraries(mnemosynecore PUBLIC PkgConfig::LIBSECRET)
+    endif()
+endif()
+
+target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_VERSION="${PROJECT_VERSION}")
+
+target_include_directories(mnemosynecore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Desktop (Qt Widgets) UI, layered on top of mnemosynecore. Everything in
+# here is specific to the mouse/keyboard/windowed desktop experience — a
+# mobile front end would link mnemosynecore directly and skip this target
+# entirely rather than reusing any of it.
+set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/MainWindow.cpp
     ui/MainWindow.h
     ui/PdfView.h
@@ -60,77 +117,41 @@ set(MNEMOSYNE_CORE_SOURCES
 )
 
 if(MNEMOSYNE_ENABLE_HTML)
-    list(APPEND MNEMOSYNE_CORE_SOURCES
+    list(APPEND MNEMOSYNE_DESKTOP_UI_SOURCES
         ui/HtmlView.h
         ui/HtmlView.cpp
     )
 endif()
 
 if(APPLE)
-    list(APPEND MNEMOSYNE_CORE_SOURCES
+    list(APPEND MNEMOSYNE_DESKTOP_UI_SOURCES
         platform/MacWindowChrome.h
         platform/MacWindowChrome.mm
     )
 endif()
 
-if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
-    list(APPEND MNEMOSYNE_CORE_SOURCES
-        app/IHttpClient.h
-        app/IHttpClient.cpp
-        app/GoogleAuth.h
-        app/GoogleAuth.cpp
-        app/GoogleDriveSync.h
-        app/GoogleDriveSync.cpp
-        platform/TokenStore.h
-    )
+add_library(mnemosynedesktopui STATIC ${MNEMOSYNE_DESKTOP_UI_SOURCES})
 
-    if(APPLE)
-        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_mac.mm)
-    elseif(WIN32)
-        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_win.cpp)
-    else()
-        list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_linux.cpp)
-    endif()
-endif()
-
-add_library(mnemosynecore STATIC ${MNEMOSYNE_CORE_SOURCES})
-
-target_link_libraries(mnemosynecore PUBLIC
+target_link_libraries(mnemosynedesktopui PUBLIC
+    mnemosynecore
     Qt6::Widgets
-    Qt6::Network
     Qt6::Concurrent
-    PkgConfig::POPPLER_QT6
-    PkgConfig::LIBZIP
 )
 
 if(APPLE)
-    target_link_libraries(mnemosynecore PUBLIC "-framework Cocoa")
+    target_link_libraries(mnemosynedesktopui PUBLIC "-framework Cocoa")
 endif()
 
 if(MNEMOSYNE_ENABLE_HTML)
-    target_link_libraries(mnemosynecore PUBLIC Qt6::WebEngineWidgets)
-    target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_HTML)
+    target_link_libraries(mnemosynedesktopui PUBLIC Qt6::WebEngineWidgets)
+    target_compile_definitions(mnemosynedesktopui PUBLIC MNEMOSYNE_ENABLE_HTML)
 endif()
 
-if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
-    target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
-
-    if(APPLE)
-        target_link_libraries(mnemosynecore PUBLIC "-framework Security")
-    elseif(WIN32)
-        target_link_libraries(mnemosynecore PUBLIC Crypt32 Advapi32)
-    else()
-        target_link_libraries(mnemosynecore PUBLIC PkgConfig::LIBSECRET)
-    endif()
-endif()
-
-target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_VERSION="${PROJECT_VERSION}")
-
-target_include_directories(mnemosynecore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(mnemosynedesktopui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 qt_add_executable(Mnemosyne main.cpp ${CMAKE_SOURCE_DIR}/resources/icons.qrc)
 
-target_link_libraries(Mnemosyne PRIVATE mnemosynecore)
+target_link_libraries(Mnemosyne PRIVATE mnemosynedesktopui)
 
 if(APPLE)
     set(MNEMOSYNE_ICNS ${CMAKE_SOURCE_DIR}/resources/icons/mnemosyne.icns)

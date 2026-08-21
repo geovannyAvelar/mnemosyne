@@ -618,7 +618,7 @@ void MainWindow::disableSync()
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
 void MainWindow::signInWithGoogle()
 {
-    GoogleAuth::startSignIn(this, [this](bool ok, const QString &error) {
+    GoogleAuth::startSignIn([this](bool ok, const QString &error) {
         if (ok) {
             QMessageBox::information(this, tr("Signed In"),
                                       tr("Reading progress will now also sync through Google Drive."));
