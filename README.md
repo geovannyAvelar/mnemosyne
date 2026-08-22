@@ -116,19 +116,28 @@ cmake --build build
 ./scripts/package-macos.sh build
 ```
 
-Produces `build/Mnemosyne-macos.dmg` — a self-contained, drag-and-drop
-install with Qt and all other dependencies bundled in (`macdeployqt` +
-`dylibbundler`), so Homebrew isn't required on the machine running it.
+Produces `build/Mnemosyne-macos-<arch>.dmg` (e.g. `Mnemosyne-macos-arm64.dmg`
+on Apple Silicon) — a self-contained, drag-and-drop install with Qt and all
+other dependencies bundled in (`macdeployqt` + `dylibbundler`), so Homebrew
+isn't required on the machine running it.
 
 ### Windows (.zip and installer)
 
-Built with [MSYS2](https://www.msys2.org/)'s MinGW64 environment (`pacman -S
+Built with [MSYS2](https://www.msys2.org/), either its MinGW64 environment
+for x86_64 (`pacman -S
 mingw-w64-x86_64-{toolchain,cmake,ninja,qt6-base,poppler-qt6,libzip,pkgconf,ntldd,nsis}
-zip`).
+zip`) or its CLANGARM64 environment for arm64 (same package list with the
+`mingw-w64-clang-aarch64-` prefix instead — except `nsis`, which has no
+CLANGARM64 build; the installer step always falls back to the MinGW64 one,
+which runs fine under Windows 11 ARM's x64 emulation). `scripts/package-windows*.sh`
+detect which environment they're running in via `$MSYSTEM` and adjust
+package names/paths accordingly.
 
 MSYS2 doesn't package libmobi, so build it from source once (Autotools, not
 its CMake support — that's flagged upstream as "not tested and not updated
-regularly", and doesn't actually install anything):
+regularly", and doesn't actually install anything). Substitute
+`mingw-w64-clang-aarch64-{autotools,libtool}` and `--prefix=/clangarm64` on
+arm64:
 
 ```bash
 pacman -S mingw-w64-x86_64-autotools mingw-w64-x86_64-libtool
@@ -145,10 +154,10 @@ cmake --build build
 ./scripts/package-windows-installer.sh build
 ```
 
-`package-windows.sh` produces `build/Mnemosyne-windows.zip` — a portable,
-extract-and-run package with Qt and all other dependencies bundled in
-(`windeployqt6` + `ntldd`). `package-windows-installer.sh` wraps that same
-staged copy into `build/Mnemosyne-Setup.exe` (via [NSIS](https://nsis.sourceforge.io/)),
+`package-windows.sh` produces `build/Mnemosyne-windows-<arch>.zip` — a
+portable, extract-and-run package with Qt and all other dependencies bundled
+in (`windeployqt6` + `ntldd`). `package-windows-installer.sh` wraps that same
+staged copy into `build/Mnemosyne-Setup-<arch>.exe` (via [NSIS](https://nsis.sourceforge.io/)),
 a proper per-machine installer with a Start Menu shortcut, an optional
 Desktop shortcut, and an uninstaller registered in Add/Remove Programs.
 

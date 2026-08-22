@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run inside an MSYS2 MINGW64 shell.
+# Run inside an MSYS2 MINGW64 or CLANGARM64 shell.
 #
 # Bundles Mnemosyne.exe with Qt (windeployqt6) and the remaining MinGW/MSYS2
 # DLLs it depends on (Poppler-Qt6, libzip, and their transitive deps), then
@@ -8,9 +8,16 @@
 # there's no Chromium runtime to worry about here, unlike macOS/Linux.
 set -euo pipefail
 
+case "${MSYSTEM:-}" in
+    MINGW64) ARCH=x86_64; PKG_PREFIX=mingw-w64-x86_64- ;;
+    CLANGARM64) ARCH=arm64; PKG_PREFIX=mingw-w64-clang-aarch64- ;;
+    *) echo "error: unsupported MSYSTEM '${MSYSTEM:-}' (expected MINGW64 or CLANGARM64)" >&2; exit 1 ;;
+esac
+ENV_DIR="/$(printf '%s' "$MSYSTEM" | tr '[:upper:]' '[:lower:]')"
+
 BUILD_DIR="${1:-build}"
 STAGE_DIR="$BUILD_DIR/windows-stage"
-ZIP_PATH="$(pwd)/$BUILD_DIR/Mnemosyne-windows.zip"
+ZIP_PATH="$(pwd)/$BUILD_DIR/Mnemosyne-windows-$ARCH.zip"
 
 echo "==> Installing a clean copy of the app"
 rm -rf "$STAGE_DIR"
@@ -27,17 +34,17 @@ windeployqt6 --release "$EXE"
 
 if ! command -v ntldd >/dev/null 2>&1; then
     echo "==> Installing ntldd (walks DLL dependencies)"
-    pacman -S --noconfirm mingw-w64-x86_64-ntldd
+    pacman -S --noconfirm "${PKG_PREFIX}ntldd"
 fi
 
 echo "==> Bundling remaining MinGW/MSYS2 DLLs (Poppler, libzip, runtime, ...)"
 # ntldd -R prints the full transitive dependency closure, but as a native
 # Windows tool its paths aren't reliably POSIX-style (drive letters,
 # backslashes), so match on filename only and resolve each one against
-# /mingw64/bin — MSYS2's canonical location, and the only place any of our
-# non-Qt dependencies could live. Anything not found there is a Windows
-# system DLL and is correctly left alone. Qt DLLs windeployqt already placed
-# are silently skipped via `cp -n`.
+# $ENV_DIR/bin — MSYS2's canonical location for this environment, and the
+# only place any of our non-Qt dependencies could live. Anything not found
+# there is a Windows system DLL and is correctly left alone. Qt DLLs
+# windeployqt already placed are silently skipped via `cp -n`.
 #
 # ntldd commonly exits non-zero (e.g. an optional dependency it can't
 # resolve) even though its output is still useful, and grep exits non-zero
@@ -51,7 +58,7 @@ DLL_NAMES=$(printf '%s\n' "$DLL_LIST" | grep -oE '[A-Za-z0-9_.+-]+\.dll' | sort 
 COPIED=0
 if [[ -n "$DLL_NAMES" ]]; then
     while read -r name; do
-        src="/mingw64/bin/$name"
+        src="$ENV_DIR/bin/$name"
         if [[ -f "$src" ]] && cp -n "$src" "$STAGE_DIR/" 2>/dev/null; then
             COPIED=$((COPIED + 1))
         fi

@@ -41,9 +41,12 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             artifacts/mnemosyne-deb/*.deb \
-            artifacts/mnemosyne-macos/*.dmg \
+            artifacts/mnemosyne-deb-arm64/*.deb \
+            artifacts/mnemosyne-macos-arm64/*.dmg \
             artifacts/mnemosyne-windows/*.zip \
+            artifacts/mnemosyne-windows-arm64/*.zip \
             artifacts/mnemosyne-windows-installer/*.exe \
+            artifacts/mnemosyne-windows-installer-arm64/*.exe \
             --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md
 

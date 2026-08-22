@@ -14,7 +14,8 @@ set -euo pipefail
 
 BUILD_DIR="${1:-build}"
 STAGE_DIR="$BUILD_DIR/macos-stage"
-DMG_PATH="$BUILD_DIR/Mnemosyne-macos.dmg"
+ARCH="$(uname -m)"
+DMG_PATH="$BUILD_DIR/Mnemosyne-macos-$ARCH.dmg"
 
 echo "==> Installing a clean copy of the app"
 rm -rf "$STAGE_DIR"

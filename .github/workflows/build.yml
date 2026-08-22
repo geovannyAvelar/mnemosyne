@@ -73,6 +73,64 @@ jobs:
           path: build/*.deb
           if-no-files-found: error
 
+  # Same steps as `linux` above, just on a native arm64 runner — the .deb's
+  # architecture (arm64 vs amd64) is picked up automatically by dpkg via
+  # CPACK_DEBIAN_FILE_NAME=DEB-DEFAULT, no CMake/CPack changes needed.
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build build-essential pkg-config \
+            qt6-base-dev qt6-base-dev-tools qt6-webengine-dev \
+            libpoppler-qt6-dev libzip-dev libmobi-dev libsecret-1-dev \
+            libxkbcommon-x11-0 libxcb-cursor0 \
+            gnome-keyring dbus-x11
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      # See the `linux` job's "Run tests" step for why this pre-seeds a
+      # keyring instead of letting gnome-keyring-daemon create one itself.
+      - name: Run tests
+        timeout-minutes: 5
+        run: |
+          mkdir -p ~/.local/share/keyrings
+          printf '%s\n' \
+            '[keyring]' \
+            'display-name=Default' \
+            'ctime=0' \
+            'mtime=0' \
+            'lock-on-idle=false' \
+            'lock-after=false' \
+            > ~/.local/share/keyrings/Default_keyring.keyring
+          echo -n "Default_keyring" > ~/.local/share/keyrings/default
+
+          dbus-run-session -- bash -c '
+            eval "$(gnome-keyring-daemon --start --components=secrets)"
+            export GNOME_KEYRING_CONTROL
+            ctest --test-dir build --output-on-failure
+          '
+
+      - name: Package .deb
+        run: |
+          cd build
+          cpack -G DEB
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemosyne-deb-arm64
+          path: build/*.deb
+          if-no-files-found: error
+
   macos:
     runs-on: macos-latest
     steps:
@@ -96,8 +154,8 @@ jobs:
       - name: Upload .dmg artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mnemosyne-macos
-          path: build/Mnemosyne-*.dmg
+          name: mnemosyne-macos-arm64
+          path: build/Mnemosyne-macos-*.dmg
           if-no-files-found: error
 
   windows:
@@ -162,7 +220,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mnemosyne-windows
-          path: build/Mnemosyne-windows.zip
+          path: build/Mnemosyne-windows-x86_64.zip
           if-no-files-found: error
 
       - name: Package installer
@@ -172,5 +230,75 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mnemosyne-windows-installer
-          path: build/Mnemosyne-Setup.exe
+          path: build/Mnemosyne-Setup-x86_64.exe
+          if-no-files-found: error
+
+  # Same shape as `windows` above, on GitHub's native arm64 runner via
+  # MSYS2's CLANGARM64 environment. scripts/package-windows*.sh branch on
+  # $MSYSTEM to pick the right package prefix/env dir; NSIS has no
+  # CLANGARM64 build so the installer step falls back to the MINGW64 one,
+  # which runs fine under Windows 11 ARM's built-in x64 emulation.
+  windows-arm64:
+    runs-on: windows-11-arm
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          update: true
+          install: >-
+            mingw-w64-clang-aarch64-toolchain
+            mingw-w64-clang-aarch64-cmake
+            mingw-w64-clang-aarch64-ninja
+            mingw-w64-clang-aarch64-qt6-base
+            mingw-w64-clang-aarch64-poppler-qt6
+            mingw-w64-clang-aarch64-libzip
+            mingw-w64-clang-aarch64-pkgconf
+            mingw-w64-clang-aarch64-ntldd
+            mingw-w64-clang-aarch64-autotools
+            mingw-w64-clang-aarch64-libtool
+            mingw-w64-clang-aarch64-libxml2
+            git
+            zip
+
+      - name: Build libmobi
+        run: |
+          git clone --depth 1 https://github.com/bfabiszewski/libmobi.git /tmp/libmobi
+          cd /tmp/libmobi
+          ./autogen.sh
+          ./configure --prefix=/clangarm64
+          make -j$(nproc)
+          make install
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package .zip
+        run: ./scripts/package-windows.sh build
+
+      - name: Upload .zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemosyne-windows-arm64
+          path: build/Mnemosyne-windows-arm64.zip
+          if-no-files-found: error
+
+      - name: Package installer
+        run: ./scripts/package-windows-installer.sh build
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemosyne-windows-installer-arm64
+          path: build/Mnemosyne-Setup-arm64.exe
           if-no-files-found: error
