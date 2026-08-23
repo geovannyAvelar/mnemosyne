@@ -28,6 +28,7 @@ class EpubReaderModel : public QObject
     Q_PROPERTY(bool isOpen READ isOpen NOTIFY documentChanged)
     Q_PROPERTY(int spineCount READ spineCount NOTIFY documentChanged)
     Q_PROPERTY(QString title READ title NOTIFY documentChanged)
+    Q_PROPERTY(QString bookHash READ bookHash NOTIFY documentChanged)
     Q_PROPERTY(int currentSpineIndex READ currentSpineIndex WRITE setCurrentSpineIndex NOTIFY currentSpineIndexChanged)
     Q_PROPERTY(QString currentChapterHtml READ currentChapterHtml NOTIFY currentSpineIndexChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
@@ -39,6 +40,7 @@ public:
     bool isOpen() const { return m_document != nullptr; }
     int spineCount() const { return m_document ? m_document->spineCount() : 0; }
     QString title() const { return m_document ? m_document->title() : QString(); }
+    QString bookHash() const { return m_bookHash; }
     int currentSpineIndex() const { return m_currentSpineIndex; }
     void setCurrentSpineIndex(int index);
     QString currentChapterHtml() const;

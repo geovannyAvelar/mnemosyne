@@ -8,10 +8,34 @@ Item {
 
     required property var documentModel
 
+    // isBookmarked() is a plain method call, not a NOTIFYing property, so a
+    // direct binding to it wouldn't re-evaluate when bookmarks change —
+    // this tracks it explicitly instead, refreshed on the two events that
+    // can actually change the answer (page change, bookmark add/remove).
+    property bool currentPageBookmarked: false
+    function refreshBookmarkedState() {
+        currentPageBookmarked = bookmarksModel.isBookmarked(root.documentModel.currentPage)
+    }
+
+    Component.onCompleted: {
+        bookmarksModel.bookHash = root.documentModel.bookHash
+        refreshBookmarkedState()
+    }
+
     // Frees the Poppler document and blocks until any in-flight page
     // render finishes (see PdfPageImageProvider::setDocument) as soon as
     // this screen leaves the StackView, not just when the app closes.
     Component.onDestruction: documentModel.close()
+
+    Connections {
+        target: root.documentModel
+        function onCurrentPageChanged() { root.refreshBookmarkedState() }
+    }
+
+    Connections {
+        target: bookmarksModel
+        function onModelReset() { root.refreshBookmarkedState() }
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -38,23 +62,77 @@ Item {
         }
     }
 
-    Rectangle {
+    Row {
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.topMargin: 8
-        width: pageLabel.implicitWidth + 24
-        height: pageLabel.implicitHeight + 10
-        radius: height / 2
-        color: Theme.base
-        border.color: Theme.border
-        border.width: 1
+        spacing: 8
 
-        Text {
-            id: pageLabel
-            anchors.centerIn: parent
-            text: (root.documentModel.currentPage + 1) + " / " + root.documentModel.pageCount
-            color: Theme.mutedText
-            font.pixelSize: 13
+        Rectangle {
+            width: 40
+            height: 40
+            radius: 20
+            color: Theme.base
+            border.color: Theme.border
+            border.width: 1
+
+            Text {
+                anchors.centerIn: parent
+                text: "☰"
+                color: Theme.mutedText
+                font.pixelSize: 16
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: bookmarksSheet.open()
+            }
         }
+
+        Rectangle {
+            width: pageLabel.implicitWidth + 24
+            height: 40
+            radius: 20
+            color: Theme.base
+            border.color: Theme.border
+            border.width: 1
+
+            Text {
+                id: pageLabel
+                anchors.centerIn: parent
+                text: (root.documentModel.currentPage + 1) + " / " + root.documentModel.pageCount
+                color: Theme.mutedText
+                font.pixelSize: 13
+            }
+        }
+
+        Rectangle {
+            width: 40
+            height: 40
+            radius: 20
+            color: root.currentPageBookmarked ? Theme.accent : Theme.base
+            border.color: Theme.border
+            border.width: 1
+
+            Text {
+                anchors.centerIn: parent
+                text: "★"
+                color: root.currentPageBookmarked ? Theme.accentText : Theme.mutedText
+                font.pixelSize: 16
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: bookmarksModel.toggleBookmark(
+                    root.documentModel.currentPage,
+                    qsTr("Page %1").arg(root.documentModel.currentPage + 1))
+            }
+        }
+    }
+
+    BookmarksSheet {
+        id: bookmarksSheet
+        parent: root
+        onJumpRequested: (targetIndex) => root.documentModel.currentPage = targetIndex
     }
 }

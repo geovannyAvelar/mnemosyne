@@ -24,6 +24,7 @@ class PdfDocumentModel : public QObject
     Q_PROPERTY(bool isOpen READ isOpen NOTIFY documentChanged)
     Q_PROPERTY(int pageCount READ pageCount NOTIFY documentChanged)
     Q_PROPERTY(QString title READ title NOTIFY documentChanged)
+    Q_PROPERTY(QString bookHash READ bookHash NOTIFY documentChanged)
     Q_PROPERTY(int currentPage READ currentPage WRITE setCurrentPage NOTIFY currentPageChanged)
     Q_PROPERTY(qreal zoom READ zoom WRITE setZoom NOTIFY zoomChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
@@ -35,6 +36,9 @@ public:
     bool isOpen() const { return m_document != nullptr; }
     int pageCount() const { return m_document ? m_document->pageCount() : 0; }
     QString title() const { return m_document ? m_document->title() : QString(); }
+    // Content hash used to key BookmarkStore/ReadingProgressStore entries
+    // for the currently-open document — see BookmarksModel::bookHash.
+    QString bookHash() const { return m_bookHash; }
     int currentPage() const { return m_currentPage; }
     void setCurrentPage(int page);
     qreal zoom() const { return m_zoom; }

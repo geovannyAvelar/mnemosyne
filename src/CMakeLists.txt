@@ -275,6 +275,8 @@ if(ANDROID)
         quick/PdfPageImageProvider.cpp
         quick/EpubReaderModel.h
         quick/EpubReaderModel.cpp
+        quick/BookmarksModel.h
+        quick/BookmarksModel.cpp
     )
 
     set_source_files_properties(${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
@@ -291,6 +293,7 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/LibraryScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/PdfReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/components/PdfPageItem.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/BookmarksSheet.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
     )
     foreach(_qml_file ${MNEMOSYNE_ANDROID_QML_FILES})

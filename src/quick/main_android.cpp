@@ -1,4 +1,5 @@
 #include "AndroidStorageAccess.h"
+#include "BookmarksModel.h"
 #include "EpubReaderModel.h"
 #include "LibraryModel.h"
 #include "PdfDocumentModel.h"
@@ -29,6 +30,7 @@ int main(int argc, char *argv[])
 
     PdfDocumentModel pdfDocumentModel(pdfPageImageProvider);
     EpubReaderModel epubReaderModel;
+    BookmarksModel bookmarksModel;
 
     QQmlContext *context = engine.rootContext();
     context->setContextProperty("smokeTestBridge", &smokeTestBridge);
@@ -36,6 +38,7 @@ int main(int argc, char *argv[])
     context->setContextProperty("libraryModel", &libraryModel);
     context->setContextProperty("pdfDocumentModel", &pdfDocumentModel);
     context->setContextProperty("epubReaderModel", &epubReaderModel);
+    context->setContextProperty("bookmarksModel", &bookmarksModel);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);

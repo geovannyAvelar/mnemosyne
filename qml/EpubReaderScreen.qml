@@ -3,6 +3,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import QtWebView
 
+import "components"
+
 // WebView renders EpubDocument::chapterHtml()'s already-self-contained
 // HTML (inlined CSS, data: URI images) via the platform's native
 // android.webkit.WebView — closer to desktop's QTextBrowser rendering
@@ -18,7 +20,17 @@ Item {
 
     required property var documentModel
 
+    property bool currentChapterBookmarked: false
+    function refreshBookmarkedState() {
+        currentChapterBookmarked = bookmarksModel.isBookmarked(root.documentModel.currentSpineIndex)
+    }
+
     Component.onDestruction: documentModel.close()
+
+    Connections {
+        target: bookmarksModel
+        function onModelReset() { root.refreshBookmarkedState() }
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -35,6 +47,7 @@ Item {
 
     function loadCurrentChapter() {
         webView.loadHtml(root.documentModel.currentChapterHtml)
+        root.refreshBookmarkedState()
     }
 
     Connections {
@@ -42,7 +55,10 @@ Item {
         function onCurrentSpineIndexChanged() { root.loadCurrentChapter() }
     }
 
-    Component.onCompleted: loadCurrentChapter()
+    Component.onCompleted: {
+        bookmarksModel.bookHash = root.documentModel.bookHash
+        loadCurrentChapter()
+    }
 
     Rectangle {
         id: navBar
@@ -66,11 +82,26 @@ Item {
 
             Item { Layout.fillWidth: true }
 
+            Button {
+                text: "☰"
+                flat: true
+                onClicked: bookmarksSheet.open()
+            }
+
             Text {
                 text: (root.documentModel.currentSpineIndex + 1) + " / " + root.documentModel.spineCount
                 color: Theme.mutedText
                 font.pixelSize: 13
                 Layout.alignment: Qt.AlignVCenter
+            }
+
+            Button {
+                text: "★"
+                flat: true
+                palette.buttonText: root.currentChapterBookmarked ? Theme.accent : Theme.mutedText
+                onClicked: bookmarksModel.toggleBookmark(
+                    root.documentModel.currentSpineIndex,
+                    root.documentModel.title)
             }
 
             Item { Layout.fillWidth: true }
@@ -81,5 +112,11 @@ Item {
                 onClicked: root.documentModel.nextChapter()
             }
         }
+    }
+
+    BookmarksSheet {
+        id: bookmarksSheet
+        parent: root
+        onJumpRequested: (targetIndex) => root.documentModel.currentSpineIndex = targetIndex
     }
 }
