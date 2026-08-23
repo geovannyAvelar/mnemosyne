@@ -2,8 +2,12 @@
 
 #include "ContentUriCache.h"
 
+#include "app/DeviceIdentity.h"
 #include "app/FileIdentity.h"
 #include "app/ReadingProgressStore.h"
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+#include "app/GoogleDriveSync.h"
+#endif
 
 #include <algorithm>
 
@@ -111,6 +115,20 @@ void EpubReaderModel::restoreProgress()
     if (const auto progress = ReadingProgressStore::get(m_bookHash)) {
         m_currentSpineIndex = std::clamp(progress->position, 0, std::max(0, spineCount() - 1));
     }
+
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+    const QString bookHash = m_bookHash;
+    GoogleDriveSync::latestFromOtherDevices(
+        bookHash, DeviceIdentity::id(), [this, bookHash](std::optional<ProgressSyncLog::RemoteEntry> remote) {
+            if (!remote || bookHash != m_bookHash) {
+                return;
+            }
+            if (remote->position == m_currentSpineIndex) {
+                return;
+            }
+            emit remoteProgressAvailable(remote->position, remote->deviceName);
+        });
+#endif
 }
 
 void EpubReaderModel::saveProgressNow()
@@ -118,7 +136,8 @@ void EpubReaderModel::saveProgressNow()
     if (m_bookHash.isEmpty()) {
         return;
     }
-    // Cross-device sync (ProgressSyncLog/GoogleDriveSync, as desktop's
-    // EpubView also does) lands in a later mobile-port stage.
     ReadingProgressStore::set(m_bookHash, m_currentSpineIndex, 1.0);
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+    GoogleDriveSync::appendEntry(m_bookHash, title(), m_currentSpineIndex, 1.0);
+#endif
 }

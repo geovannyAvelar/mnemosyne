@@ -3,8 +3,12 @@
 #include "ContentUriCache.h"
 #include "PdfPageImageProvider.h"
 
+#include "app/DeviceIdentity.h"
 #include "app/FileIdentity.h"
 #include "app/ReadingProgressStore.h"
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+#include "app/GoogleDriveSync.h"
+#endif
 
 #include <algorithm>
 
@@ -138,6 +142,23 @@ void PdfDocumentModel::restoreProgress()
         m_currentPage = std::clamp(progress->position, 0, std::max(0, pageCount() - 1));
         m_zoom = std::clamp(progress->zoom, kMinZoom, kMaxZoom);
     }
+
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+    // Async — matches desktop PdfView::restoreProgressAndCheckSync(), minus
+    // the local-folder SyncFolder/ProgressSyncLog leg, which has no Android
+    // analog (see the mobile-port plan's Context section).
+    const QString bookHash = m_bookHash;
+    GoogleDriveSync::latestFromOtherDevices(
+        bookHash, DeviceIdentity::id(), [this, bookHash](std::optional<ProgressSyncLog::RemoteEntry> remote) {
+            if (!remote || bookHash != m_bookHash) {
+                return; // no result, or this model has since moved on to a different book
+            }
+            if (remote->position == m_currentPage) {
+                return;
+            }
+            emit remoteProgressAvailable(remote->position, remote->zoom, remote->deviceName);
+        });
+#endif
 }
 
 void PdfDocumentModel::saveProgressNow()
@@ -145,8 +166,8 @@ void PdfDocumentModel::saveProgressNow()
     if (m_bookHash.isEmpty()) {
         return;
     }
-    // Cross-device sync (ProgressSyncLog/GoogleDriveSync, as desktop's
-    // PdfView::saveProgressNow also does) lands in a later mobile-port
-    // stage — this only persists locally for now.
     ReadingProgressStore::set(m_bookHash, m_currentPage, m_zoom);
+#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
+    GoogleDriveSync::appendEntry(m_bookHash, title(), m_currentPage, m_zoom);
+#endif
 }

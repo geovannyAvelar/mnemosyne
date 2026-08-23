@@ -6,6 +6,7 @@ Item {
     id: root
 
     signal fileActivated(string filePath, string title, string format)
+    signal settingsRequested()
 
     function guessFormat(name) {
         const lower = name.toLowerCase()
@@ -31,11 +32,23 @@ Item {
         anchors.margins: 24
         spacing: 16
 
-        Text {
-            text: qsTr("Library")
-            color: Theme.text
-            font.pixelSize: 32
-            font.bold: true
+        RowLayout {
+            Layout.fillWidth: true
+
+            Text {
+                text: qsTr("Library")
+                color: Theme.text
+                font.pixelSize: 32
+                font.bold: true
+            }
+
+            Item { Layout.fillWidth: true }
+
+            Button {
+                text: "⚙"
+                flat: true
+                onClicked: root.settingsRequested()
+            }
         }
 
         Button {

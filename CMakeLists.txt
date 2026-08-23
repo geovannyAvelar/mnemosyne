@@ -37,16 +37,11 @@ endif()
 option(MNEMOSYNE_ENABLE_HTML "Enable Qt WebEngine-based HTML/HTM support" ${MNEMOSYNE_ENABLE_HTML_DEFAULT})
 
 # Google Drive sign-in as a second, optional sync backend alongside the
-# local-folder one (see src/app/GoogleDriveSync.*). Unlike HTML support,
-# there's no desktop platform this can't build on, so it defaults on
-# everywhere except Android, which needs its own OAuth-redirect and
-# TokenStore backends (tracked as a later mobile-port milestone) before this
-# code path is exercised there.
-if(ANDROID)
-  set(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC_DEFAULT OFF)
-else()
-  set(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC_DEFAULT ON)
-endif()
+# local-folder one (see src/app/GoogleDriveSync.*). Defaults on everywhere,
+# including Android as of the mobile port's Stage 8 (custom-scheme
+# OAuth-redirect Activity + a Keystore-backed TokenStore_android.cpp — see
+# platform/OAuthRedirect_android.* and platform/TokenStore_android.cpp).
+set(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC_DEFAULT ON)
 option(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC "Enable signing in with Google Drive as a sync backend" ${MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC_DEFAULT})
 
 if(ANDROID)

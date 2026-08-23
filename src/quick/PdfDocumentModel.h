@@ -65,6 +65,10 @@ signals:
     void currentPageChanged();
     void zoomChanged();
     void errorMessageChanged();
+    // A more recent position for this document was found on another
+    // device via GoogleDriveSync — see restoreProgress(). Only emitted
+    // when it differs from the position just restored locally.
+    void remoteProgressAvailable(int position, qreal zoom, const QString &deviceName);
 
 private:
     void setErrorMessage(const QString &message);

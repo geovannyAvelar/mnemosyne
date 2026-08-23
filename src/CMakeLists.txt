@@ -73,6 +73,12 @@ if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
         list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_mac.mm)
     elseif(WIN32)
         list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_win.cpp)
+    elseif(ANDROID)
+        list(APPEND MNEMOSYNE_CORE_SOURCES
+            platform/TokenStore_android.cpp
+            platform/OAuthRedirect_android.h
+            platform/OAuthRedirect_android.cpp
+        )
     else()
         list(APPEND MNEMOSYNE_CORE_SOURCES platform/TokenStore_linux.cpp)
     endif()
@@ -107,6 +113,10 @@ if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
         target_link_libraries(mnemosynecore PUBLIC "-framework Security")
     elseif(WIN32)
         target_link_libraries(mnemosynecore PUBLIC Crypt32 Advapi32)
+    elseif(ANDROID)
+        # TokenStore_android.cpp/OAuthRedirect_android.cpp use QJniObject
+        # and <jni.h> only -- both already available through Qt6::Gui/Core,
+        # no extra library to link (no libsecret equivalent needed here).
     else()
         target_link_libraries(mnemosynecore PUBLIC PkgConfig::LIBSECRET)
     endif()
@@ -283,6 +293,8 @@ if(ANDROID)
         quick/HighlightsModel.cpp
         quick/PdfSelectionController.h
         quick/PdfSelectionController.cpp
+        quick/SyncController.h
+        quick/SyncController.cpp
     )
 
     set_source_files_properties(${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
@@ -301,7 +313,9 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/components/PdfPageItem.qml
         ${CMAKE_SOURCE_DIR}/qml/components/BookmarksSheet.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SelectionToolbar.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/SyncPromptBar.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
+        ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
     )
     foreach(_qml_file ${MNEMOSYNE_ANDROID_QML_FILES})
         # Relative to qml/, not just the basename, so components/PdfPageItem.qml
@@ -344,8 +358,18 @@ if(ANDROID)
             "${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libpoppler-qt6.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libpoppler.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libzip.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libfreetype.so"
     )
 
-    # No QT_ANDROID_PACKAGE_SOURCE_DIR yet: androiddeployqt generates a
-    # default AndroidManifest.xml. A real android/ source dir (package id,
-    # permissions) lands with app packaging polish in a later stage — the
-    # ACTION_OPEN_DOCUMENT picker itself needs no manifest declaration.
+    if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
+        # Stage 8 needs a real manifest: OAuthRedirectActivity's
+        # mnemosyne://oauth2redirect intent-filter has no equivalent in
+        # androiddeployqt's auto-generated default. QT_ANDROID_PACKAGE_NAME
+        # must match both this manifest's package="org.mnemosyne" and the
+        # JNI method names in OAuthRedirect_android.cpp/TokenStoreBridge.java
+        # (Java_org_mnemosyne_..., "org/mnemosyne/..." class names) —
+        # androiddeployqt patches the manifest's package attribute from this
+        # property regardless of what's literally written in the file.
+        set_target_properties(MnemosyneAndroid PROPERTIES
+            QT_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_SOURCE_DIR}/android
+            QT_ANDROID_PACKAGE_NAME "org.mnemosyne"
+        )
+    endif()
 endif()

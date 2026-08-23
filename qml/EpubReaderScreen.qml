@@ -46,9 +46,33 @@ Item {
         function onModelReset() { root.applyHighlightsToChapter() }
     }
 
+    Connections {
+        target: root.documentModel
+        function onRemoteProgressAvailable(spineIndex, deviceName) {
+            syncPromptBar.showPrompt(qsTr("Synced position available: chapter %1 (from %2) — jump?")
+                                      .arg(spineIndex + 1).arg(deviceName))
+            root._pendingRemoteSpineIndex = spineIndex
+        }
+    }
+
+    property int _pendingRemoteSpineIndex: -1
+
     Rectangle {
         anchors.fill: parent
         color: Theme.base
+    }
+
+    SyncPromptBar {
+        id: syncPromptBar
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        z: 10
+        onJumpRequested: {
+            if (root._pendingRemoteSpineIndex >= 0) {
+                root.documentModel.currentSpineIndex = root._pendingRemoteSpineIndex
+            }
+        }
     }
 
     WebView {
@@ -133,7 +157,7 @@ Item {
     // clipping, which silently made the Next button untappable).
     Rectangle {
         id: topBar
-        anchors.top: parent.top
+        anchors.top: syncPromptBar.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         height: 48

@@ -38,6 +38,14 @@ ApplicationWindow {
                     console.log("Unrecognized format:", title, "(" + format + ")", filePath)
                 }
             }
+            onSettingsRequested: stackView.push(settingsScreenComponent)
+        }
+    }
+
+    Component {
+        id: settingsScreenComponent
+        SettingsScreen {
+            onBackRequested: stackView.pop()
         }
     }
 

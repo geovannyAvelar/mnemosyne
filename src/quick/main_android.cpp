@@ -7,6 +7,7 @@
 #include "PdfPageImageProvider.h"
 #include "PdfSelectionController.h"
 #include "SmokeTestBridge.h"
+#include "SyncController.h"
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -35,6 +36,7 @@ int main(int argc, char *argv[])
     BookmarksModel bookmarksModel;
     HighlightsModel highlightsModel;
     PdfSelectionController pdfSelectionController(&pdfDocumentModel);
+    SyncController syncController;
 
     QQmlContext *context = engine.rootContext();
     context->setContextProperty("smokeTestBridge", &smokeTestBridge);
@@ -45,6 +47,7 @@ int main(int argc, char *argv[])
     context->setContextProperty("bookmarksModel", &bookmarksModel);
     context->setContextProperty("highlightsModel", &highlightsModel);
     context->setContextProperty("pdfSelectionController", &pdfSelectionController);
+    context->setContextProperty("syncController", &syncController);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);

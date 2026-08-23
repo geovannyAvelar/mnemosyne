@@ -45,14 +45,44 @@ Item {
         function onModelReset() { root.refreshBookmarkedState() }
     }
 
+    Connections {
+        target: root.documentModel
+        function onRemoteProgressAvailable(position, zoom, deviceName) {
+            syncPromptBar.showPrompt(qsTr("Synced position available: page %1 (from %2) — jump?")
+                                      .arg(position + 1).arg(deviceName))
+            root._pendingRemotePosition = position
+            root._pendingRemoteZoom = zoom
+        }
+    }
+
+    property int _pendingRemotePosition: -1
+    property real _pendingRemoteZoom: 1.0
+
     Rectangle {
         anchors.fill: parent
         color: Theme.panel
     }
 
+    SyncPromptBar {
+        id: syncPromptBar
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        z: 10
+        onJumpRequested: {
+            if (root._pendingRemotePosition >= 0) {
+                root.documentModel.zoom = root._pendingRemoteZoom
+                root.documentModel.currentPage = root._pendingRemotePosition
+            }
+        }
+    }
+
     SwipeView {
         id: swipeView
-        anchors.fill: parent
+        anchors.top: syncPromptBar.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
         currentIndex: root.documentModel.currentPage
         onCurrentIndexChanged: root.documentModel.currentPage = currentIndex
 
@@ -71,7 +101,7 @@ Item {
     }
 
     Row {
-        anchors.top: parent.top
+        anchors.top: syncPromptBar.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.topMargin: 8
         spacing: 8

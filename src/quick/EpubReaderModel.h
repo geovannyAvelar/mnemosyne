@@ -57,6 +57,9 @@ signals:
     void documentChanged();
     void currentSpineIndexChanged();
     void errorMessageChanged();
+    // A more recent chapter position for this document was found on
+    // another device via GoogleDriveSync — see restoreProgress().
+    void remoteProgressAvailable(int spineIndex, const QString &deviceName);
 
 private:
     void setErrorMessage(const QString &message);
