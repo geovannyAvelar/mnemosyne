@@ -1,4 +1,5 @@
 #include "AndroidStorageAccess.h"
+#include "EpubReaderModel.h"
 #include "LibraryModel.h"
 #include "PdfDocumentModel.h"
 #include "PdfPageImageProvider.h"
@@ -27,12 +28,14 @@ int main(int argc, char *argv[])
     engine.addImageProvider(QStringLiteral("pdfpage"), pdfPageImageProvider);
 
     PdfDocumentModel pdfDocumentModel(pdfPageImageProvider);
+    EpubReaderModel epubReaderModel;
 
     QQmlContext *context = engine.rootContext();
     context->setContextProperty("smokeTestBridge", &smokeTestBridge);
     context->setContextProperty("androidStorageAccess", &androidStorageAccess);
     context->setContextProperty("libraryModel", &libraryModel);
     context->setContextProperty("pdfDocumentModel", &pdfDocumentModel);
+    context->setContextProperty("epubReaderModel", &epubReaderModel);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);

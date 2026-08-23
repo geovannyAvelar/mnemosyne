@@ -273,6 +273,8 @@ if(ANDROID)
         quick/PdfDocumentModel.cpp
         quick/PdfPageImageProvider.h
         quick/PdfPageImageProvider.cpp
+        quick/EpubReaderModel.h
+        quick/EpubReaderModel.cpp
     )
 
     set_source_files_properties(${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
@@ -289,6 +291,7 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/LibraryScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/PdfReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/components/PdfPageItem.qml
+        ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
     )
     foreach(_qml_file ${MNEMOSYNE_ANDROID_QML_FILES})
         # Relative to qml/, not just the basename, so components/PdfPageItem.qml
@@ -319,6 +322,7 @@ if(ANDROID)
         mnemosynecore
         Qt6::Quick
         Qt6::QuickControls2
+        Qt6::WebView
         Qt6::CorePrivate # AndroidStorageAccess uses QtAndroidPrivate::startActivity (qandroidextras_p.h)
     )
 

@@ -28,9 +28,14 @@ ApplicationWindow {
                     } else {
                         console.log("Failed to open PDF:", pdfDocumentModel.errorMessage)
                     }
+                } else if (format === "epub") {
+                    if (epubReaderModel.open(filePath, format)) {
+                        stackView.push(epubReaderScreenComponent)
+                    } else {
+                        console.log("Failed to open EPUB:", epubReaderModel.errorMessage)
+                    }
                 } else {
-                    // EPUB reading lands in a later mobile-port stage.
-                    console.log("Activated:", title, "(" + format + ")", filePath)
+                    console.log("Unrecognized format:", title, "(" + format + ")", filePath)
                 }
             }
         }
@@ -40,6 +45,13 @@ ApplicationWindow {
         id: pdfReaderScreenComponent
         PdfReaderScreen {
             documentModel: pdfDocumentModel
+        }
+    }
+
+    Component {
+        id: epubReaderScreenComponent
+        EpubReaderScreen {
+            documentModel: epubReaderModel
         }
     }
 
