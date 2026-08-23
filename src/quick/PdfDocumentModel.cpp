@@ -118,6 +118,15 @@ QSizeF PdfDocumentModel::pageSizePoints(int index) const
     return page ? page->sizePoints() : QSizeF();
 }
 
+QVector<TextWord> PdfDocumentModel::wordsForPage(int index) const
+{
+    if (!m_document) {
+        return {};
+    }
+    std::unique_ptr<IPage> page = m_document->page(index);
+    return page ? page->words() : QVector<TextWord>();
+}
+
 void PdfDocumentModel::restoreProgress()
 {
     m_currentPage = 0;

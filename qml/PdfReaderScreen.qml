@@ -19,6 +19,7 @@ Item {
 
     Component.onCompleted: {
         bookmarksModel.bookHash = root.documentModel.bookHash
+        highlightsModel.bookHash = root.documentModel.bookHash
         refreshBookmarkedState()
     }
 
@@ -29,7 +30,14 @@ Item {
 
     Connections {
         target: root.documentModel
-        function onCurrentPageChanged() { root.refreshBookmarkedState() }
+        function onCurrentPageChanged() {
+            root.refreshBookmarkedState()
+            // A selection belongs to one page (PdfSelectionController is
+            // shared across all page delegates) — drop it when the page
+            // changes rather than leave a stale selection the user can no
+            // longer see the source words for.
+            pdfSelectionController.clearSelection()
+        }
     }
 
     Connections {

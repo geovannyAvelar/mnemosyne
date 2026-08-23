@@ -55,6 +55,11 @@ public:
     // page item's aspect ratio before its image has finished rendering.
     Q_INVOKABLE QSizeF pageSizePoints(int index) const;
 
+    // Word boxes for page index, in reading order and page-space points —
+    // for PdfSelectionController's word-snapping selection. Not QML-facing
+    // (QVector<TextWord> isn't a QML value type), called directly from C++.
+    QVector<TextWord> wordsForPage(int index) const;
+
 signals:
     void documentChanged();
     void currentPageChanged();

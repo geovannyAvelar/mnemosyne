@@ -52,7 +52,10 @@ EpubView::EpubView(std::unique_ptr<EpubDocument> document, QString filePath, QWi
     : QWidget(parent)
     , m_document(std::move(document))
     , m_filePath(std::move(filePath))
-    , m_highlights(HighlightStore::highlightsFor(m_filePath))
+    // m_bookHash isn't set until restoreProgressAndCheckSync() runs in the
+    // constructor body below, so the initial load recomputes the hash here
+    // directly (cheap — FileIdentity caches by path+size+mtime).
+    , m_highlights(HighlightStore::highlightsFor(FileIdentity::contentHash(m_filePath)))
 {
     setupUi();
     restoreProgressAndCheckSync(); // sets m_currentChapter/m_fontZoomSteps before the first render, so there's no visible jump
@@ -343,8 +346,8 @@ void EpubView::addHighlightForSelection()
     highlight.text = cursor.selectedText();
     highlight.createdAt = QDateTime::currentDateTime();
 
-    HighlightStore::addHighlight(m_filePath, highlight);
-    m_highlights = HighlightStore::highlightsFor(m_filePath);
+    HighlightStore::addHighlight(m_bookHash, highlight);
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
     applyHighlightsToBrowser();
 }
 
@@ -377,8 +380,8 @@ void EpubView::showBrowserContextMenu(const QPoint &pos)
                 menu.addSeparator();
                 QAction *removeAction = menu.addAction(tr("Remove Highlight"));
                 connect(removeAction, &QAction::triggered, this, [this, i] {
-                    HighlightStore::removeHighlight(m_filePath, i);
-                    m_highlights = HighlightStore::highlightsFor(m_filePath);
+                    HighlightStore::removeHighlight(m_bookHash, i);
+                    m_highlights = HighlightStore::highlightsFor(m_bookHash);
                     applyHighlightsToBrowser();
                 });
                 break;
