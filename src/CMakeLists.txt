@@ -13,6 +13,8 @@ set(MNEMOSYNE_CORE_SOURCES
     core/SearchUtil.cpp
     core/CoordinateUtil.h
     core/CoordinateUtil.cpp
+    core/TextSelectionUtil.h
+    core/TextSelectionUtil.cpp
     core/HtmlAttrUtil.h
     core/HtmlAttrUtil.cpp
     app/RecentFiles.h
