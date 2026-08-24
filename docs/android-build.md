@@ -13,8 +13,11 @@ desktop platform Mnemosyne supports. They must be cross-compiled once per
 Android ABI and pointed at via `-DMNEMOSYNE_ANDROID_DEPS_PREFIX=...`.
 `libpoppler-qt6.so`/`libpoppler.so`/`libzip.so`/`libfreetype.so` are **not**
 committed to this repo (multi-hundred-MB of ABI-specific binaries); build
-them locally following the recipe below, or fetch a build script/CI
-artifact once Stage 9 sets one up.
+them locally following the recipe below, or run
+`scripts/build-android-deps.sh <prefix> <abi> <android-platform>
+<qt-android-kit-dir>`, a parameterized version of the exact same recipe —
+this is what CI's `android` job (`.github/workflows/build.yml`) runs on a
+cache miss.
 
 ## 1. Toolchain prerequisites
 

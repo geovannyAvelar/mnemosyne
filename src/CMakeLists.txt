@@ -126,6 +126,42 @@ target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_VERSION="${PROJECT_VER
 
 target_include_directories(mnemosynecore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+# QML-facing bridge classes (src/quick/*) that have no Android-specific
+# dependency -- everything except AndroidStorageAccess.{h,cpp} (uses
+# QtAndroidPrivate::startActivity for the SAF picker) and main_android.cpp
+# (the Android entry point). Built as one library on every platform, not
+# just under ANDROID: the Android executable target below links it as-is,
+# and tests/CMakeLists.txt links it too, so this logic gets real desktop
+# Qt Test coverage instead of only ever being exercised by manual on-device
+# testing on Android.
+set(MNEMOSYNE_QUICK_SOURCES
+    quick/SmokeTestBridge.h
+    quick/SmokeTestBridge.cpp
+    quick/LibraryModel.h
+    quick/LibraryModel.cpp
+    quick/ContentUriCache.h
+    quick/ContentUriCache.cpp
+    quick/PdfPageImageProvider.h
+    quick/PdfPageImageProvider.cpp
+    quick/PdfDocumentModel.h
+    quick/PdfDocumentModel.cpp
+    quick/EpubReaderModel.h
+    quick/EpubReaderModel.cpp
+    quick/BookmarksModel.h
+    quick/BookmarksModel.cpp
+    quick/HighlightsModel.h
+    quick/HighlightsModel.cpp
+    quick/PdfSelectionController.h
+    quick/PdfSelectionController.cpp
+    quick/SyncController.h
+    quick/SyncController.cpp
+)
+
+add_library(mnemosynequick STATIC ${MNEMOSYNE_QUICK_SOURCES})
+
+target_link_libraries(mnemosynequick PUBLIC mnemosynecore Qt6::Quick)
+target_include_directories(mnemosynequick PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Desktop (Qt Widgets) UI, layered on top of mnemosynecore. Everything in
 # here is specific to the mouse/keyboard/windowed desktop experience — a
 # mobile front end would link mnemosynecore directly and skip this target
@@ -271,30 +307,14 @@ if(ANDROID)
     # Android's Storage Access Framework document picker in place of a
     # desktop-style native file dialog (Android apps can't browse arbitrary
     # filesystem paths without it).
+    # quick/SmokeTestBridge.{h,cpp} through quick/SyncController.{h,cpp}
+    # (everything but the SAF picker and the entry point below) live in
+    # mnemosynequick now, shared with desktop's Qt Test coverage — see its
+    # definition above for why.
     qt_add_executable(MnemosyneAndroid
         quick/main_android.cpp
-        quick/SmokeTestBridge.h
-        quick/SmokeTestBridge.cpp
         quick/AndroidStorageAccess.h
         quick/AndroidStorageAccess.cpp
-        quick/LibraryModel.h
-        quick/LibraryModel.cpp
-        quick/ContentUriCache.h
-        quick/ContentUriCache.cpp
-        quick/PdfDocumentModel.h
-        quick/PdfDocumentModel.cpp
-        quick/PdfPageImageProvider.h
-        quick/PdfPageImageProvider.cpp
-        quick/EpubReaderModel.h
-        quick/EpubReaderModel.cpp
-        quick/BookmarksModel.h
-        quick/BookmarksModel.cpp
-        quick/HighlightsModel.h
-        quick/HighlightsModel.cpp
-        quick/PdfSelectionController.h
-        quick/PdfSelectionController.cpp
-        quick/SyncController.h
-        quick/SyncController.cpp
     )
 
     set_source_files_properties(${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
@@ -343,7 +363,7 @@ if(ANDROID)
     )
 
     target_link_libraries(MnemosyneAndroid PRIVATE
-        mnemosynecore
+        mnemosynequick
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::WebView

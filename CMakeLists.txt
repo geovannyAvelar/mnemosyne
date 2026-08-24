@@ -47,9 +47,14 @@ option(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC "Enable signing in with Google Drive a
 if(ANDROID)
   find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Concurrent Quick QuickControls2 WebView)
 elseif(MNEMOSYNE_ENABLE_HTML)
-  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent WebEngineWidgets)
+  # Quick is needed on desktop too, despite the desktop app itself being
+  # QWidget-only: mnemosynequick (src/quick/*, see src/CMakeLists.txt) is
+  # built on every platform so its logic gets real desktop Qt Test coverage
+  # in CI rather than only ever running on Android — see Stage 9 of the
+  # mobile-port plan.
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent WebEngineWidgets Quick)
 else()
-  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent Quick)
 endif()
 
 find_package(PkgConfig REQUIRED)

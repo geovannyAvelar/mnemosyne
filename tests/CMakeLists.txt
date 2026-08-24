@@ -118,3 +118,33 @@ target_link_libraries(scroll_page_turn_test PRIVATE mnemosynedesktopui Qt6::Test
 target_compile_definitions(scroll_page_turn_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
 add_test(NAME ScrollPageTurnTest COMMAND scroll_page_turn_test)
+
+# Headless coverage for src/quick/* (the mobile QML-facing bridge classes,
+# see mnemosynequick in src/CMakeLists.txt) -- previously only ever
+# exercised by manual on-device testing on Android. Not exhaustive: picks
+# one representative test per distinct pattern (list-model wrapper,
+# document-model wrapper) rather than one file per class.
+qt_add_executable(content_uri_cache_test ContentUriCacheTest.cpp)
+
+target_link_libraries(content_uri_cache_test PRIVATE mnemosynequick Qt6::Test)
+
+add_test(NAME ContentUriCacheTest COMMAND content_uri_cache_test)
+
+qt_add_executable(library_model_test LibraryModelTest.cpp)
+
+target_link_libraries(library_model_test PRIVATE mnemosynequick Qt6::Test)
+
+add_test(NAME LibraryModelTest COMMAND library_model_test)
+
+qt_add_executable(bookmarks_model_test BookmarksModelTest.cpp)
+
+target_link_libraries(bookmarks_model_test PRIVATE mnemosynequick Qt6::Test)
+
+add_test(NAME BookmarksModelTest COMMAND bookmarks_model_test)
+
+qt_add_executable(pdf_document_model_test PdfDocumentModelTest.cpp)
+
+target_link_libraries(pdf_document_model_test PRIVATE mnemosynequick Qt6::Test)
+target_compile_definitions(pdf_document_model_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME PdfDocumentModelTest COMMAND pdf_document_model_test)
