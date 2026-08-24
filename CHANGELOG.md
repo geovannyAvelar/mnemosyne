@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.1] - 2026-08-24
+
+### Added
+
+- Intel (x86_64) macOS builds are back — a new `macos-x86_64` CI job on GitHub's `macos-15-intel` runner, alongside the existing native Apple Silicon build. (GitHub retired the old `macos-13` Intel image in December 2025; `macos-15-intel` is its replacement and, per GitHub's own roadmap, will be the last x86_64 image it ships at all, retiring in turn around August 2027.) Every release now includes both a `Mnemosyne-macos-arm64.dmg` and a `Mnemosyne-macos-x86_64.dmg`.
+
 ## [1.6.0] - 2026-08-24
 
 ### Added
