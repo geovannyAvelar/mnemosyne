@@ -68,6 +68,8 @@ private:
     void offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote);
     void scheduleProgressSave();
     void saveProgressNow();
+    void turnToNextChapterAndResumeAtTop();
+    void turnToPreviousChapterAndResumeAtBottom();
 
     std::unique_ptr<EpubDocument> m_document;
     QString m_filePath;

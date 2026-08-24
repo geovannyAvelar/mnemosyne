@@ -13,6 +13,7 @@
 
 #include <QDateTime>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QPointer>
@@ -184,6 +185,7 @@ void EpubView::setupUi()
     connect(m_browser, &QTextBrowser::customContextMenuRequested, this, &EpubView::showBrowserContextMenu);
     applyPageColors();
     m_browser->viewport()->installEventFilter(this); // scrolling past the top/bottom edge turns the chapter
+    m_browser->installEventFilter(this); // ditto for arrow-key scrolling past the edge (see eventFilter())
 
     m_syncPromptBar = new SyncPromptBar(this);
 
@@ -486,24 +488,55 @@ bool EpubView::eventFilter(QObject *watched, QEvent *event)
         const bool scrollingUpPastTop = deltaY > 0 && vbar->value() <= vbar->minimum();
 
         if (scrollingDownPastBottom && m_document && m_currentChapter < m_document->spineCount() - 1) {
-            nextChapter();
-            m_browser->verticalScrollBar()->setValue(0); // resume at the top of the new chapter
-            m_pageTurnCooldown = true;
-            QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
+            turnToNextChapterAndResumeAtTop();
             return true;
         }
         if (scrollingUpPastTop && m_currentChapter > 0) {
-            previousChapter();
-            QPointer<QTextBrowser> browser = m_browser;
-            QTimer::singleShot(0, this, [browser] {
-                if (browser) {
-                    browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
-                }
-            });
-            m_pageTurnCooldown = true;
-            QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
+            turnToPreviousChapterAndResumeAtBottom();
             return true;
         }
     }
+
+    // QTextBrowser handles Up/Down itself (scrolling the viewport), so this
+    // has to intercept the key press before it reaches m_browser's own
+    // handling -- unlike the wheel case above, nothing here would otherwise
+    // bubble up for EpubView to see.
+    if (watched == m_browser && event->type() == QEvent::KeyPress && !m_pageTurnCooldown) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Down || keyEvent->key() == Qt::Key_Up) {
+            QScrollBar *vbar = m_browser->verticalScrollBar();
+            if (keyEvent->key() == Qt::Key_Down && vbar->value() >= vbar->maximum() && m_document
+                && m_currentChapter < m_document->spineCount() - 1) {
+                turnToNextChapterAndResumeAtTop();
+                return true;
+            }
+            if (keyEvent->key() == Qt::Key_Up && vbar->value() <= vbar->minimum() && m_currentChapter > 0) {
+                turnToPreviousChapterAndResumeAtBottom();
+                return true;
+            }
+        }
+    }
+
     return QWidget::eventFilter(watched, event);
+}
+
+void EpubView::turnToNextChapterAndResumeAtTop()
+{
+    nextChapter();
+    m_browser->verticalScrollBar()->setValue(0); // resume at the top of the new chapter
+    m_pageTurnCooldown = true;
+    QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
+}
+
+void EpubView::turnToPreviousChapterAndResumeAtBottom()
+{
+    previousChapter();
+    QPointer<QTextBrowser> browser = m_browser;
+    QTimer::singleShot(0, this, [browser] {
+        if (browser) {
+            browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
+        }
+    });
+    m_pageTurnCooldown = true;
+    QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
 }

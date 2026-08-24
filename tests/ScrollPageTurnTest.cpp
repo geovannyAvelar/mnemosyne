@@ -60,6 +60,8 @@ private slots:
 
     void epubScrollingPastBottomAdvancesChapter();
     void epubScrollingPastTopGoesToPreviousChapter();
+    void epubArrowDownAtBottomAdvancesChapter();
+    void epubArrowUpAtTopGoesToPreviousChapter();
 
 private:
     std::unique_ptr<PdfView> makePdfView();
@@ -266,6 +268,32 @@ void ScrollPageTurnTest::epubScrollingPastTopGoesToPreviousChapter()
     QVERIFY(browser);
 
     sendWheelScroll(browser->viewport(), 120);
+
+    QCOMPARE(view->currentPosition(), 0);
+}
+
+void ScrollPageTurnTest::epubArrowDownAtBottomAdvancesChapter()
+{
+    auto view = makeEpubView();
+    auto *browser = view->findChild<QTextBrowser *>();
+    QVERIFY(browser);
+
+    // Same "min==max==0" reasoning as the wheel test above -- the key event
+    // has to be sent to the browser itself (not its viewport), since that's
+    // what EpubView's eventFilter watches for KeyPress.
+    sendKeyPress(browser, Qt::Key_Down);
+
+    QCOMPARE(view->currentPosition(), 1);
+}
+
+void ScrollPageTurnTest::epubArrowUpAtTopGoesToPreviousChapter()
+{
+    auto view = makeEpubView();
+    view->goToChapter(1);
+    auto *browser = view->findChild<QTextBrowser *>();
+    QVERIFY(browser);
+
+    sendKeyPress(browser, Qt::Key_Up);
 
     QCOMPARE(view->currentPosition(), 0);
 }
