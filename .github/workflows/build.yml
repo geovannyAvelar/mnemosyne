@@ -158,6 +158,38 @@ jobs:
           path: build/Mnemosyne-macos-*.dmg
           if-no-files-found: error
 
+  # GitHub retired its old macos-13 Intel runner in December 2025; macos-15-intel
+  # is the replacement, and per actions/runner-images#13027 will be the last
+  # x86_64 image GitHub ships at all (retiring in turn around August 2027). Same
+  # steps as `macos` above, just on that Intel image — scripts/package-macos.sh
+  # already names the .dmg from `uname -m`, so no script changes needed.
+  macos-x86_64:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install qt poppler-qt6 libzip libmobi ninja dylibbundler
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package .dmg
+        run: ./scripts/package-macos.sh build
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemosyne-macos-x86_64
+          path: build/Mnemosyne-macos-*.dmg
+          if-no-files-found: error
+
   windows:
     runs-on: windows-latest
     defaults:
