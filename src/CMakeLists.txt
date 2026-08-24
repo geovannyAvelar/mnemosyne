@@ -47,11 +47,12 @@ set(MNEMOSYNE_CORE_SOURCES
     txt/TxtDocument.cpp
 )
 
-if(NOT ANDROID)
-    # libmobi has no prebuilt Android package (see top-level CMakeLists.txt);
-    # MobiDocument is only ever constructed from ui/MobiView.cpp anyway
-    # (desktop-only, see MNEMOSYNE_DESKTOP_UI_SOURCES below), so excluding it
-    # here doesn't remove anything the Android app could reach.
+if(NOT ANDROID AND NOT IOS)
+    # libmobi has no prebuilt Android or iOS package (see top-level
+    # CMakeLists.txt); MobiDocument is only ever constructed from
+    # ui/MobiView.cpp anyway (desktop-only, see MNEMOSYNE_DESKTOP_UI_SOURCES
+    # below), so excluding it here doesn't remove anything the mobile apps
+    # could reach.
     list(APPEND MNEMOSYNE_CORE_SOURCES
         mobi/MobiDocument.h
         mobi/MobiDocument.cpp
@@ -94,7 +95,7 @@ target_link_libraries(mnemosynecore PUBLIC
     PkgConfig::LIBZIP
 )
 
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT IOS)
     target_link_libraries(mnemosynecore PUBLIC PkgConfig::LIBMOBI)
 endif()
 
@@ -165,8 +166,12 @@ target_include_directories(mnemosynequick PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # Desktop (Qt Widgets) UI, layered on top of mnemosynecore. Everything in
 # here is specific to the mouse/keyboard/windowed desktop experience — a
 # mobile front end would link mnemosynecore directly and skip this target
-# entirely rather than reusing any of it.
-if(NOT ANDROID)
+# entirely rather than reusing any of it. QWidgets isn't available on
+# Android or iOS at all, so this whole block is skipped on both: without
+# excluding IOS here too, an iOS cross-compile would try to build this
+# (and the AppKit-only platform/MacWindowChrome.mm below, since CMake's
+# APPLE is true for iOS as well as macOS) and fail outright.
+if(NOT ANDROID AND NOT IOS)
 
 set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/MainWindow.cpp
@@ -297,7 +302,7 @@ if(UNIX AND NOT APPLE)
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
 endif()
 
-endif() # NOT ANDROID
+endif() # NOT ANDROID AND NOT IOS
 
 if(ANDROID)
     # Stage 2 proved the cross-compiled Poppler-Qt6/libzip/Freetype chain
@@ -392,4 +397,14 @@ if(ANDROID)
             QT_ANDROID_PACKAGE_NAME "org.mnemosyne"
         )
     endif()
+elseif(IOS)
+    # No MnemosyneIOS executable target yet — this is a placeholder so
+    # configuring with -DCMAKE_SYSTEM_NAME=iOS at least builds mnemosynecore
+    # and mnemosynequick against MNEMOSYNE_IOS_DEPS_PREFIX (see top-level
+    # CMakeLists.txt) instead of silently falling through to the desktop
+    # Widgets block. The real target — a quick/main_ios.mm entry point
+    # mirroring quick/main_android.cpp, an iOS document-picker bridge in
+    # place of AndroidStorageAccess, Xcode code signing, and Info.plist
+    # setup — is follow-up work; see docs/ios-build.md.
+    message(STATUS "MNEMOSYNE: building for iOS — mnemosynecore/mnemosynequick only, no app target yet (see docs/ios-build.md)")
 endif()
