@@ -1,0 +1,114 @@
+name: Publish APT repository
+
+# Rebuilds the whole APT repo from scratch every run -- two distributions,
+# published together to the same GitHub Pages site so neither publish call
+# clobbers the other (a Pages deployment replaces the entire site, so both
+# distributions have to be assembled in one go regardless of which caller
+# triggered this):
+#
+#   stable    every .deb ever attached to a non-prerelease GitHub release
+#             (i.e. every tagged vX.Y.Z release) -- the full version history,
+#             same as before this file existed.
+#   unstable  just the .deb(s) attached to the single floating "unstable"
+#             release (see unstable.yml), which always points at the latest
+#             commit on main. Rebuilt fresh each run, so it only ever holds
+#             the current build, never history.
+#
+# Stateless by design: no snapshot/db is carried over between runs, so
+# neither distribution can drift from what's actually on the Releases page.
+#
+# One-time setup this depends on (already done for this repo):
+#   - Settings > Pages > Build and deployment > Source = "GitHub Actions".
+#   - A GPG signing key, with its private key and passphrase saved as the
+#     APT_GPG_PRIVATE_KEY and APT_GPG_PASSPHRASE repo secrets.
+
+on:
+  workflow_call:
+
+jobs:
+  apt-repo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Install aptly
+        run: |
+          version=1.6.3
+          curl -fsSL "https://github.com/aptly-dev/aptly/releases/download/v${version}/aptly_${version}_linux_amd64.zip" -o aptly.zip
+          unzip -q aptly.zip -d aptly-extracted
+          sudo install -m 0755 "aptly-extracted/aptly_${version}_linux_amd64/aptly" /usr/local/bin/aptly
+          aptly version
+
+      - name: Import GPG signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent || true
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          key_id=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5; exit}')
+          echo "GPG_KEY_ID=$key_id" >> "$GITHUB_ENV"
+          gpg --batch --yes --export "$key_id" > pubkey.gpg
+
+      - name: Download every .deb ever released (stable)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p debs-stable
+          # Excludes prereleases -- notably "unstable" (see below), which
+          # gets its own distribution instead of joining this one.
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease == false) | .tagName'); do
+            # Older releases (before .deb packaging was added) have no matching
+            # assets, which makes gh exit non-zero; skip those, not the release.
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir debs-stable --skip-existing || true
+          done
+          ls -la debs-stable
+
+      - name: Download the current unstable .deb(s)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p debs-unstable
+          # No "unstable" release exists yet the very first time this runs
+          # (e.g. release.yml runs before unstable.yml ever has) -- leave the
+          # unstable distribution empty rather than fail the whole job.
+          gh release download unstable --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir debs-unstable --skip-existing || true
+          ls -la debs-unstable
+
+      - name: Build and publish both distributions
+        env:
+          GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PASSPHRASE" > /tmp/passphrase
+
+          aptly repo create -distribution=stable -component=main mnemosyne-stable
+          aptly repo add mnemosyne-stable debs-stable
+          aptly snapshot create mnemosyne-stable-snapshot from repo mnemosyne-stable
+          aptly publish snapshot -batch -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-stable-snapshot
+
+          aptly repo create -distribution=unstable -component=main mnemosyne-unstable
+          aptly repo add mnemosyne-unstable debs-unstable
+          aptly snapshot create mnemosyne-unstable-snapshot from repo mnemosyne-unstable
+          aptly publish snapshot -batch -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-unstable-snapshot
+
+          rm -f /tmp/passphrase
+
+      - name: Assemble Pages site
+        run: |
+          mkdir -p site
+          cp -r ~/.aptly/public/. site/
+          cp pubkey.gpg site/pubkey.gpg
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

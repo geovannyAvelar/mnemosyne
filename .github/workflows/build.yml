@@ -2,6 +2,16 @@ name: Build
 
 on:
   workflow_call:
+    inputs:
+      # Threaded through to the .deb's CPack version (see the
+      # MNEMOSYNE_PACKAGE_VERSION_SUFFIX cache variable in CMakeLists.txt).
+      # Left empty, .deb versioning is untouched -- only unstable.yml sets
+      # this, so its rebuilds get a version apt recognizes as newer each
+      # time instead of colliding with the last tagged release's.
+      package_version_suffix:
+        type: string
+        required: false
+        default: ""
 
 env:
   QT_QPA_PLATFORM: offscreen
@@ -30,7 +40,9 @@ jobs:
             gnome-keyring dbus-x11
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DMNEMOSYNE_PACKAGE_VERSION_SUFFIX="${{ inputs.package_version_suffix }}"
 
       - name: Build
         run: cmake --build build
@@ -98,7 +110,9 @@ jobs:
             gnome-keyring dbus-x11
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DMNEMOSYNE_PACKAGE_VERSION_SUFFIX="${{ inputs.package_version_suffix }}"
 
       - name: Build
         run: cmake --build build

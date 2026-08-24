@@ -3,9 +3,10 @@ name: Unstable
 # A rolling, floating "unstable" GitHub release that always points at the
 # latest commit on main: every push rebuilds the full platform matrix (same
 # build.yml as a tagged release) and replaces the previous unstable
-# release/tag with a fresh one at the new HEAD. Marked --prerelease so it
-# stays out of the apt-repo job in release.yml, which only sweeps
-# non-prerelease releases into the stable APT feed.
+# release/tag with a fresh one at the new HEAD, then republishes the
+# "unstable" APT distribution from it (see apt-repo.yml). Marked
+# --prerelease so it stays out of apt-repo.yml's "stable" distribution,
+# which only sweeps non-prerelease releases.
 
 on:
   push:
@@ -15,6 +16,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 # A second push landing mid-build would otherwise race the first over the
 # same floating tag/release; only the latest push's build is worth keeping.
@@ -23,8 +26,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A separate job (rather than computing this inline in build's "with:")
+  # because "with:" values on a "uses:" job can't run shell commands --
+  # they're evaluated before any step would exist to run one in.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      package_version_suffix: ${{ steps.suffix.outputs.value }}
+    steps:
+      - id: suffix
+        # "+" (not "~") because Debian version ordering treats it as newer
+        # than the plain version -- correct here, since every unstable build
+        # is from a commit *after* the last tagged release. The timestamp
+        # makes each successive build compare as newer than the last, which
+        # is what makes `apt upgrade` actually pick up new unstable builds
+        # instead of seeing an unchanged version and doing nothing.
+        run: echo "value=+unstable.$(date -u +%Y%m%d%H%M%S).${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: version
     uses: ./.github/workflows/build.yml
+    with:
+      package_version_suffix: ${{ needs.version.outputs.package_version_suffix }}
 
   release:
     needs: build
@@ -47,3 +70,8 @@ jobs:
             --notes "Automated build from the latest commit on main: ${{ github.repository }}@${GITHUB_SHA}. Not a stable release — may be broken; use a tagged release for anything else." \
             --prerelease \
             artifacts/*/*
+
+  apt-repo:
+    needs: [release]
+    uses: ./.github/workflows/apt-repo.yml
+    secrets: inherit

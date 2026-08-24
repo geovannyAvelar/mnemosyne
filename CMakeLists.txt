@@ -121,9 +121,19 @@ if(NOT ANDROID AND NOT IOS)
 endif()
 
 if(UNIX AND NOT APPLE)
+  # Appended to the .deb's version only (not PROJECT_VERSION, so
+  # MNEMOSYNE_VERSION / the About dialog stay untouched) -- lets the
+  # unstable-release pipeline (see .github/workflows/unstable.yml) give each
+  # rebuild a distinct, monotonically increasing version, e.g.
+  # "+unstable.20260824180000.abc1234". Without this, every unstable build
+  # would carry the same version as the last tagged release, and apt would
+  # never see a newer version to upgrade to.
+  set(MNEMOSYNE_PACKAGE_VERSION_SUFFIX "" CACHE STRING
+      "Appended to CPACK_PACKAGE_VERSION, e.g. for an unstable/rolling build")
+
   set(CPACK_GENERATOR "DEB")
   set(CPACK_PACKAGE_NAME "mnemosyne-pdf")
-  set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+  set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}${MNEMOSYNE_PACKAGE_VERSION_SUFFIX}")
   set(CPACK_PACKAGE_VENDOR "Mnemosyne")
   set(CPACK_PACKAGE_CONTACT "geovanny.avelar@gmail.com")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "PDF, EPUB, and HTML reader")

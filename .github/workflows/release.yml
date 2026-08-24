@@ -7,6 +7,12 @@ on:
 
 permissions:
   contents: write
+  # Reusable workflows (apt-repo.yml's "uses:" below) get the *intersection*
+  # of the caller's and callee's permissions, not just what the callee
+  # declares -- so pages/id-token have to be granted here too, or its Pages
+  # deploy step silently loses them despite requesting them itself.
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -52,83 +58,12 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md
 
-  # Rebuilds the whole apt repo from scratch every release, from every .deb
-  # ever published to this repo's Releases, and republishes it to GitHub
-  # Pages. Stateless by design: no snapshot/db is carried over between runs,
-  # so the repo can't drift from what's actually on the Releases page.
-  #
-  # One-time setup this job depends on (already done for this repo):
-  #   - Settings > Pages > Build and deployment > Source = "GitHub Actions".
-  #   - A GPG signing key, with its private key and passphrase saved as the
-  #     APT_GPG_PRIVATE_KEY and APT_GPG_PASSPHRASE repo secrets.
+  # See apt-repo.yml: rebuilds both the "stable" (every tagged release) and
+  # "unstable" (see unstable.yml) APT distributions together and republishes
+  # them to GitHub Pages, so a stable release also refreshes the unstable
+  # distribution's copy of the site rather than only unstable.yml's own runs
+  # doing so.
   apt-repo:
-    name: Publish APT repository
     needs: [release]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Install aptly
-        run: |
-          version=1.6.3
-          curl -fsSL "https://github.com/aptly-dev/aptly/releases/download/v${version}/aptly_${version}_linux_amd64.zip" -o aptly.zip
-          unzip -q aptly.zip -d aptly-extracted
-          sudo install -m 0755 "aptly-extracted/aptly_${version}_linux_amd64/aptly" /usr/local/bin/aptly
-          aptly version
-
-      - name: Import GPG signing key
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
-        run: |
-          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          echo "allow-loopback-pinentry" > ~/.gnupg/gpg-agent.conf
-          gpgconf --kill gpg-agent || true
-          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
-          key_id=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec/ {print $5; exit}')
-          echo "GPG_KEY_ID=$key_id" >> "$GITHUB_ENV"
-          gpg --batch --yes --export "$key_id" > pubkey.gpg
-
-      - name: Download every .deb ever released
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p debs
-          # Excludes prereleases -- notably the floating "unstable" release
-          # (see unstable.yml), which must never end up in the stable APT feed.
-          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease == false) | .tagName'); do
-            # Older releases (before .deb packaging was added) have no matching
-            # assets, which makes gh exit non-zero; skip those, not the release.
-            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir debs --skip-existing || true
-          done
-          ls -la debs
-
-      - name: Build the repo
-        env:
-          GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
-        run: |
-          aptly repo create -distribution=stable -component=main mnemosyne
-          aptly repo add mnemosyne debs
-          aptly snapshot create mnemosyne-snapshot from repo mnemosyne
-
-          echo "$GPG_PASSPHRASE" > /tmp/passphrase
-          aptly publish snapshot -batch -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-snapshot
-          rm -f /tmp/passphrase
-
-      - name: Assemble Pages site
-        run: |
-          mkdir -p site
-          cp -r ~/.aptly/public/. site/
-          cp pubkey.gpg site/pubkey.gpg
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+    uses: ./.github/workflows/apt-repo.yml
+    secrets: inherit

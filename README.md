@@ -88,6 +88,21 @@ sudo apt update
 sudo apt install mnemosyne-pdf
 ```
 
+There's also an `unstable` distribution, rebuilt from the latest commit on
+`main` on every push (see the "Unstable (latest main)" release) — always a
+single package, no version history, and may be broken. Use the same key,
+pointed at `unstable` instead of `stable`:
+
+```bash
+curl -fsSL https://geovannyavelar.github.io/mnemosyne/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/mnemosyne.gpg
+echo "deb [signed-by=/usr/share/keyrings/mnemosyne.gpg] https://geovannyavelar.github.io/mnemosyne unstable main" | sudo tee /etc/apt/sources.list.d/mnemosyne-unstable.list
+sudo apt update
+sudo apt install mnemosyne-pdf
+```
+
+Don't add both `.list` files at once — they publish the same package name at
+different, conflicting versions, and apt will just pick whichever it prefers.
+
 ### Linux (.deb, manual build)
 
 The build additionally installs a binary and a `.desktop` file, and CPack can produce a `.deb`:
