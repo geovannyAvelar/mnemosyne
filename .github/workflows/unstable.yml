@@ -1,0 +1,49 @@
+name: Unstable
+
+# A rolling, floating "unstable" GitHub release that always points at the
+# latest commit on main: every push rebuilds the full platform matrix (same
+# build.yml as a tagged release) and replaces the previous unstable
+# release/tag with a fresh one at the new HEAD. Marked --prerelease so it
+# stays out of the apt-repo job in release.yml, which only sweeps
+# non-prerelease releases into the stable APT feed.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# A second push landing mid-build would otherwise race the first over the
+# same floating tag/release; only the latest push's build is worth keeping.
+concurrency:
+  group: unstable-release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Replace the unstable release/tag with one at this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete unstable --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+
+          gh release create unstable \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Unstable (latest main)" \
+            --notes "Automated build from the latest commit on main: ${{ github.repository }}@${GITHUB_SHA}. Not a stable release — may be broken; use a tagged release for anything else." \
+            --prerelease \
+            artifacts/*/*

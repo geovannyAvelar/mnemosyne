@@ -98,7 +98,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p debs
-          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName'); do
+          # Excludes prereleases -- notably the floating "unstable" release
+          # (see unstable.yml), which must never end up in the stable APT feed.
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease == false) | .tagName'); do
             # Older releases (before .deb packaging was added) have no matching
             # assets, which makes gh exit non-zero; skip those, not the release.
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir debs --skip-existing || true
