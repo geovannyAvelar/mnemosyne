@@ -28,6 +28,9 @@ public:
 
     void openPath(const QString &filePath);
 
+protected:
+    void changeEvent(QEvent *event) override;
+
 private slots:
     void openFile();
     void showLibrary();
@@ -83,4 +86,8 @@ private:
 
     QPalette m_lightPalette;
     QPalette m_darkPalette;
+
+    // Set while minimized, to whether the window was maximized just before
+    // that; see changeEvent()'s WindowStateChange handling.
+    bool m_wasMaximizedBeforeMinimize = false;
 };

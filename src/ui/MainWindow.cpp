@@ -34,6 +34,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDateTime>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -48,6 +49,7 @@
 #include <QTabWidget>
 #include <QTimer>
 #include <QToolBar>
+#include <QWindowStateChangeEvent>
 #include <QtConcurrent/QtConcurrentRun>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -80,6 +82,31 @@ MainWindow::MainWindow(QWidget *parent)
             toggleSidebar();
         }
     });
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    QMainWindow::changeEvent(event);
+
+    if (event->type() != QEvent::WindowStateChange) {
+        return;
+    }
+
+    if (windowState() & Qt::WindowMinimized) {
+        m_wasMaximizedBeforeMinimize = static_cast<QWindowStateChangeEvent *>(event)->oldState() & Qt::WindowMaximized;
+        return;
+    }
+
+    // Some Linux window managers drop the maximized flag on restore from
+    // minimized instead of preserving it; when that happens, QMainWindow
+    // falls back to its last "normal" geometry, which for this window was
+    // never meaningfully set (see main.cpp's resize(1024, 768) fallback
+    // right before showMaximized() at launch) -- so the window snaps back to
+    // that small, centered size instead of staying maximized. Put it back.
+    if (m_wasMaximizedBeforeMinimize && !(windowState() & Qt::WindowMaximized)) {
+        m_wasMaximizedBeforeMinimize = false;
+        showMaximized();
+    }
 }
 
 void MainWindow::setupTabs()
