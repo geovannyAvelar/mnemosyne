@@ -13,6 +13,19 @@
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_LINUX
+    // Prefer XWayland (the xcb backend) over Qt's native Wayland QPA plugin.
+    // Qt's Wayland integration has long-standing bugs restoring a window's
+    // geometry after minimize/unminimize (see e.g. QTBUG-100263) -- confirmed
+    // reproducible on stock Ubuntu/GNOME, where the window comes back at some
+    // small, centered size instead of staying maximized. XWayland doesn't
+    // have this problem. A user who's explicitly set QT_QPA_PLATFORM (e.g.
+    // to force native Wayland back on) keeps that choice.
+    if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) {
+        qputenv("QT_QPA_PLATFORM", "xcb");
+    }
+#endif
+
 #ifdef MNEMOSYNE_ENABLE_HTML
     // Recommended by Qt WebEngine docs; must be set before QApplication is
     // constructed. Used for HtmlView's QWebEngineView.
