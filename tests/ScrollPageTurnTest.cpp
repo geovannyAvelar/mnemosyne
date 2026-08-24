@@ -4,6 +4,7 @@
 #include "ui/PdfView.h"
 
 #include <QCoreApplication>
+#include <QKeyEvent>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QTest>
@@ -26,6 +27,12 @@ void sendWheelScroll(QWidget *target, int angleDeltaY)
     QCoreApplication::sendEvent(target, &event);
 }
 
+void sendKeyPress(QWidget *target, int key)
+{
+    QKeyEvent event(QEvent::KeyPress, key, Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &event);
+}
+
 } // namespace
 
 // Exercises the "scroll past the page edge turns the page" behavior added to
@@ -44,6 +51,12 @@ private slots:
     void pdfDoesNotAdvancePastLastPage();
     void pdfDoesNotGoBeforeFirstPage();
     void pdfCooldownPreventsDoublePageTurn();
+
+    void pdfArrowDownScrollsWithinPage();
+    void pdfArrowDownAtBottomAdvancesAndLandsAtTop();
+    void pdfArrowUpAtTopGoesBackAndLandsAtBottom();
+    void pdfArrowDownDoesNotAdvancePastLastPage();
+    void pdfArrowUpDoesNotGoBeforeFirstPage();
 
     void epubScrollingPastBottomAdvancesChapter();
     void epubScrollingPastTopGoesToPreviousChapter();
@@ -160,6 +173,75 @@ void ScrollPageTurnTest::pdfCooldownPreventsDoublePageTurn()
     sendWheelScroll(scrollArea->viewport(), -120);
 
     QCOMPARE(view->currentPosition(), 1); // did NOT skip ahead to page 2
+}
+
+void ScrollPageTurnTest::pdfArrowDownScrollsWithinPage()
+{
+    auto view = makePdfView();
+    auto *scrollArea = view->findChild<QScrollArea *>();
+    QVERIFY(scrollArea);
+
+    scrollArea->verticalScrollBar()->setValue(0);
+    sendKeyPress(view.get(), Qt::Key_Down);
+
+    QCOMPARE(view->currentPosition(), 0); // stayed on the same page
+    QVERIFY(scrollArea->verticalScrollBar()->value() > 0); // but scrolled down
+}
+
+void ScrollPageTurnTest::pdfArrowDownAtBottomAdvancesAndLandsAtTop()
+{
+    auto view = makePdfView();
+    auto *scrollArea = view->findChild<QScrollArea *>();
+    QVERIFY(scrollArea);
+
+    scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
+    sendKeyPress(view.get(), Qt::Key_Down);
+
+    QCOMPARE(view->currentPosition(), 1);
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+}
+
+void ScrollPageTurnTest::pdfArrowUpAtTopGoesBackAndLandsAtBottom()
+{
+    auto view = makePdfView();
+    view->goToPage(1);
+    QCoreApplication::processEvents();
+    auto *scrollArea = view->findChild<QScrollArea *>();
+    QVERIFY(scrollArea);
+
+    scrollArea->verticalScrollBar()->setValue(0);
+    sendKeyPress(view.get(), Qt::Key_Up);
+
+    QCOMPARE(view->currentPosition(), 0);
+
+    // Landing at the bottom is deferred a tick, same as the wheel case.
+    QTRY_COMPARE_WITH_TIMEOUT(scrollArea->verticalScrollBar()->value(), scrollArea->verticalScrollBar()->maximum(), 2000);
+    QVERIFY(scrollArea->verticalScrollBar()->value() > 0);
+}
+
+void ScrollPageTurnTest::pdfArrowDownDoesNotAdvancePastLastPage()
+{
+    auto view = makePdfView();
+    view->goToPage(2); // the fixture's last page (0-based index 2 of 3)
+    auto *scrollArea = view->findChild<QScrollArea *>();
+    QVERIFY(scrollArea);
+
+    scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
+    sendKeyPress(view.get(), Qt::Key_Down);
+
+    QCOMPARE(view->currentPosition(), 2); // stayed put, no crash
+}
+
+void ScrollPageTurnTest::pdfArrowUpDoesNotGoBeforeFirstPage()
+{
+    auto view = makePdfView();
+    auto *scrollArea = view->findChild<QScrollArea *>();
+    QVERIFY(scrollArea);
+
+    scrollArea->verticalScrollBar()->setValue(0);
+    sendKeyPress(view.get(), Qt::Key_Up);
+
+    QCOMPARE(view->currentPosition(), 0);
 }
 
 void ScrollPageTurnTest::epubScrollingPastBottomAdvancesChapter()

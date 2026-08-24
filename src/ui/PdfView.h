@@ -8,6 +8,7 @@
 
 #include <memory>
 
+class QKeyEvent;
 class QLabel;
 class QScrollArea;
 class QSpinBox;
@@ -45,6 +46,7 @@ public:
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
 
 public slots:
     void goToPage(int index); // 0-based
@@ -68,6 +70,8 @@ private:
     void offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote);
     void scheduleProgressSave();
     void saveProgressNow();
+    void turnToNextPageAndResumeAtTop();
+    void turnToPreviousPageAndResumeAtBottom();
 
     std::unique_ptr<IDocument> m_document;
     QString m_filePath;

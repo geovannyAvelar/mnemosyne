@@ -32,6 +32,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
+#include <QKeyEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -521,26 +522,63 @@ bool PdfView::eventFilter(QObject *watched, QEvent *event)
         const bool scrollingUpPastTop = deltaY > 0 && vbar->value() <= vbar->minimum();
 
         if (scrollingDownPastBottom && m_document && m_currentPage < m_document->pageCount() - 1) {
-            nextPage();
-            m_scrollArea->verticalScrollBar()->setValue(0); // resume at the top of the new page
-            m_pageTurnCooldown = true;
-            QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
+            turnToNextPageAndResumeAtTop();
             return true;
         }
         if (scrollingUpPastTop && m_currentPage > 0) {
-            previousPage();
-            // The new page's scroll range isn't known until layout catches
-            // up with the resize triggered by previousPage(); defer.
-            QPointer<QScrollArea> scrollArea = m_scrollArea;
-            QTimer::singleShot(0, this, [scrollArea] {
-                if (scrollArea) {
-                    scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
-                }
-            });
-            m_pageTurnCooldown = true;
-            QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
+            turnToPreviousPageAndResumeAtBottom();
             return true;
         }
     }
     return QWidget::eventFilter(watched, event);
+}
+
+void PdfView::turnToNextPageAndResumeAtTop()
+{
+    nextPage();
+    m_scrollArea->verticalScrollBar()->setValue(0); // resume at the top of the new page
+    m_pageTurnCooldown = true;
+    QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
+}
+
+void PdfView::turnToPreviousPageAndResumeAtBottom()
+{
+    previousPage();
+    // The new page's scroll range isn't known until layout catches up with
+    // the resize triggered by previousPage(); defer.
+    QPointer<QScrollArea> scrollArea = m_scrollArea;
+    QTimer::singleShot(0, this, [scrollArea] {
+        if (scrollArea) {
+            scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
+        }
+    });
+    m_pageTurnCooldown = true;
+    QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
+}
+
+void PdfView::keyPressEvent(QKeyEvent *event)
+{
+    // PdfPageCanvas doesn't handle key events, so Qt bubbles them up here
+    // regardless of whether the canvas or the scroll area has focus.
+    constexpr int kArrowKeyScrollStep = 60; // pixels per arrow key press
+
+    if ((event->key() == Qt::Key_Down || event->key() == Qt::Key_Up) && !m_pageTurnCooldown) {
+        QScrollBar *vbar = m_scrollArea->verticalScrollBar();
+        if (event->key() == Qt::Key_Down) {
+            if (vbar->value() >= vbar->maximum() && m_document && m_currentPage < m_document->pageCount() - 1) {
+                turnToNextPageAndResumeAtTop();
+            } else {
+                vbar->setValue(vbar->value() + kArrowKeyScrollStep);
+            }
+        } else {
+            if (vbar->value() <= vbar->minimum() && m_currentPage > 0) {
+                turnToPreviousPageAndResumeAtBottom();
+            } else {
+                vbar->setValue(vbar->value() - kArrowKeyScrollStep);
+            }
+        }
+        event->accept();
+        return;
+    }
+    QWidget::keyPressEvent(event);
 }
