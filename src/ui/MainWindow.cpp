@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "app/BookmarkStore.h"
+#include "app/FileIdentity.h"
 #include "app/RecentFiles.h"
 #include "app/SyncFolder.h"
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
@@ -149,7 +150,7 @@ void MainWindow::setupDocks()
         if (m_currentFilePath.isEmpty()) {
             return;
         }
-        BookmarkStore::removeBookmark(m_currentFilePath, index);
+        BookmarkStore::removeBookmark(FileIdentity::contentHash(m_currentFilePath), index);
         refreshBookmarksDock();
     });
 
@@ -573,7 +574,7 @@ void MainWindow::addBookmarkForCurrentPosition()
     bookmark.label = label;
     bookmark.createdAt = QDateTime::currentDateTime();
 
-    BookmarkStore::addBookmark(m_currentFilePath, bookmark);
+    BookmarkStore::addBookmark(FileIdentity::contentHash(m_currentFilePath), bookmark);
     refreshBookmarksDock();
 }
 
@@ -610,7 +611,7 @@ void MainWindow::refreshBookmarksDock()
         m_bookmarksDock->clear();
         return;
     }
-    m_bookmarksDock->setBookmarks(BookmarkStore::bookmarksFor(m_currentFilePath));
+    m_bookmarksDock->setBookmarks(BookmarkStore::bookmarksFor(FileIdentity::contentHash(m_currentFilePath)));
 }
 
 void MainWindow::populateOpenRecentMenu()

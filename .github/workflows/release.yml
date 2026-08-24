@@ -48,6 +48,7 @@ jobs:
             artifacts/mnemosyne-windows-arm64/*.zip \
             artifacts/mnemosyne-windows-installer/*.exe \
             artifacts/mnemosyne-windows-installer-arm64/*.exe \
+            artifacts/mnemosyne-android/*.apk \
             --title "$GITHUB_REF_NAME" \
             --notes-file release-notes.md
 

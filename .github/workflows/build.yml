@@ -13,12 +13,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # qt6-declarative-dev (Qt Quick/QML) is needed here even though this
+      # desktop build is QWidget-only: mnemosynequick (src/quick/*, see
+      # src/CMakeLists.txt) is a small Qt Quick library built on every
+      # platform so its logic -- the same bridge classes the Android app
+      # uses -- gets real headless test coverage below rather than only
+      # ever running on-device on Android.
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             cmake ninja-build build-essential pkg-config \
-            qt6-base-dev qt6-base-dev-tools qt6-webengine-dev \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-webengine-dev \
             libpoppler-qt6-dev libzip-dev libmobi-dev libsecret-1-dev \
             libxkbcommon-x11-0 libxcb-cursor0 \
             gnome-keyring dbus-x11
@@ -86,7 +92,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             cmake ninja-build build-essential pkg-config \
-            qt6-base-dev qt6-base-dev-tools qt6-webengine-dev \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-webengine-dev \
             libpoppler-qt6-dev libzip-dev libmobi-dev libsecret-1-dev \
             libxkbcommon-x11-0 libxcb-cursor0 \
             gnome-keyring dbus-x11
@@ -207,6 +213,7 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-qt6-base
+            mingw-w64-x86_64-qt6-declarative
             mingw-w64-x86_64-poppler-qt6
             mingw-w64-x86_64-libzip
             mingw-w64-x86_64-pkgconf
@@ -287,6 +294,7 @@ jobs:
             mingw-w64-clang-aarch64-cmake
             mingw-w64-clang-aarch64-ninja
             mingw-w64-clang-aarch64-qt6-base
+            mingw-w64-clang-aarch64-qt6-declarative
             mingw-w64-clang-aarch64-poppler-qt6
             mingw-w64-clang-aarch64-libzip
             mingw-w64-clang-aarch64-pkgconf
@@ -333,4 +341,99 @@ jobs:
         with:
           name: mnemosyne-windows-installer-arm64
           path: build/Mnemosyne-Setup-arm64.exe
+          if-no-files-found: error
+
+  # Builds the android_x86_64 ABI only, matching every Android stage of the
+  # mobile port so far (docs/android-build.md) -- arm64-v8a, the real
+  # target for physical devices, is still deferred (tracked there, not
+  # silently dropped here). Full on-device instrumented testing stays a
+  # manual checklist for this milestone: this job proves the app builds,
+  # packages, and passes headless logic tests, not that it renders/behaves
+  # correctly on a real device — see the mobile-port plan's Stage 9 notes.
+  android:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_ABI: x86_64
+      ANDROID_PLATFORM_LEVEL: android-28
+      NDK_VERSION: 27.2.12479018
+      DEPS_PREFIX: ${{ github.workspace }}/android-deps-install
+    steps:
+      - uses: actions/checkout@v4
+
+      # Two Qt installs into the same root: the Android kit alone has no
+      # host executables (androiddeployqt, qmlcachegen, ...) -- qt-cmake
+      # finds them via a sibling gcc_64 install, exactly like the local
+      # dev setup in docs/android-build.md.
+      - name: Install Qt (Android kit)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: "linux"
+          target: "android"
+          arch: "android_x86_64"
+          modules: "qtwebview"
+          cache: true
+
+      - name: Install Qt (desktop host tools)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: "linux"
+          target: "desktop"
+          arch: "linux_gcc_64"
+          cache: true
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK ${{ env.NDK_VERSION }}
+        run: sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+
+      # Poppler-Qt6/libzip/freetype have no prebuilt Android packages (see
+      # docs/android-build.md) and a from-scratch Poppler build takes real
+      # time, so this is cached across runs -- only rebuilt when the
+      # versions baked into scripts/build-android-deps.sh's cache key
+      # change.
+      - name: Cache cross-compiled Android dependencies
+        id: android-deps-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DEPS_PREFIX }}
+          key: android-deps-${{ env.ANDROID_ABI }}-freetype2.13.3-libzip1.10.1-poppler24.02.0-v1
+
+      - name: Cross-compile freetype/libzip/poppler for Android
+        if: steps.android-deps-cache.outputs.cache-hit != 'true'
+        env:
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+        run: |
+          ./scripts/build-android-deps.sh \
+            "$DEPS_PREFIX" "$ANDROID_ABI" "$ANDROID_PLATFORM_LEVEL" "$QT_ROOT_DIR/../android_x86_64"
+
+      - name: Configure
+        env:
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+        run: |
+          "$QT_ROOT_DIR/../android_x86_64/bin/qt-cmake" -S . -B build-android -G Ninja \
+            -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
+            -DQT_ANDROID_BUILD_ALL_ABIS=OFF \
+            -DMNEMOSYNE_ANDROID_DEPS_PREFIX="$DEPS_PREFIX" \
+            -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build-android
+
+      - name: Package .apk
+        run: ./scripts/package-android.sh build-android "$ANDROID_ABI"
+
+      - name: Upload .apk artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemosyne-android
+          path: build-android/Mnemosyne-android-*.apk
           if-no-files-found: error

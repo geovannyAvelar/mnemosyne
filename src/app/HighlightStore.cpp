@@ -7,16 +7,16 @@
 
 namespace {
 
-QString groupKeyForHighlights(const QString &filePath)
+QString groupKeyForHighlights(const QString &bookHash)
 {
-    const QByteArray hash = QCryptographicHash::hash(filePath.toUtf8(), QCryptographicHash::Md5).toHex();
+    const QByteArray hash = QCryptographicHash::hash(bookHash.toUtf8(), QCryptographicHash::Md5).toHex();
     return QStringLiteral("Highlights/%1").arg(QString::fromLatin1(hash));
 }
 
-void writeHighlights(const QString &filePath, const QVector<Highlight> &highlights)
+void writeHighlights(const QString &bookHash, const QVector<Highlight> &highlights)
 {
     QSettings settings;
-    const QString group = groupKeyForHighlights(filePath);
+    const QString group = groupKeyForHighlights(bookHash);
     settings.remove(group);
     settings.beginWriteArray(group);
     for (int i = 0; i < highlights.size(); ++i) {
@@ -36,11 +36,11 @@ void writeHighlights(const QString &filePath, const QVector<Highlight> &highligh
 
 namespace HighlightStore {
 
-QVector<Highlight> highlightsFor(const QString &filePath)
+QVector<Highlight> highlightsFor(const QString &bookHash)
 {
     QSettings settings;
     QVector<Highlight> result;
-    const int size = settings.beginReadArray(groupKeyForHighlights(filePath));
+    const int size = settings.beginReadArray(groupKeyForHighlights(bookHash));
     for (int i = 0; i < size; ++i) {
         settings.setArrayIndex(i);
         Highlight h;
@@ -64,24 +64,24 @@ QVector<Highlight> highlightsFor(const QString &filePath)
     return result;
 }
 
-void addHighlight(const QString &filePath, const Highlight &highlight)
+void addHighlight(const QString &bookHash, const Highlight &highlight)
 {
-    QVector<Highlight> highlights = highlightsFor(filePath);
+    QVector<Highlight> highlights = highlightsFor(bookHash);
     highlights.append(highlight);
     std::sort(highlights.begin(), highlights.end(), [](const Highlight &a, const Highlight &b) {
         return a.targetIndex < b.targetIndex;
     });
-    writeHighlights(filePath, highlights);
+    writeHighlights(bookHash, highlights);
 }
 
-void removeHighlight(const QString &filePath, int index)
+void removeHighlight(const QString &bookHash, int index)
 {
-    QVector<Highlight> highlights = highlightsFor(filePath);
+    QVector<Highlight> highlights = highlightsFor(bookHash);
     if (index < 0 || index >= highlights.size()) {
         return;
     }
     highlights.removeAt(index);
-    writeHighlights(filePath, highlights);
+    writeHighlights(bookHash, highlights);
 }
 
 } // namespace HighlightStore

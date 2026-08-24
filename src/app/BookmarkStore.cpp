@@ -7,19 +7,19 @@
 
 namespace {
 
-// QSettings groups can't safely contain '/' from a raw file path, and
-// qHash() is seeded per-process (unstable across runs), so a persistent key
-// needs a proper content hash instead.
-QString groupKeyFor(const QString &filePath)
+// bookHash is already a content hash (see FileIdentity::contentHash), safe
+// on its own as a QSettings group name — this MD5 pass just keeps the key
+// a fixed, short length regardless of what hash algorithm callers use.
+QString groupKeyFor(const QString &bookHash)
 {
-    const QByteArray hash = QCryptographicHash::hash(filePath.toUtf8(), QCryptographicHash::Md5).toHex();
+    const QByteArray hash = QCryptographicHash::hash(bookHash.toUtf8(), QCryptographicHash::Md5).toHex();
     return QStringLiteral("Bookmarks/%1").arg(QString::fromLatin1(hash));
 }
 
-void writeBookmarks(const QString &filePath, const QVector<Bookmark> &bookmarks)
+void writeBookmarks(const QString &bookHash, const QVector<Bookmark> &bookmarks)
 {
     QSettings settings;
-    const QString group = groupKeyFor(filePath);
+    const QString group = groupKeyFor(bookHash);
     settings.remove(group);
     settings.beginWriteArray(group);
     for (int i = 0; i < bookmarks.size(); ++i) {
@@ -35,11 +35,11 @@ void writeBookmarks(const QString &filePath, const QVector<Bookmark> &bookmarks)
 
 namespace BookmarkStore {
 
-QVector<Bookmark> bookmarksFor(const QString &filePath)
+QVector<Bookmark> bookmarksFor(const QString &bookHash)
 {
     QSettings settings;
     QVector<Bookmark> result;
-    const int size = settings.beginReadArray(groupKeyFor(filePath));
+    const int size = settings.beginReadArray(groupKeyFor(bookHash));
     for (int i = 0; i < size; ++i) {
         settings.setArrayIndex(i);
         Bookmark b;
@@ -56,9 +56,9 @@ QVector<Bookmark> bookmarksFor(const QString &filePath)
     return result;
 }
 
-void addBookmark(const QString &filePath, const Bookmark &bookmark)
+void addBookmark(const QString &bookHash, const Bookmark &bookmark)
 {
-    QVector<Bookmark> bookmarks = bookmarksFor(filePath);
+    QVector<Bookmark> bookmarks = bookmarksFor(bookHash);
     bookmarks.erase(std::remove_if(bookmarks.begin(), bookmarks.end(),
                                     [&](const Bookmark &b) { return b.targetIndex == bookmark.targetIndex; }),
                      bookmarks.end());
@@ -66,17 +66,17 @@ void addBookmark(const QString &filePath, const Bookmark &bookmark)
     std::sort(bookmarks.begin(), bookmarks.end(), [](const Bookmark &a, const Bookmark &b) {
         return a.targetIndex < b.targetIndex;
     });
-    writeBookmarks(filePath, bookmarks);
+    writeBookmarks(bookHash, bookmarks);
 }
 
-void removeBookmark(const QString &filePath, int index)
+void removeBookmark(const QString &bookHash, int index)
 {
-    QVector<Bookmark> bookmarks = bookmarksFor(filePath);
+    QVector<Bookmark> bookmarks = bookmarksFor(bookHash);
     if (index < 0 || index >= bookmarks.size()) {
         return;
     }
     bookmarks.removeAt(index);
-    writeBookmarks(filePath, bookmarks);
+    writeBookmarks(bookHash, bookmarks);
 }
 
 } // namespace BookmarkStore

@@ -3,11 +3,19 @@
 #include "IHttpClient.h"
 #include "platform/TokenStore.h"
 
+#ifdef Q_OS_ANDROID
+#include "platform/OAuthRedirect_android.h"
+#include <QTimer>
+#else
+#include <QHostAddress>
+#include <QTcpServer>
+#include <QTcpSocket>
+#endif
+
 #include <QByteArray>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDesktopServices>
-#include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
@@ -16,8 +24,6 @@
 #include <QRandomGenerator>
 #include <QSettings>
 #include <QStringList>
-#include <QTcpServer>
-#include <QTcpSocket>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -30,6 +36,15 @@ const auto kAuthEndpoint = QStringLiteral("https://accounts.google.com/o/oauth2/
 const auto kTokenEndpoint = QStringLiteral("https://oauth2.googleapis.com/token");
 const auto kScope = QStringLiteral("https://www.googleapis.com/auth/drive.appdata openid email");
 
+#ifdef Q_OS_ANDROID
+// Android needs its own, separately-registered OAuth client (Google's
+// "Android" client type, tied to this app's package name + signing
+// certificate -- see docs/google-drive-setup.md's Android section; the
+// desktop client below can't be reused here). Left empty until a
+// maintainer provisions one and fills it in, same as desktop's own
+// "skip this step, no setup" from-source build.
+const auto kBundledClientId = QStringLiteral("");
+#else
 // Mnemosyne's own Google Cloud "Desktop app" OAuth client, shared by every
 // build so users never have to create their own. Fill these in once (see
 // docs/google-drive-setup.md) before shipping a release; from-source builds
@@ -38,6 +53,7 @@ const auto kScope = QStringLiteral("https://www.googleapis.com/auth/drive.appdat
 const auto kBundledClientId =
     QStringLiteral("226504444824-bdg1t0brf4il13ssqt2t3ulnf6njv6e0.apps.googleusercontent.com");
 const auto kBundledClientSecret = QStringLiteral("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");
+#endif
 
 struct AccessTokenCache
 {
@@ -120,7 +136,49 @@ QString clientId()
 
 QString clientSecret()
 {
+#ifdef Q_OS_ANDROID
+    return QString(); // Google's "Android" OAuth client type has no secret at all
+#else
     return kBundledClientSecret;
+#endif
+}
+
+// Google's "Android"/"iOS" OAuth client types are public clients with no
+// secret at all — omitting the field entirely (rather than sending it
+// empty) is the technically correct thing to do for a client type that
+// doesn't have one.
+void addClientSecretIfPresent(QUrlQuery &body)
+{
+    const QString secret = clientSecret();
+    if (!secret.isEmpty()) {
+        body.addQueryItem(QStringLiteral("client_secret"), secret);
+    }
+}
+
+// Shared by both platforms' startSignIn() once a redirect (loopback HTTP
+// request on desktop, OAuthRedirectActivity intent on Android) has actually
+// delivered an authorization code.
+void exchangeCodeForToken(const QString &code, const QString &verifier, const QString &redirectUri,
+                           std::function<void(bool ok, const QString &error)> onDone)
+{
+    QUrlQuery body;
+    body.addQueryItem(QStringLiteral("client_id"), clientId());
+    addClientSecretIfPresent(body);
+    body.addQueryItem(QStringLiteral("code"), code);
+    body.addQueryItem(QStringLiteral("code_verifier"), verifier);
+    body.addQueryItem(QStringLiteral("grant_type"), QStringLiteral("authorization_code"));
+    body.addQueryItem(QStringLiteral("redirect_uri"), redirectUri);
+
+    postForm(body, [onDone](const IHttpClient::Response &response) {
+        const detail::TokenResponse parsed = detail::parseTokenResponse(response.body);
+        if (parsed.accessToken.isEmpty()) {
+            onDone(false,
+                   parsed.error.isEmpty() ? QObject::tr("Google did not return a valid sign-in token.") : parsed.error);
+            return;
+        }
+        applyTokenResponse(parsed);
+        onDone(true, QString());
+    });
 }
 
 } // namespace
@@ -142,6 +200,85 @@ void signOut()
     accessTokenCache() = AccessTokenCache{};
 }
 
+#ifdef Q_OS_ANDROID
+// Android sandboxes each app in its own process with no way to bind a
+// loopback port another app's browser could reach — the desktop flow below
+// has no equivalent here. Instead the auth URL's redirect_uri is a custom
+// URI scheme (mnemosyne://oauth2redirect) that AndroidManifest.xml
+// registers OAuthRedirectActivity for; when the system browser follows the
+// redirect, Android launches that Activity, which hands the code/state/
+// error straight back into this process via a small JNI bridge (see
+// platform/OAuthRedirect_android.{h,cpp}) — no HTTP listener needed. Known
+// accepted limitation: if Android kills this app's process for memory
+// while the browser tab is open, the pending verifier/state (held only in
+// this static, not persisted) is lost and the sign-in silently never
+// completes — same category of gap as any other in-memory OAuth state on a
+// platform that can reclaim backgrounded processes.
+void startSignInAndroid(std::function<void(bool ok, const QString &error)> onDone)
+{
+    const QString verifier = detail::generateRandomUrlSafeString(32);
+    const QString challenge = detail::codeChallengeS256(verifier);
+    const QString state = detail::generateRandomUrlSafeString(16);
+    const QString redirectUri = QStringLiteral("mnemosyne://oauth2redirect");
+
+    QUrl authUrl(kAuthEndpoint);
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("client_id"), clientId());
+    query.addQueryItem(QStringLiteral("redirect_uri"), redirectUri);
+    query.addQueryItem(QStringLiteral("response_type"), QStringLiteral("code"));
+    query.addQueryItem(QStringLiteral("scope"), kScope);
+    query.addQueryItem(QStringLiteral("access_type"), QStringLiteral("offline"));
+    query.addQueryItem(QStringLiteral("prompt"), QStringLiteral("consent"));
+    query.addQueryItem(QStringLiteral("code_challenge"), challenge);
+    query.addQueryItem(QStringLiteral("code_challenge_method"), QStringLiteral("S256"));
+    query.addQueryItem(QStringLiteral("state"), state);
+    authUrl.setQuery(query);
+
+    // A timer, not just a one-shot callback, so a user who backs out of the
+    // browser without completing sign-in doesn't leave onDone dangling
+    // forever — there's no cancellation signal to catch that directly.
+    auto timeoutTimer = std::make_shared<QTimer>();
+    timeoutTimer->setSingleShot(true);
+
+    auto complete = std::make_shared<bool>(false);
+    auto finish = [complete, timeoutTimer, onDone](bool ok, const QString &error) {
+        if (*complete) {
+            return;
+        }
+        *complete = true;
+        timeoutTimer->stop();
+        OAuthRedirect::setPendingCallback(nullptr);
+        onDone(ok, error);
+    };
+
+    OAuthRedirect::setPendingCallback(
+        [verifier, state, redirectUri, finish](const QString &code, const QString &returnedState, const QString &error) {
+            if (!error.isEmpty()) {
+                finish(false, error);
+                return;
+            }
+            if (returnedState != state) {
+                finish(false, QObject::tr("Sign-in response failed a security check. Please try again."));
+                return;
+            }
+            if (code.isEmpty()) {
+                finish(false, QObject::tr("Sign-in was cancelled."));
+                return;
+            }
+            exchangeCodeForToken(code, verifier, redirectUri, finish);
+        });
+
+    QObject::connect(timeoutTimer.get(), &QTimer::timeout, [finish] {
+        finish(false, QObject::tr("Sign-in timed out."));
+    });
+    timeoutTimer->start(10 * 60 * 1000);
+
+    if (!QDesktopServices::openUrl(authUrl)) {
+        finish(false, QObject::tr("Could not open a browser for sign-in."));
+    }
+}
+#endif
+
 void startSignIn(std::function<void(bool ok, const QString &error)> onDone)
 {
     if (!hasClientCredentials()) {
@@ -149,6 +286,10 @@ void startSignIn(std::function<void(bool ok, const QString &error)> onDone)
         return;
     }
 
+#ifdef Q_OS_ANDROID
+    startSignInAndroid(std::move(onDone));
+    return;
+#else
     const QString verifier = detail::generateRandomUrlSafeString(32);
     const QString challenge = detail::codeChallengeS256(verifier);
     const QString state = detail::generateRandomUrlSafeString(16);
@@ -229,25 +370,7 @@ void startSignIn(std::function<void(bool ok, const QString &error)> onDone)
                     return;
                 }
 
-                QUrlQuery body;
-                body.addQueryItem(QStringLiteral("client_id"), clientId());
-                body.addQueryItem(QStringLiteral("client_secret"), clientSecret());
-                body.addQueryItem(QStringLiteral("code"), code);
-                body.addQueryItem(QStringLiteral("code_verifier"), verifier);
-                body.addQueryItem(QStringLiteral("grant_type"), QStringLiteral("authorization_code"));
-                body.addQueryItem(QStringLiteral("redirect_uri"), redirectUri);
-
-                postForm(body, [onDone](const IHttpClient::Response &response) {
-                    const detail::TokenResponse parsed = detail::parseTokenResponse(response.body);
-                    if (parsed.accessToken.isEmpty()) {
-                        onDone(false,
-                               parsed.error.isEmpty() ? QObject::tr("Google did not return a valid sign-in token.")
-                                                       : parsed.error);
-                        return;
-                    }
-                    applyTokenResponse(parsed);
-                    onDone(true, QString());
-                });
+                exchangeCodeForToken(code, verifier, redirectUri, onDone);
             });
 
             QObject::connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
@@ -258,6 +381,7 @@ void startSignIn(std::function<void(bool ok, const QString &error)> onDone)
         server->deleteLater();
         onDone(false, QObject::tr("Could not open a browser for sign-in."));
     }
+#endif
 }
 
 void withAccessToken(std::function<void(const QString &token)> onToken)
@@ -280,7 +404,7 @@ void withAccessToken(std::function<void(const QString &token)> onToken)
 
     QUrlQuery body;
     body.addQueryItem(QStringLiteral("client_id"), clientId());
-    body.addQueryItem(QStringLiteral("client_secret"), clientSecret());
+    addClientSecretIfPresent(body);
     body.addQueryItem(QStringLiteral("refresh_token"), refreshToken);
     body.addQueryItem(QStringLiteral("grant_type"), QStringLiteral("refresh_token"));
 

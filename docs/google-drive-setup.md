@@ -41,3 +41,34 @@ Google Drive sign-in to work, you need to provision that client once:
 
 If `kBundledClientId` is left empty, the app still builds, but the Sync menu
 disables "Sign in with Google Drive..." rather than offering a broken flow.
+The same is true on Android — see below.
+
+## Android
+
+The mobile app needs its own, separate OAuth client — the Desktop app
+client above won't work there, since Android's redirect flow (a custom
+`mnemosyne://oauth2redirect` URI scheme, not a loopback HTTP listener) only
+works with Google's **Android** client type, which is tied to a specific
+package name and signing certificate.
+
+1. **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
+2. Application type: **Android**.
+3. Package name: `org.mnemosyne` (must match exactly — this is
+   `QT_ANDROID_PACKAGE_NAME` in `src/CMakeLists.txt`).
+4. SHA-1 certificate fingerprint: the SHA-1 of whichever keystore signs your
+   build (debug keystore for local builds — `keytool -list -v -keystore
+   ~/.android/debug.keystore -alias androiddebugkey -storepass android
+   -keypass android`; your own release keystore for a signed build).
+5. Click **Create**. Google shows a Client ID and no secret at all — the
+   Android client type is a public client by design, matching what
+   `GoogleAuth.cpp` already expects (it omits `client_secret` from the
+   token request whenever none is configured).
+6. Copy the **Client ID** into `src/app/GoogleAuth.cpp`'s Android branch of
+   `kBundledClientId` (right next to the desktop one, under `#ifdef
+   Q_OS_ANDROID`), then rebuild — same one-time step as the desktop client
+   above, no in-app credential entry.
+
+Everything else (consent screen setup, test users, the `drive.appdata` +
+`openid` + `email` scopes) is shared with the Desktop app client above; add
+the same test-user accounts under the same OAuth consent screen rather than
+creating a second one.

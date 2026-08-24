@@ -10,6 +10,7 @@
 #include "app/ReadingProgressStore.h"
 #include "core/CoordinateUtil.h"
 #include "core/SearchUtil.h"
+#include "core/TextSelectionUtil.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/PdfPageCanvas.h"
 #include "ui/SyncPromptBar.h"
@@ -34,51 +35,13 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace {
 constexpr qreal kMinZoom = 0.25;
 constexpr qreal kMaxZoom = 4.0;
 constexpr qreal kZoomStep = 0.25;
 
-// Finds the word whose box is closest to point, in reading order: vertical
-// distance dominates so the right line is picked first, then the closest
-// word on that line. Returns -1 if words is empty.
-int nearestWordIndex(const QVector<TextWord> &words, const QPointF &point)
-{
-    if (words.isEmpty()) {
-        return -1;
-    }
-
-    int bestIndex = 0;
-    qreal bestScore = std::numeric_limits<qreal>::max();
-    for (int i = 0; i < words.size(); ++i) {
-        const QRectF &box = words[i].boundingBox;
-
-        qreal dx = 0;
-        if (point.x() < box.left()) {
-            dx = box.left() - point.x();
-        } else if (point.x() > box.right()) {
-            dx = point.x() - box.right();
-        }
-
-        qreal dy = 0;
-        if (point.y() < box.top()) {
-            dy = box.top() - point.y();
-        } else if (point.y() > box.bottom()) {
-            dy = point.y() - box.bottom();
-        }
-
-        const qreal score = dy * 1000.0 + dx;
-        if (score < bestScore) {
-            bestScore = score;
-            bestIndex = i;
-        }
-    }
-    return bestIndex;
-}
-
-// Mirrors PdfView::updateSelectionFromDrag()'s text reconstruction rules
+// Mirrors selectWordRange()'s (see core/TextSelectionUtil.h) text reconstruction rules
 // (newline on a line break, space when hasSpaceAfter) so search matches
 // found in the concatenated text map back to the right word rects, including
 // matches that span a word boundary (e.g. a two-word query).
@@ -112,7 +75,10 @@ PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget 
     : QWidget(parent)
     , m_document(std::move(document))
     , m_filePath(std::move(filePath))
-    , m_highlights(HighlightStore::highlightsFor(m_filePath))
+    // m_bookHash isn't set until restoreProgressAndCheckSync() runs in the
+    // constructor body below, so the initial load recomputes the hash here
+    // directly (cheap — FileIdentity caches by path+size+mtime).
+    , m_highlights(HighlightStore::highlightsFor(FileIdentity::contentHash(m_filePath)))
 {
     setupUi();
     restoreProgressAndCheckSync(); // sets m_currentPage/m_zoom before the first render, so there's no visible jump
@@ -347,36 +313,20 @@ void PdfView::updateSelectionFromDrag()
     const QPointF anchorPoint = QPointF(m_canvas->dragAnchorPixel()) / scale;
     const QPointF focusPoint = QPointF(m_canvas->dragFocusPixel()) / scale;
 
-    int anchorIndex = nearestWordIndex(m_currentPageWords, anchorPoint);
-    int focusIndex = nearestWordIndex(m_currentPageWords, focusPoint);
-    if (anchorIndex < 0 || focusIndex < 0) {
+    const TextSelectionResult selection = selectWordRange(m_currentPageWords, anchorPoint, focusPoint);
+    if (selection.text.isEmpty()) {
         m_canvas->setSelectionRects({});
         return;
     }
-    if (anchorIndex > focusIndex) {
-        std::swap(anchorIndex, focusIndex);
-    }
 
     QVector<QRect> pixelRects;
-    QString text;
-    for (int i = anchorIndex; i <= focusIndex; ++i) {
-        const TextWord &word = m_currentPageWords[i];
-        pixelRects.append(pageRectToPixelRect(word.boundingBox, m_zoom));
-        text += word.text;
-
-        if (i < focusIndex) {
-            const TextWord &next = m_currentPageWords[i + 1];
-            const qreal verticalGap = std::abs(next.boundingBox.center().y() - word.boundingBox.center().y());
-            if (verticalGap > word.boundingBox.height() / 2.0) {
-                text += QLatin1Char('\n');
-            } else if (word.hasSpaceAfter) {
-                text += QLatin1Char(' ');
-            }
-        }
+    pixelRects.reserve(selection.wordRects.size());
+    for (const QRectF &pageRect : selection.wordRects) {
+        pixelRects.append(pageRectToPixelRect(pageRect, m_zoom));
     }
 
     m_canvas->setSelectionRects(pixelRects);
-    m_selectedText = text;
+    m_selectedText = selection.text;
 }
 
 void PdfView::refreshHighlightOverlay()
@@ -440,8 +390,8 @@ void PdfView::addHighlightForSelection()
     highlight.text = m_selectedText;
     highlight.createdAt = QDateTime::currentDateTime();
 
-    HighlightStore::addHighlight(m_filePath, highlight);
-    m_highlights = HighlightStore::highlightsFor(m_filePath);
+    HighlightStore::addHighlight(m_bookHash, highlight);
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
 
     m_canvas->clearSelection();
     m_selectedText.clear();
@@ -466,8 +416,8 @@ void PdfView::showCanvasContextMenu(const QPoint &pos)
         menu.addSeparator();
         QAction *removeAction = menu.addAction(tr("Remove Highlight"));
         connect(removeAction, &QAction::triggered, this, [this, existingHighlightIndex] {
-            HighlightStore::removeHighlight(m_filePath, existingHighlightIndex);
-            m_highlights = HighlightStore::highlightsFor(m_filePath);
+            HighlightStore::removeHighlight(m_bookHash, existingHighlightIndex);
+            m_highlights = HighlightStore::highlightsFor(m_bookHash);
             refreshHighlightOverlay();
         });
     }
