@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-08-24
+
+### Added
+
+- Native arm64 packages for Linux and Windows, alongside macOS (which already built natively on arm64 since GitHub's `macos-latest` runners moved off Intel — that artifact is now just labeled explicitly). New `linux-arm64` (`ubuntu-24.04-arm`) and `windows-arm64` (`windows-11-arm`, MSYS2 CLANGARM64) CI jobs build and package alongside the existing x86_64 ones, and the Windows packaging scripts are now architecture-aware via `$MSYSTEM`. Every release now includes an arm64 `.deb`, `.dmg`, `.zip`, and installer.
+
 ## [1.5.1] - 2026-08-21
 
 ### Fixed
