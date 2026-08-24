@@ -55,6 +55,7 @@ public slots:
     void zoomIn();
     void zoomOut();
     void copySelection();
+    void addHighlightForSelection();
 
 private:
     void setupUi();
@@ -62,7 +63,6 @@ private:
     void updateNavigationState();
     void updateSelectionFromDrag();
     void showCanvasContextMenu(const QPoint &pos);
-    void addHighlightForSelection();
     void refreshHighlightOverlay();
     void refreshSearchOverlay();
     int highlightIndexAtPagePoint(const QPointF &pagePoint) const;
@@ -80,6 +80,12 @@ private:
     bool m_pageTurnCooldown = false; // guards against one fast scroll gesture skipping multiple pages
     qreal m_zoom = 1.5;
     QString m_selectedText;
+    // Bounding rect (page points) of the word-snapped selection shown live in
+    // updateSelectionFromDrag() -- addHighlightForSelection() persists this,
+    // not the raw drag rect, so a saved highlight covers exactly what the
+    // live blue overlay showed rather than whatever pixels the mouse
+    // actually started/ended on mid-character.
+    QRectF m_selectedBoundingPageRect;
     QVector<TextWord> m_currentPageWords; // words on m_currentPage, in reading order
     QVector<Highlight> m_highlights; // all highlights for this document
     QString m_searchTerm; // active search-dock query; empty means no search overlay

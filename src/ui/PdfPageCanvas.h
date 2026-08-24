@@ -8,9 +8,7 @@
 // Paints a rendered PDF page and lets the user click-drag to select text.
 // This widget only tracks the raw drag as pixel points; resolving that drag
 // into the actual words it spans (via IPage::words()) and computing the
-// per-word highlight rects to show is the caller's job (see PdfView) — the
-// same widget/document split as selectionPixelRect() always had, just at
-// word granularity now instead of one rectangle.
+// per-word highlight rects to show is the caller's job (see PdfView).
 class PdfPageCanvas : public QWidget
 {
     Q_OBJECT
@@ -31,11 +29,6 @@ public:
     // word index and sorts from there, so direction doesn't matter to it.
     QPoint dragAnchorPixel() const { return m_selectionStart; }
     QPoint dragFocusPixel() const { return m_selectionEnd; }
-
-    // Normalized bounding rect of the drag (image pixels) — still used for
-    // persisted highlights, which store a single page-space rect rather than
-    // a per-word list.
-    QRect selectionPixelRect() const;
 
     void clearSelection();
 

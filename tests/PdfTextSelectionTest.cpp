@@ -1,3 +1,6 @@
+#include "app/FileIdentity.h"
+#include "app/HighlightStore.h"
+#include "core/Highlight.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/PdfPageCanvas.h"
 #include "ui/PdfView.h"
@@ -6,6 +9,7 @@
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QMouseEvent>
+#include <QSettings>
 #include <QTest>
 
 // FIXTURES_DIR is injected by CMake (see tests/CMakeLists.txt).
@@ -44,11 +48,13 @@ class PdfTextSelectionTest : public QObject
 
 private slots:
     void initTestCase();
+    void cleanupTestCase();
 
     void dragOverWholePageSelectsAllWordsInOrder();
     void clickOnSingleWordSelectsOnlyThatWord();
     void copySelectionPutsSelectedTextOnClipboard();
     void selectionMovesLiveDuringDragBeforeRelease();
+    void addedHighlightCoversFullWordSnappedSelection();
 
 private:
     std::unique_ptr<PdfView> makePdfView();
@@ -62,6 +68,12 @@ void PdfTextSelectionTest::initTestCase()
 {
     QCoreApplication::setOrganizationName(QStringLiteral("MnemosyneTest"));
     QCoreApplication::setApplicationName(QStringLiteral("MnemosyneTest"));
+    QSettings().clear(); // fresh state -- this file now persists highlights too
+}
+
+void PdfTextSelectionTest::cleanupTestCase()
+{
+    QSettings().clear(); // don't leave test settings behind on disk
 }
 
 std::unique_ptr<PdfView> PdfTextSelectionTest::makePdfView()
@@ -160,6 +172,44 @@ void PdfTextSelectionTest::selectionMovesLiveDuringDragBeforeRelease()
     QCoreApplication::sendEvent(canvas, &release);
 
     QCOMPARE(view->selectedText(), QStringLiteral("Searchable PDF fixture"));
+}
+
+void PdfTextSelectionTest::addedHighlightCoversFullWordSnappedSelection()
+{
+    auto view = makePdfView();
+    auto *canvas = view->findChild<PdfPageCanvas *>();
+    QVERIFY(canvas);
+
+    // Start the drag inside word 0's right half and end it inside word 2's
+    // left half -- nearestWordIndex() still resolves this to the full
+    // "Searchable PDF fixture" (words 0-2), same as a real user's imprecise
+    // drag, but the *raw* pixel span of the drag is narrower than the union
+    // of the three words' boxes: it starts to the right of word 0's left
+    // edge and ends to the left of word 2's right edge. A highlight built
+    // from that raw span (rather than the word-snapped selection) would
+    // clip the outer edges of word 0 and word 2 -- the reported bug.
+    const QPoint start = wordCenterPixel(0) + QPoint(4, 0);
+    const QPoint end = wordCenterPixel(2) - QPoint(4, 0);
+    sendDrag(canvas, start, end);
+    QCOMPARE(view->selectedText(), QStringLiteral("Searchable PDF fixture"));
+
+    view->addHighlightForSelection();
+
+    const QString bookHash = FileIdentity::contentHash(fixturePath("test.pdf"));
+    const QVector<Highlight> highlights = HighlightStore::highlightsFor(bookHash);
+    QCOMPARE(highlights.size(), 1);
+
+    QString error;
+    auto doc = PopplerPdfDocument::load(fixturePath("test.pdf"), &error);
+    Q_ASSERT_X(doc, "test", qPrintable(error));
+    std::unique_ptr<IPage> page = doc->page(0);
+    Q_ASSERT(page);
+    const QVector<TextWord> words = page->words();
+
+    for (int i = 0; i <= 2; ++i) {
+        QVERIFY2(highlights[0].pageRect.contains(words[i].boundingBox),
+                 qPrintable(QStringLiteral("word %1's box isn't fully covered by the saved highlight").arg(i)));
+    }
 }
 
 QTEST_MAIN(PdfTextSelectionTest)

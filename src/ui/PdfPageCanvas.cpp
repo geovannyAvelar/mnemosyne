@@ -22,14 +22,6 @@ void PdfPageCanvas::setPage(const QImage &image, qreal scale)
     update();
 }
 
-QRect PdfPageCanvas::selectionPixelRect() const
-{
-    if (!m_hasSelection) {
-        return {};
-    }
-    return QRect(m_selectionStart, m_selectionEnd).normalized();
-}
-
 void PdfPageCanvas::clearSelection()
 {
     m_selecting = false;

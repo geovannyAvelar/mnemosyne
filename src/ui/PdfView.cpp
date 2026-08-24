@@ -299,6 +299,7 @@ void PdfView::updateNavigationState()
 void PdfView::updateSelectionFromDrag()
 {
     m_selectedText.clear();
+    m_selectedBoundingPageRect = QRectF();
 
     if (!m_canvas->isDragging() && !m_canvas->hasSelection()) {
         m_canvas->setSelectionRects({});
@@ -322,12 +323,15 @@ void PdfView::updateSelectionFromDrag()
 
     QVector<QRect> pixelRects;
     pixelRects.reserve(selection.wordRects.size());
+    QRectF boundingPageRect;
     for (const QRectF &pageRect : selection.wordRects) {
         pixelRects.append(pageRectToPixelRect(pageRect, m_zoom));
+        boundingPageRect = boundingPageRect.isNull() ? pageRect : boundingPageRect.united(pageRect);
     }
 
     m_canvas->setSelectionRects(pixelRects);
     m_selectedText = selection.text;
+    m_selectedBoundingPageRect = boundingPageRect;
 }
 
 void PdfView::refreshHighlightOverlay()
@@ -387,7 +391,7 @@ void PdfView::addHighlightForSelection()
 
     Highlight highlight;
     highlight.targetIndex = m_currentPage;
-    highlight.pageRect = pixelRectToPageRect(m_canvas->selectionPixelRect(), m_canvas->scale());
+    highlight.pageRect = m_selectedBoundingPageRect;
     highlight.text = m_selectedText;
     highlight.createdAt = QDateTime::currentDateTime();
 
