@@ -45,6 +45,7 @@ private slots:
     void signOutOfGoogle();
 #endif
     void toggleSidebar();
+    void toggleFullScreen();
     void showAbout();
 
 private:
@@ -68,6 +69,7 @@ private:
     QAction *m_addBookmarkAction = nullptr;
     QAction *m_darkModeAction = nullptr;
     QAction *m_sidebarToggleAction = nullptr;
+    QAction *m_fullScreenAction = nullptr;
 
     QTabWidget *m_tabWidget = nullptr;
     LibraryView *m_libraryView = nullptr; // always tab 0, not closable
@@ -90,4 +92,7 @@ private:
     // Set while minimized, to whether the window was maximized just before
     // that; see changeEvent()'s WindowStateChange handling.
     bool m_wasMaximizedBeforeMinimize = false;
+    // Same idea, for fullscreen: set on entering fullscreen, to whether the
+    // window was maximized just before that.
+    bool m_wasMaximizedBeforeFullScreen = false;
 };

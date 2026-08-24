@@ -92,8 +92,15 @@ void MainWindow::changeEvent(QEvent *event)
         return;
     }
 
+    // Keeps the View menu's checkmark correct regardless of how fullscreen
+    // was entered/exited -- this action, F11, the macOS traffic-light zoom
+    // button, or the OS itself (e.g. a native fullscreen gesture).
+    m_fullScreenAction->setChecked(windowState() & Qt::WindowFullScreen);
+
+    const Qt::WindowStates oldState = static_cast<QWindowStateChangeEvent *>(event)->oldState();
+
     if (windowState() & Qt::WindowMinimized) {
-        m_wasMaximizedBeforeMinimize = static_cast<QWindowStateChangeEvent *>(event)->oldState() & Qt::WindowMaximized;
+        m_wasMaximizedBeforeMinimize = oldState & Qt::WindowMaximized;
         return;
     }
 
@@ -105,6 +112,19 @@ void MainWindow::changeEvent(QEvent *event)
     // that small, centered size instead of staying maximized. Put it back.
     if (m_wasMaximizedBeforeMinimize && !(windowState() & Qt::WindowMaximized)) {
         m_wasMaximizedBeforeMinimize = false;
+        showMaximized();
+    }
+
+    // Same window manager quirk, different trigger: entering fullscreen
+    // un-maximizes the real window too (confirmed live on GNOME/Mutter --
+    // toggleFullScreen()'s XOR alone doesn't survive the round trip), and
+    // the maximized flag isn't restored on the way back out either. Track
+    // it across the transition and put it back here, same as above.
+    if (!(oldState & Qt::WindowFullScreen) && (windowState() & Qt::WindowFullScreen)) {
+        m_wasMaximizedBeforeFullScreen = oldState & Qt::WindowMaximized;
+    } else if (m_wasMaximizedBeforeFullScreen && (oldState & Qt::WindowFullScreen)
+               && !(windowState() & (Qt::WindowFullScreen | Qt::WindowMaximized))) {
+        m_wasMaximizedBeforeFullScreen = false;
         showMaximized();
     }
 }
@@ -278,9 +298,7 @@ void MainWindow::setupSidebarToggle()
 
     connect(closeButton, &QAbstractButton::clicked, this, &QWidget::close);
     connect(minimizeButton, &QAbstractButton::clicked, this, &QWidget::showMinimized);
-    connect(zoomButton, &QAbstractButton::clicked, this, [this] {
-        setWindowState(windowState() ^ Qt::WindowFullScreen);
-    });
+    connect(zoomButton, &QAbstractButton::clicked, this, &MainWindow::toggleFullScreen);
 
     trafficLightsLayout->addWidget(closeButton);
     trafficLightsLayout->addWidget(minimizeButton);
@@ -328,6 +346,15 @@ void MainWindow::toggleSidebar()
     } else {
         showSidebar();
     }
+}
+
+void MainWindow::toggleFullScreen()
+{
+    // XOR, not showFullScreen()/showNormal(): those two reset every other
+    // state bit, so leaving fullscreen would drop back to a plain (not
+    // maximized) window even if that's what it was before. XOR flips just
+    // the fullscreen bit and leaves Maximized (or any other bit) alone.
+    setWindowState(windowState() ^ Qt::WindowFullScreen);
 }
 
 // Shared by toggleSidebar()'s show branch and focusSearch(): anywhere the
@@ -395,6 +422,16 @@ void MainWindow::setupMenus()
     m_darkModeAction = viewMenu->addAction(tr("&Dark Mode"));
     m_darkModeAction->setCheckable(true);
     connect(m_darkModeAction, &QAction::toggled, this, &MainWindow::setDarkModeEnabled);
+
+    viewMenu->addSeparator();
+    m_fullScreenAction = viewMenu->addAction(tr("&Full Screen"));
+    m_fullScreenAction->setCheckable(true);
+    m_fullScreenAction->setShortcut(QKeySequence(Qt::Key_F11));
+    // Not tied to toggled(): changeEvent() is the single source of truth for
+    // this checkbox, so it stays correct no matter how fullscreen was
+    // entered/exited (this action, F11, the macOS traffic-light zoom button,
+    // or the OS itself) instead of just the paths that go through here.
+    connect(m_fullScreenAction, &QAction::triggered, this, &MainWindow::toggleFullScreen);
 
     m_syncMenu = menuBar()->addMenu(tr("&Sync"));
     connect(m_syncMenu, &QMenu::aboutToShow, this, &MainWindow::populateSyncMenu);
