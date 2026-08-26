@@ -32,6 +32,17 @@ namespace GoogleAuth {
 namespace {
 
 const auto kRefreshTokenKey = QStringLiteral("GoogleDrive/refreshToken");
+
+// Mirrors "do we have a refresh token" in QSettings (a plain local file, not
+// the OS secret store) so isSignedIn() has a fast, always-available answer
+// that doesn't depend on the Secret Service being reachable right now. On
+// Linux in particular, the actual token lives behind libsecret/gnome-keyring,
+// which can be transiently locked (screen lock, suspend, an idle timeout) —
+// without this, a locked keyring at the wrong moment makes the app look
+// signed out even though nothing was actually revoked. This flag is only
+// ever cleared by an explicit signOut() or a definitive "invalid_grant" from
+// Google (see withAccessToken()) — never by a keyring read merely failing.
+const auto kSignedInKey = QStringLiteral("GoogleDrive/SignedIn");
 const auto kAuthEndpoint = QStringLiteral("https://accounts.google.com/o/oauth2/v2/auth");
 const auto kTokenEndpoint = QStringLiteral("https://oauth2.googleapis.com/token");
 const auto kScope = QStringLiteral("https://www.googleapis.com/auth/drive.appdata openid email");
@@ -105,6 +116,11 @@ void applyTokenResponse(const detail::TokenResponse &parsed)
 {
     accessTokenCache().token = parsed.accessToken;
     accessTokenCache().expiry = QDateTime::currentDateTimeUtc().addSecs(qMax(0, parsed.expiresInSeconds - 30));
+
+    // A successful exchange (initial sign-in or a plain refresh) is
+    // authoritative proof we're signed in, independent of whether the
+    // refresh token itself was reachable in the keyring just now.
+    QSettings().setValue(kSignedInKey, true);
 
     // Google only returns a refresh_token on the very first authorization
     // (or when one is re-issued); a plain token refresh usually omits it,
@@ -185,7 +201,18 @@ void exchangeCodeForToken(const QString &code, const QString &verifier, const QS
 
 bool isSignedIn()
 {
-    return !TokenStore::load(kRefreshTokenKey).isEmpty();
+    QSettings settings;
+    if (settings.contains(kSignedInKey)) {
+        return settings.value(kSignedInKey).toBool();
+    }
+
+    // Upgrading from a build that predates kSignedInKey: fall back to a
+    // real keyring read exactly once, then persist the answer so every
+    // later call is answered from QSettings instead of touching the
+    // (lockable) Secret Service.
+    const bool signedIn = !TokenStore::load(kRefreshTokenKey).isEmpty();
+    settings.setValue(kSignedInKey, signedIn);
+    return signedIn;
 }
 
 QString accountEmail()
@@ -196,7 +223,9 @@ QString accountEmail()
 void signOut()
 {
     TokenStore::remove(kRefreshTokenKey);
-    QSettings().remove(QStringLiteral("GoogleDrive/AccountEmail"));
+    QSettings settings;
+    settings.remove(QStringLiteral("GoogleDrive/AccountEmail"));
+    settings.setValue(kSignedInKey, false);
     accessTokenCache() = AccessTokenCache{};
 }
 
@@ -411,6 +440,16 @@ void withAccessToken(std::function<void(const QString &token)> onToken)
     postForm(body, [onToken](const IHttpClient::Response &response) {
         const detail::TokenResponse parsed = detail::parseTokenResponse(response.body);
         if (parsed.accessToken.isEmpty()) {
+            // Only "invalid_grant" is Google actually telling us the
+            // refresh token itself is dead (revoked, expired, or the
+            // account's password/security state changed) -- that's a real
+            // sign-out. Anything else (network trouble, a malformed
+            // response, "invalid_client" from a misconfigured build) is a
+            // transient failure of this one refresh attempt and must not
+            // clear the persisted signed-in state.
+            if (parsed.errorCode == QStringLiteral("invalid_grant")) {
+                signOut();
+            }
             onToken(QString());
             return;
         }
@@ -430,6 +469,7 @@ void setTokensForTesting(const QString &accessToken, const QString &refreshToken
     accessTokenCache().expiry = QDateTime::currentDateTimeUtc().addSecs(expiresInSeconds);
     if (!refreshToken.isEmpty()) {
         TokenStore::save(kRefreshTokenKey, refreshToken);
+        QSettings().setValue(kSignedInKey, true);
     }
 }
 
@@ -463,7 +503,8 @@ TokenResponse parseTokenResponse(const QByteArray &json)
 
     const QJsonObject obj = doc.object();
     if (obj.contains(QStringLiteral("error"))) {
-        result.error = obj.value(QStringLiteral("error_description")).toString(obj.value(QStringLiteral("error")).toString());
+        result.errorCode = obj.value(QStringLiteral("error")).toString();
+        result.error = obj.value(QStringLiteral("error_description")).toString(result.errorCode);
         return result;
     }
 

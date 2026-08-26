@@ -65,7 +65,8 @@ struct TokenResponse
     QString refreshToken; // empty on a refresh response — Google only returns it once
     QString idToken;
     int expiresInSeconds = 0;
-    QString error;
+    QString error;      // human-readable (error_description, falling back to the raw code)
+    QString errorCode;  // raw OAuth error code (e.g. "invalid_grant"), empty on success
 };
 
 TokenResponse parseTokenResponse(const QByteArray &json);
