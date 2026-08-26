@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.2] - 2026-08-26
+
+### Fixed
+
+- On Linux, Google Drive sync could appear to sign itself out after the app had been open for a while, even though nothing had actually been revoked. The refresh token is kept in the desktop's secret store (gnome-keyring via libsecret), which can become transiently locked mid-session (e.g. after the screen locks or the machine wakes from suspend); the app was treating that as an outright sign-out instead of a temporary hiccup. Signed-in state now only changes on an explicit sign-out or a real revocation from Google.
+
 ## [1.6.1] - 2026-08-24
 
 ### Added
