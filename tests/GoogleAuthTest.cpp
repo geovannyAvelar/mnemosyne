@@ -47,6 +47,7 @@ class GoogleAuthTest : public QObject
 
 private slots:
     void initTestCase();
+    void cleanupTestCase();
 
     void codeVerifierIsUrlSafeAndUnique();
     void codeChallengeMatchesRfc7636Vector();
@@ -66,6 +67,19 @@ void GoogleAuthTest::initTestCase()
 {
     QCoreApplication::setOrganizationName(QStringLiteral("MnemosyneTest"));
     QCoreApplication::setApplicationName(QStringLiteral("MnemosyneTest"));
+}
+
+void GoogleAuthTest::cleanupTestCase()
+{
+    // Several tests below leave a signed-in state (a fake refresh token
+    // saved via setTokensForTesting) so later tests in *this* binary have
+    // something to work with. TokenStore's backing store is a real, global
+    // OS secret store shared by every process on the machine -- including
+    // other test binaries that run after this one in the same CI job -- so
+    // leaving it behind here would leak a bogus "signed in" refresh token
+    // that some other test's GoogleDriveSync code could pick up and try to
+    // actually refresh over the network. Sign out for real before exiting.
+    GoogleAuth::signOut();
 }
 
 void GoogleAuthTest::codeVerifierIsUrlSafeAndUnique()

@@ -33,16 +33,23 @@ namespace {
 
 const auto kRefreshTokenKey = QStringLiteral("GoogleDrive/refreshToken");
 
-// Mirrors "do we have a refresh token" in QSettings (a plain local file, not
-// the OS secret store) so isSignedIn() has a fast, always-available answer
-// that doesn't depend on the Secret Service being reachable right now. On
-// Linux in particular, the actual token lives behind libsecret/gnome-keyring,
-// which can be transiently locked (screen lock, suspend, an idle timeout) —
-// without this, a locked keyring at the wrong moment makes the app look
-// signed out even though nothing was actually revoked. This flag is only
-// ever cleared by an explicit signOut() or a definitive "invalid_grant" from
-// Google (see withAccessToken()) — never by a keyring read merely failing.
-const auto kSignedInKey = QStringLiteral("GoogleDrive/SignedIn");
+// Mirrors "do we have a refresh token" in memory, for the lifetime of this
+// process, so isSignedIn() has a fast answer that doesn't depend on the OS
+// secret store being reachable right now. On Linux in particular, the actual
+// token lives behind libsecret/gnome-keyring, which can be transiently
+// locked (screen lock, suspend, an idle timeout) — without this, a locked
+// keyring at the wrong moment makes the app look signed out mid-session even
+// though nothing was actually revoked. Only ever cleared by an explicit
+// signOut() or a definitive "invalid_grant" from Google (see
+// withAccessToken()) — never by a keyring read merely failing. Deliberately
+// in-memory rather than persisted: a fresh process start with the keyring
+// genuinely unreachable should still report not-signed-in rather than
+// assert a stale answer it hasn't verified this run.
+bool &cachedSignedIn()
+{
+    static bool signedIn = false;
+    return signedIn;
+}
 const auto kAuthEndpoint = QStringLiteral("https://accounts.google.com/o/oauth2/v2/auth");
 const auto kTokenEndpoint = QStringLiteral("https://oauth2.googleapis.com/token");
 const auto kScope = QStringLiteral("https://www.googleapis.com/auth/drive.appdata openid email");
@@ -120,7 +127,7 @@ void applyTokenResponse(const detail::TokenResponse &parsed)
     // A successful exchange (initial sign-in or a plain refresh) is
     // authoritative proof we're signed in, independent of whether the
     // refresh token itself was reachable in the keyring just now.
-    QSettings().setValue(kSignedInKey, true);
+    cachedSignedIn() = true;
 
     // Google only returns a refresh_token on the very first authorization
     // (or when one is re-issued); a plain token refresh usually omits it,
@@ -201,17 +208,16 @@ void exchangeCodeForToken(const QString &code, const QString &verifier, const QS
 
 bool isSignedIn()
 {
-    QSettings settings;
-    if (settings.contains(kSignedInKey)) {
-        return settings.value(kSignedInKey).toBool();
+    if (cachedSignedIn()) {
+        return true;
     }
 
-    // Upgrading from a build that predates kSignedInKey: fall back to a
-    // real keyring read exactly once, then persist the answer so every
-    // later call is answered from QSettings instead of touching the
-    // (lockable) Secret Service.
+    // Not yet confirmed in this process (e.g. right after startup): a real
+    // keyring read is the only way to find out. Once this succeeds, later
+    // calls are answered from the cache above instead of touching the
+    // (lockable) Secret Service again.
     const bool signedIn = !TokenStore::load(kRefreshTokenKey).isEmpty();
-    settings.setValue(kSignedInKey, signedIn);
+    cachedSignedIn() = signedIn;
     return signedIn;
 }
 
@@ -223,9 +229,8 @@ QString accountEmail()
 void signOut()
 {
     TokenStore::remove(kRefreshTokenKey);
-    QSettings settings;
-    settings.remove(QStringLiteral("GoogleDrive/AccountEmail"));
-    settings.setValue(kSignedInKey, false);
+    QSettings().remove(QStringLiteral("GoogleDrive/AccountEmail"));
+    cachedSignedIn() = false;
     accessTokenCache() = AccessTokenCache{};
 }
 
@@ -469,7 +474,7 @@ void setTokensForTesting(const QString &accessToken, const QString &refreshToken
     accessTokenCache().expiry = QDateTime::currentDateTimeUtc().addSecs(expiresInSeconds);
     if (!refreshToken.isEmpty()) {
         TokenStore::save(kRefreshTokenKey, refreshToken);
-        QSettings().setValue(kSignedInKey, true);
+        cachedSignedIn() = true;
     }
 }
 
