@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/BookMetadataClient.h" // BookMetadata
 #include "core/Document.h"
 #include "core/ReaderView.h" // SearchResult
 
@@ -9,6 +10,7 @@
 #include <QPalette>
 #include <QVector>
 
+class BookInfoDock;
 class BookmarksDock;
 class IReaderView;
 class LibraryView;
@@ -57,6 +59,7 @@ private:
     void populateOpenRecentMenu();
     void populateSyncMenu();
     void refreshBookmarksDock();
+    void refreshBookInfoDock();
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
     int findTabForFilePath(const QString &filePath) const;
@@ -64,16 +67,26 @@ private:
     TocDock *m_tocDock = nullptr;
     BookmarksDock *m_bookmarksDock = nullptr;
     SearchDock *m_searchDock = nullptr;
+    BookInfoDock *m_bookInfoDock = nullptr;
+    BookMetadataClient *m_bookMetadataClient = nullptr;
     QMenu *m_openRecentMenu = nullptr;
     QMenu *m_syncMenu = nullptr;
     QAction *m_addBookmarkAction = nullptr;
     QAction *m_darkModeAction = nullptr;
     QAction *m_sidebarToggleAction = nullptr;
     QAction *m_fullScreenAction = nullptr;
+    QAction *m_bookInfoLookupAction = nullptr;
 
     QTabWidget *m_tabWidget = nullptr;
     LibraryView *m_libraryView = nullptr; // always tab 0, not closable
     QHash<QWidget *, QString> m_tabFilePaths;
+    QHash<QWidget *, QString> m_tabIsbn; // empty when the tab has no (or an unrecognized) ISBN
+    QString m_currentIsbn; // active tab's ISBN; guards a stale async reply after switching tabs
+    // EPUB/MOBI's own OPF/EXTH metadata, captured at open time -- shown in
+    // BookInfoDock immediately, with no network access; default-constructed
+    // (all fields empty) for every other format's tab.
+    QHash<QWidget *, BookMetadata> m_tabLocalInfo;
+    BookMetadata m_currentLocalInfo;
 
     IReaderView *m_currentView = nullptr; // active tab's view; nullptr when Library is active
     QString m_currentFilePath; // active tab's file path; empty when Library is active

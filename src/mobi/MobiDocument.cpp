@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QObject>
+#include <QRegularExpression>
 
 #include <cstdint>
 #include <cstdlib>
@@ -37,6 +38,65 @@ QString takeMobiString(char *raw)
     const QString result = raw ? QString::fromUtf8(raw) : QString();
     free(raw); // libmobi's mobi_meta_get_*() return heap strings the caller owns
     return result;
+}
+
+// mobi_meta_get_isbn() returns the EXTH ISBN record verbatim, which in
+// practice sometimes carries hyphens (e.g. "978-0-13-468599-1") -- strip
+// down to the bare digits/checksum letter so this matches the normalized
+// shape EpubDocument::isbn() produces, ready for an ISBN-keyed lookup.
+QString normalizeIsbn(const QString &raw)
+{
+    QString cleaned;
+    for (const QChar &c : raw) {
+        if (c.isLetterOrNumber()) {
+            cleaned.append(c.toUpper());
+        }
+    }
+    const bool isIsbn13 = cleaned.size() == 13;
+    const bool isIsbn10 = cleaned.size() == 10;
+    if (!isIsbn13 && !isIsbn10) {
+        return {};
+    }
+    return cleaned;
+}
+
+// EXTH's author record is a single string; multiple authors show up as one
+// value joined with "&" or ";" (no fixed separator in the format), so split
+// on either rather than treating the whole thing as one name.
+QStringList splitAuthors(const QString &raw)
+{
+    static const QRegularExpression separator(QStringLiteral("\\s*[;&]\\s*"));
+    QStringList authors;
+    for (const QString &author : raw.split(separator, Qt::SkipEmptyParts)) {
+        const QString trimmed = author.trimmed();
+        if (!trimmed.isEmpty()) {
+            authors.append(trimmed);
+        }
+    }
+    return authors;
+}
+
+// KindleGen's embedded cover: EXTH_COVEROFFSET names an index, relative to
+// the first resource record, into the PDB record list; that record holds
+// the raw image bytes directly (no further container format wraps it).
+QImage extractCover(const MOBIData *m)
+{
+    MOBIExthHeader *exth = mobi_get_exthrecord_by_tag(m, EXTH_COVEROFFSET);
+    if (!exth || !exth->data) {
+        return {};
+    }
+    const uint32_t offset = mobi_decode_exthvalue(static_cast<const unsigned char *>(exth->data), exth->size);
+
+    const size_t firstResource = mobi_get_first_resource_record(m);
+    if (firstResource == MOBI_NOTSET) {
+        return {};
+    }
+
+    const MOBIPdbRecord *record = mobi_get_record_by_seqnumber(m, firstResource + offset);
+    if (!record || !record->data) {
+        return {};
+    }
+    return QImage::fromData(record->data, static_cast<int>(record->size));
 }
 
 // CP1252 matches Latin-1 one-for-one except for 0x80-0x9F, which CP1252
@@ -214,6 +274,11 @@ std::unique_ptr<MobiDocument> MobiDocument::load(const QString &filePath, QStrin
     if (document->m_title.isEmpty()) {
         document->m_title = QFileInfo(filePath).completeBaseName();
     }
+    document->m_isbn = normalizeIsbn(takeMobiString(mobi_meta_get_isbn(m)));
+    document->m_authors = splitAuthors(takeMobiString(mobi_meta_get_author(m)));
+    document->m_publisher = takeMobiString(mobi_meta_get_publisher(m));
+    document->m_description = takeMobiString(mobi_meta_get_description(m));
+    document->m_cover = extractCover(m);
 
     // rawml->markup is the linked list of reconstructed chapter-like HTML
     // parts (as opposed to ->flow for CSS and ->resources for images/OPF).

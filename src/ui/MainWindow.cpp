@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "app/BookMetadataClient.h"
 #include "app/BookmarkStore.h"
 #include "app/FileIdentity.h"
 #include "app/RecentFiles.h"
@@ -14,6 +15,7 @@
 #include "markdown/MarkdownDocument.h"
 #include "mobi/MobiDocument.h"
 #include "txt/TxtDocument.h"
+#include "ui/BookInfoDock.h"
 #include "ui/BookmarksDock.h"
 #include "ui/ComicView.h"
 #include "ui/EpubView.h"
@@ -52,6 +54,18 @@
 #include <QWindowStateChangeEvent>
 #include <QtConcurrent/QtConcurrentRun>
 
+namespace {
+// Title alone doesn't count: it's virtually always present (falls back to
+// the filename) and already duplicates the tab/window title, so it's not
+// worth a dedicated sidebar tab on its own -- this only reports true when
+// there's something the tab title doesn't already show.
+bool bookMetadataHasContent(const BookMetadata &info)
+{
+    return !info.authors.isEmpty() || !info.publisher.isEmpty() || !info.publishDate.isEmpty()
+        || !info.description.isEmpty() || !info.cover.isNull();
+}
+} // namespace
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_lightPalette(Theme::lightPalette())
@@ -67,6 +81,12 @@ MainWindow::MainWindow(QWidget *parent)
     const bool savedDarkMode = QSettings().value(QStringLiteral("darkMode"), false).toBool();
     m_darkModeAction->setChecked(savedDarkMode);
     setDarkModeEnabled(savedDarkMode); // setChecked() only emits toggled() on a change, so apply explicitly
+
+    // Off by default: this toggle gates the app's only network call
+    // unrelated to Drive sync (see BookMetadataClient), so it should never
+    // fire without the user having explicitly turned it on.
+    const bool savedBookInfoLookup = QSettings().value(QStringLiteral("bookInfoLookupEnabled"), false).toBool();
+    m_bookInfoLookupAction->setChecked(savedBookInfoLookup);
 
     // The docks setupDocks() just created start out visible, so only act
     // when the saved state actually disagrees with that default. Deferred
@@ -167,13 +187,67 @@ void MainWindow::setupDocks()
     addDockWidget(Qt::LeftDockWidgetArea, m_searchDock);
     tabifyDockWidget(m_tocDock, m_searchDock);
 
+    m_bookInfoDock = new BookInfoDock(this);
+    addDockWidget(Qt::LeftDockWidgetArea, m_bookInfoDock);
+    tabifyDockWidget(m_tocDock, m_bookInfoDock);
+
     m_searchWatcher = new QFutureWatcher<QVector<SearchResult>>(this);
+
+    m_bookMetadataClient = new BookMetadataClient(this);
+    connect(m_bookMetadataClient, &BookMetadataClient::metadataReady, this,
+            [this](const QString &isbn, const BookMetadata &apiInfo) {
+                if (isbn != m_currentIsbn) {
+                    return; // stale: user moved on before this arrived
+                }
+                if (m_tocDock->isHidden()) {
+                    return; // user hid the sidebar while this was in flight; don't pop it back open
+                }
+                // The API enhances the local metadata rather than replacing
+                // it outright: a field it didn't return (e.g. a description
+                // when there were no "excerpts") keeps its local value.
+                BookMetadata merged = m_currentLocalInfo;
+                if (!apiInfo.title.isEmpty()) {
+                    merged.title = apiInfo.title;
+                }
+                if (!apiInfo.authors.isEmpty()) {
+                    merged.authors = apiInfo.authors;
+                }
+                if (!apiInfo.publisher.isEmpty()) {
+                    merged.publisher = apiInfo.publisher;
+                }
+                if (!apiInfo.publishDate.isEmpty()) {
+                    merged.publishDate = apiInfo.publishDate;
+                }
+                if (!apiInfo.description.isEmpty()) {
+                    merged.description = apiInfo.description;
+                }
+                if (!apiInfo.cover.isNull()) {
+                    merged.cover = apiInfo.cover;
+                }
+                m_bookInfoDock->setMetadata(merged);
+            });
+    connect(m_bookMetadataClient, &BookMetadataClient::lookupFailed, this,
+            [this](const QString &isbn, const QString &reason) {
+                if (isbn != m_currentIsbn) {
+                    return;
+                }
+                if (m_tocDock->isHidden()) {
+                    return; // user hid the sidebar while this was in flight
+                }
+                // Only surface the failure if there was nothing local to
+                // fall back on -- otherwise leave the local info in place;
+                // the API was just an enhancement attempt that came up short.
+                if (!bookMetadataHasContent(m_currentLocalInfo)) {
+                    m_bookInfoDock->setUnavailable(reason);
+                }
+            });
 
     // The tab strip above (from setTabPosition) already labels each dock, so
     // each dock's own title bar would just be a redundant duplicate label.
     m_tocDock->setTitleBarWidget(new QWidget(m_tocDock));
     m_bookmarksDock->setTitleBarWidget(new QWidget(m_bookmarksDock));
     m_searchDock->setTitleBarWidget(new QWidget(m_searchDock));
+    m_bookInfoDock->setTitleBarWidget(new QWidget(m_bookInfoDock));
 
     m_tocDock->raise(); // Contents is the more useful default tab on opening a book
 
@@ -341,6 +415,7 @@ void MainWindow::toggleSidebar()
         m_tocDock->hide();
         m_bookmarksDock->hide();
         m_searchDock->hide();
+        m_bookInfoDock->hide(); // regardless of content -- refreshBookInfoDock() reconciles on show
         QSettings().setValue(QStringLiteral("sidebarVisible"), false);
         m_sidebarToggleAction->setToolTip(tr("Show Sidebar"));
     } else {
@@ -372,10 +447,18 @@ void MainWindow::showSidebar()
     // was the raised/active tab (e.g. via focusSearch()), Qt can fail to
     // restore this area's width on show() and leave it collapsed to 0 —
     // the docks are then technically "visible" but occupy no space. Force a
-    // sane width explicitly rather than relying on Qt to infer one.
-    resizeDocks({m_tocDock}, {260}, Qt::Horizontal);
+    // sane width explicitly rather than relying on Qt to infer one. 300,
+    // not 260: with Book Info now a fourth tab in this group, 260 elides
+    // the tab bar's labels down to "B…"/"S…"/"B…" and scrolls "Contents"
+    // out of view entirely.
+    resizeDocks({m_tocDock}, {300}, Qt::Horizontal);
     QSettings().setValue(QStringLiteral("sidebarVisible"), true);
     m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));
+
+    // Book Info was left hidden by toggleSidebar() regardless of whether it
+    // had content (see there); recompute for the current tab now that the
+    // group is visible again, rather than force it open unconditionally.
+    refreshBookInfoDock();
 }
 
 void MainWindow::setupMenus()
@@ -417,11 +500,21 @@ void MainWindow::setupMenus()
     viewMenu->addAction(m_tocDock->toggleViewAction());
     viewMenu->addAction(m_bookmarksDock->toggleViewAction());
     viewMenu->addAction(m_searchDock->toggleViewAction());
+    viewMenu->addAction(m_bookInfoDock->toggleViewAction());
     viewMenu->addSeparator();
 
     m_darkModeAction = viewMenu->addAction(tr("&Dark Mode"));
     m_darkModeAction->setCheckable(true);
     connect(m_darkModeAction, &QAction::toggled, this, &MainWindow::setDarkModeEnabled);
+
+    // Off by default -- see BookMetadataClient's doc comment for why this
+    // needs to be an explicit opt-in rather than automatic.
+    m_bookInfoLookupAction = viewMenu->addAction(tr("Look Up Book &Info Online"));
+    m_bookInfoLookupAction->setCheckable(true);
+    connect(m_bookInfoLookupAction, &QAction::toggled, this, [this](bool enabled) {
+        QSettings().setValue(QStringLiteral("bookInfoLookupEnabled"), enabled);
+        refreshBookInfoDock();
+    });
 
     viewMenu->addSeparator();
     m_fullScreenAction = viewMenu->addAction(tr("&Full Screen"));
@@ -504,6 +597,8 @@ void MainWindow::openPath(const QString &filePath)
     QString errorMessage;
     QWidget *widget = nullptr;
     IReaderView *view = nullptr;
+    QString isbn; // only EPUB/MOBI carry one; see BookMetadataClient
+    BookMetadata localInfo; // ditto: EPUB/MOBI's own OPF/EXTH metadata
 
     if (suffix == QLatin1String("pdf")) {
         std::unique_ptr<IDocument> document = openDocument(filePath, &errorMessage);
@@ -515,6 +610,12 @@ void MainWindow::openPath(const QString &filePath)
     } else if (suffix == QLatin1String("epub")) {
         std::unique_ptr<EpubDocument> document = EpubDocument::load(filePath, &errorMessage);
         if (document) {
+            isbn = document->isbn();
+            localInfo.title = document->title();
+            localInfo.authors = document->authors();
+            localInfo.publisher = document->publisher();
+            localInfo.description = document->description();
+            localInfo.cover = document->cover();
             auto *epubView = new EpubView(std::move(document), filePath, m_tabWidget);
             epubView->setDarkMode(m_darkModeAction->isChecked());
             widget = epubView;
@@ -546,6 +647,12 @@ void MainWindow::openPath(const QString &filePath)
     } else if (suffix == QLatin1String("mobi") || suffix == QLatin1String("azw") || suffix == QLatin1String("azw3")) {
         std::unique_ptr<MobiDocument> document = MobiDocument::load(filePath, &errorMessage);
         if (document) {
+            isbn = document->isbn();
+            localInfo.title = document->title();
+            localInfo.authors = document->authors();
+            localInfo.publisher = document->publisher();
+            localInfo.description = document->description();
+            localInfo.cover = document->cover();
             auto *mobiView = new MobiView(std::move(document), filePath, m_tabWidget);
             mobiView->setDarkMode(m_darkModeAction->isChecked());
             widget = mobiView;
@@ -575,6 +682,8 @@ void MainWindow::openPath(const QString &filePath)
     RecentFiles::recordOpened(filePath, view->documentTitle(), suffix);
 
     m_tabFilePaths.insert(widget, filePath);
+    m_tabIsbn.insert(widget, isbn);
+    m_tabLocalInfo.insert(widget, localInfo);
     const int index = m_tabWidget->addTab(widget, view->documentTitle());
     m_tabWidget->setCurrentIndex(index); // triggers onTabChanged, which populates docks/title
 }
@@ -586,9 +695,12 @@ void MainWindow::onTabChanged(int index)
     if (!widget || widget == m_libraryView) {
         m_currentView = nullptr;
         m_currentFilePath.clear();
+        m_currentIsbn.clear();
+        m_currentLocalInfo = BookMetadata();
         m_tocDock->clear();
         m_bookmarksDock->clear();
         m_searchDock->clear();
+        m_bookInfoDock->clear();
         m_addBookmarkAction->setEnabled(false);
         setWindowTitle(tr("Mnemosyne"));
         if (widget == m_libraryView) {
@@ -599,13 +711,49 @@ void MainWindow::onTabChanged(int index)
 
     m_currentView = dynamic_cast<IReaderView *>(widget);
     m_currentFilePath = m_tabFilePaths.value(widget);
+    m_currentIsbn = m_tabIsbn.value(widget);
+    m_currentLocalInfo = m_tabLocalInfo.value(widget);
 
     if (m_currentView) {
         m_tocDock->setTableOfContents(m_currentView->tableOfContents());
         refreshBookmarksDock();
         m_searchDock->clear();
+        refreshBookInfoDock();
         m_addBookmarkAction->setEnabled(true);
         setWindowTitle(tr("%1 — Mnemosyne").arg(m_currentView->documentTitle()));
+    }
+}
+
+void MainWindow::refreshBookInfoDock()
+{
+    // The sidebar group is a deliberate user choice (the top-bar hide/show
+    // toggle) that this dock is now part of -- see toggleSidebar()/
+    // showSidebar() -- so don't pop it back open on top of that just
+    // because the current tab has info to show. showSidebar() calls back
+    // into this once the group is visible again.
+    if (m_tocDock->isHidden()) {
+        return;
+    }
+
+    const bool hasLocal = bookMetadataHasContent(m_currentLocalInfo);
+    const bool shouldLookUp = !m_currentIsbn.isEmpty() && m_bookInfoLookupAction->isChecked();
+
+    if (!hasLocal && !shouldLookUp) {
+        m_bookInfoDock->clear();
+        return;
+    }
+
+    // Local metadata (if any) shows immediately -- no network round trip
+    // needed for it -- and the API lookup below then enhances it in place
+    // once it lands (see metadataReady's handler in setupDocks()).
+    if (hasLocal) {
+        m_bookInfoDock->setMetadata(m_currentLocalInfo);
+    } else {
+        m_bookInfoDock->setLoading();
+    }
+
+    if (shouldLookUp) {
+        m_bookMetadataClient->lookup(m_currentIsbn);
     }
 }
 
@@ -617,6 +765,8 @@ void MainWindow::onTabCloseRequested(int index)
     }
     m_tabWidget->removeTab(index);
     m_tabFilePaths.remove(widget);
+    m_tabIsbn.remove(widget);
+    m_tabLocalInfo.remove(widget);
     widget->deleteLater();
 }
 

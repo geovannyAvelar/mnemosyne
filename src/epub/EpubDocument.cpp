@@ -9,6 +9,8 @@
 #include <QUrl>
 #include <QXmlStreamReader>
 
+#include <algorithm>
+
 namespace {
 
 QString resolveEpubPath(const QString &baseDir, const QString &href)
@@ -71,6 +73,56 @@ QString mimeTypeForImagePath(const QString &path)
         return QStringLiteral("image/webp");
     }
     return QStringLiteral("image/png");
+}
+
+bool looksLikeIsbn13(const QString &s)
+{
+    if (s.size() != 13) {
+        return false;
+    }
+    return std::all_of(s.begin(), s.end(), [](QChar c) { return c.isDigit(); });
+}
+
+bool looksLikeIsbn10(const QString &s)
+{
+    if (s.size() != 10) {
+        return false;
+    }
+    for (int i = 0; i < 9; ++i) {
+        if (!s.at(i).isDigit()) {
+            return false;
+        }
+    }
+    const QChar last = s.at(9);
+    return last.isDigit() || last.toUpper() == QLatin1Char('X');
+}
+
+// dc:identifier has no fixed vocabulary -- an EPUB can carry a UUID, a DOI,
+// an ASIN, and an ISBN side by side with no reliable way to tell which is
+// which from the element alone (opf:scheme isn't required and is often
+// omitted in practice). Scanning every candidate for one that reduces to a
+// bare 10- or 13-digit ISBN shape is the pragmatic fallback: it's rare for
+// a UUID/DOI to collapse into that exact shape once punctuation is
+// stripped, so false positives are unlikely in practice.
+QString isbnFromIdentifiers(const QStringList &candidates)
+{
+    for (const QString &raw : candidates) {
+        QString cleaned;
+        for (const QChar &c : raw) {
+            if (c.isLetterOrNumber()) {
+                cleaned.append(c.toUpper());
+            }
+        }
+        if (cleaned.startsWith(QLatin1String("URNISBN"))) {
+            cleaned.remove(0, 7);
+        } else if (cleaned.startsWith(QLatin1String("ISBN"))) {
+            cleaned.remove(0, 4);
+        }
+        if (looksLikeIsbn13(cleaned) || looksLikeIsbn10(cleaned)) {
+            return cleaned;
+        }
+    }
+    return {};
 }
 
 } // namespace
@@ -152,6 +204,9 @@ bool EpubDocument::parseOpf(const QString &opfPath, QString *errorMessage)
     QHash<QString, QString> manifestIdToHref;
     QString navHref;
     QString ncxId;
+    QStringList identifierCandidates;
+    QString coverManifestId; // EPUB2 fallback: <meta name="cover" content="{manifest id}">
+    QString coverHref;       // EPUB3: an <item> with properties="cover-image"
 
     QXmlStreamReader reader(data);
     bool insideMetadata = false;
@@ -166,6 +221,24 @@ bool EpubDocument::parseOpf(const QString &opfPath, QString *errorMessage)
                 insideMetadata = true;
             } else if (insideMetadata && name.compare(QLatin1String("title"), Qt::CaseInsensitive) == 0 && m_title.isEmpty()) {
                 m_title = reader.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+            } else if (insideMetadata && name.compare(QLatin1String("identifier"), Qt::CaseInsensitive) == 0) {
+                identifierCandidates.append(reader.readElementText(QXmlStreamReader::SkipChildElements).trimmed());
+            } else if (insideMetadata && name.compare(QLatin1String("creator"), Qt::CaseInsensitive) == 0) {
+                const QString author = reader.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+                if (!author.isEmpty()) {
+                    m_authors.append(author);
+                }
+            } else if (insideMetadata && name.compare(QLatin1String("publisher"), Qt::CaseInsensitive) == 0
+                       && m_publisher.isEmpty()) {
+                m_publisher = reader.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+            } else if (insideMetadata && name.compare(QLatin1String("description"), Qt::CaseInsensitive) == 0
+                       && m_description.isEmpty()) {
+                m_description = reader.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
+            } else if (insideMetadata && name.compare(QLatin1String("meta"), Qt::CaseInsensitive) == 0) {
+                const QXmlStreamAttributes attrs = reader.attributes();
+                if (attrs.value(QLatin1String("name")).toString().compare(QLatin1String("cover"), Qt::CaseInsensitive) == 0) {
+                    coverManifestId = attrs.value(QLatin1String("content")).toString();
+                }
             } else if (name.compare(QLatin1String("item"), Qt::CaseInsensitive) == 0) {
                 const QXmlStreamAttributes attrs = reader.attributes();
                 const QString id = attrs.value(QLatin1String("id")).toString();
@@ -176,6 +249,9 @@ bool EpubDocument::parseOpf(const QString &opfPath, QString *errorMessage)
                     manifestIdToHref.insert(id, resolved);
                     if (properties.contains(QLatin1String("nav"), Qt::CaseInsensitive)) {
                         navHref = resolved;
+                    }
+                    if (properties.contains(QLatin1String("cover-image"), Qt::CaseInsensitive)) {
+                        coverHref = resolved;
                     }
                 }
             } else if (name.compare(QLatin1String("itemref"), Qt::CaseInsensitive) == 0) {
@@ -202,6 +278,19 @@ bool EpubDocument::parseOpf(const QString &opfPath, QString *errorMessage)
             *errorMessage = QObject::tr("Failed to parse OPF: %1").arg(reader.errorString());
         }
         return false;
+    }
+
+    m_isbn = isbnFromIdentifiers(identifierCandidates);
+
+    if (coverHref.isEmpty() && !coverManifestId.isEmpty()) {
+        coverHref = manifestIdToHref.value(coverManifestId);
+    }
+    if (!coverHref.isEmpty()) {
+        bool coverOk = false;
+        const QByteArray coverData = m_archive->readEntry(coverHref, &coverOk);
+        if (coverOk) {
+            m_cover = QImage::fromData(coverData);
+        }
     }
 
     if (!ncxId.isEmpty() && manifestIdToHref.contains(ncxId)) {

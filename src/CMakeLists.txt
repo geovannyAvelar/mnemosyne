@@ -19,6 +19,8 @@ set(MNEMOSYNE_CORE_SOURCES
     core/HtmlAttrUtil.cpp
     app/RecentFiles.h
     app/RecentFiles.cpp
+    app/BookMetadataClient.h
+    app/BookMetadataClient.cpp
     app/BookmarkStore.h
     app/BookmarkStore.cpp
     app/HighlightStore.h
@@ -194,6 +196,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/TocDock.cpp
     ui/BookmarksDock.h
     ui/BookmarksDock.cpp
+    ui/BookInfoDock.h
+    ui/BookInfoDock.cpp
     ui/LibraryView.h
     ui/LibraryView.cpp
     ui/ThumbnailProvider.h
