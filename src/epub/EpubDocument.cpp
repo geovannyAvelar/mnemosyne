@@ -75,6 +75,47 @@ QString mimeTypeForImagePath(const QString &path)
     return QStringLiteral("image/png");
 }
 
+// Matches a whole <video ...>...</video> block: group 1 is its own
+// attributes (for a bare <video src="...">, no <source> children), group 2
+// is its inner content (where <source> children live). DotMatchesEverything
+// since a video element's inner content is free to span multiple lines.
+const QRegularExpression kVideoTagRe(QStringLiteral("<video\\b([^>]*)>(.*?)</video\\s*>"),
+                                      QRegularExpression::CaseInsensitiveOption
+                                          | QRegularExpression::DotMatchesEverythingOption);
+
+// Picks the <source> this app will actually try to play: video/mp4 when
+// there's a choice (the most broadly supported format for an OS's default
+// player), else the first <source>, else the <video> tag's own src
+// attribute (the no-<source>-children form). Empty if none of those exist.
+QString pickVideoSource(const QString &videoAttrs, const QString &videoInner)
+{
+    static const QRegularExpression sourceRe(QStringLiteral("<source\\b[^>]*>"), QRegularExpression::CaseInsensitiveOption);
+
+    QString firstSrc;
+    QString mp4Src;
+    auto it = sourceRe.globalMatch(videoInner);
+    while (it.hasNext()) {
+        const QString tag = it.next().captured(0);
+        const QString src = extractHtmlAttr(tag, QStringLiteral("src"));
+        if (src.isEmpty()) {
+            continue;
+        }
+        if (firstSrc.isEmpty()) {
+            firstSrc = src;
+        }
+        if (mp4Src.isEmpty() && extractHtmlAttr(tag, QStringLiteral("type")).contains(QLatin1String("mp4"), Qt::CaseInsensitive)) {
+            mp4Src = src;
+        }
+    }
+    if (!mp4Src.isEmpty()) {
+        return mp4Src;
+    }
+    if (!firstSrc.isEmpty()) {
+        return firstSrc;
+    }
+    return extractHtmlAttr(videoAttrs, QStringLiteral("src"));
+}
+
 bool looksLikeIsbn13(const QString &s)
 {
     if (s.size() != 13) {
@@ -524,5 +565,77 @@ QString EpubDocument::chapterHtml(int spineIndex) const
         html = transformed;
     }
 
+    // Replace <video> elements with a "Play Video" link: QTextBrowser has no
+    // video support at all (the tag would just silently vanish), so this at
+    // least gives the reader an obvious way to watch it. EpubView resolves
+    // "mnemosyne-video:N" to the Nth entry of chapterVideoPaths() for this
+    // same chapter, extracts it to a temp file, and hands that to the OS's
+    // default player -- a real in-app player isn't practical without
+    // switching chapter rendering to a full web engine.
+    {
+        QString transformed;
+        transformed.reserve(html.size());
+        int lastPos = 0;
+        int videoIndex = 0;
+        auto it = kVideoTagRe.globalMatch(html);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            const QString src = pickVideoSource(m.captured(1), m.captured(2));
+
+            transformed += html.mid(lastPos, m.capturedStart() - lastPos);
+            if (!src.isEmpty()) {
+                const QString label = QFileInfo(src).fileName().toHtmlEscaped();
+                // An explicit color, not left to inherit from the book's own
+                // CSS (or default rich-text link styling): QTextBrowser's
+                // dark-mode override (see EpubView::renderCurrentChapter())
+                // only lightens body text, not anchors, so an unstyled link
+                // here rendered in the book's own dark body-text color --
+                // nearly invisible against the dark-mode page background.
+                // #D97756 is Theme's accent color, chosen because it's the
+                // same hex in both the light and dark palette.
+                transformed += QStringLiteral("<p><a href=\"mnemosyne-video:%1\" style=\"color:#D97756;\">&#9654; %2</a></p>")
+                                   .arg(videoIndex)
+                                   .arg(label);
+            }
+            // else: no usable source at all, drop the element silently --
+            // same treatment an <img> with no src (or a broken one) gets.
+            lastPos = m.capturedEnd();
+            ++videoIndex; // keeps this in lockstep with chapterVideoPaths()'s indexing regardless of src
+        }
+        transformed += html.mid(lastPos);
+        html = transformed;
+    }
+
     return html;
+}
+
+QVector<QString> EpubDocument::chapterVideoPaths(int spineIndex) const
+{
+    QVector<QString> paths;
+    if (spineIndex < 0 || spineIndex >= m_spine.size()) {
+        return paths;
+    }
+
+    const QString href = m_spine.at(spineIndex).href;
+    bool ok = false;
+    const QByteArray raw = m_archive->readEntry(href, &ok);
+    if (!ok) {
+        return paths;
+    }
+
+    const QString chapterDir = dirOf(href);
+    const QString html = QString::fromUtf8(raw);
+
+    auto it = kVideoTagRe.globalMatch(html);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        const QString src = pickVideoSource(m.captured(1), m.captured(2));
+        paths.append(src.isEmpty() ? QString() : resolveEpubPath(chapterDir, src));
+    }
+    return paths;
+}
+
+QByteArray EpubDocument::readResource(const QString &archivePath, bool *ok) const
+{
+    return m_archive->readEntry(archivePath, ok);
 }

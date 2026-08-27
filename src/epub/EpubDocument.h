@@ -52,10 +52,28 @@ public:
     QVector<TocNode> tableOfContents() const { return m_toc; }
 
     // Chapter XHTML transformed into standalone HTML: linked stylesheets are
-    // inlined as <style> blocks and images are embedded as data: URIs, so
-    // QTextBrowser can render it without needing to resolve archive-relative
-    // resources itself.
+    // inlined as <style> blocks, images are embedded as data: URIs, and
+    // <video> elements (which QTextBrowser can't render at all -- it just
+    // drops the tag) become a "Play Video" link reading
+    // "mnemosyne-video:N" for the Nth video in the chapter, so
+    // QTextBrowser can render it without needing to resolve
+    // archive-relative resources itself.
     QString chapterHtml(int spineIndex) const;
+
+    // Archive-relative paths of each <video> element's chosen playable
+    // source in this chapter, in the same order chapterHtml() numbers its
+    // "mnemosyne-video:N" links -- index N here is that link's target. A
+    // video with no usable source at all is an empty string (chapterHtml()
+    // silently drops that element rather than linking to nothing). Prefers
+    // a video/mp4 source, the most broadly supported format for an OS's
+    // default player, falling back to the first <source> (or the <video>
+    // tag's own src attribute) otherwise.
+    QVector<QString> chapterVideoPaths(int spineIndex) const;
+
+    // Raw bytes of an arbitrary archive entry -- e.g. one of the paths
+    // above, for extracting a video to a temp file before handing it to
+    // the OS's default player (see EpubView).
+    QByteArray readResource(const QString &archivePath, bool *ok = nullptr) const;
 
     // Resolves an href (possibly with a #fragment), relative to baseDir, to a
     // spine index. Returns -1 if it doesn't match any spine item.

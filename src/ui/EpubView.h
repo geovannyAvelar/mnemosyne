@@ -11,6 +11,7 @@
 class QLabel;
 class QTextBrowser;
 class QTimer;
+class QUrl;
 class SyncPromptBar;
 namespace ProgressSyncLog {
 struct RemoteEntry;
@@ -63,6 +64,7 @@ private:
     void applyHighlightsToBrowser();
     void addHighlightForSelection();
     void showBrowserContextMenu(const QPoint &pos);
+    void onVideoLinkActivated(const QUrl &url);
     void setFontZoomSteps(int steps);
     void restoreProgressAndCheckSync();
     void offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote);

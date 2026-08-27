@@ -12,16 +12,23 @@
 #include "ui/SyncPromptBar.h"
 
 #include <QDateTime>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QStandardPaths>
 #include <QTextBrowser>
 #include <QTextDocument>
 #include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
@@ -183,6 +190,7 @@ void EpubView::setupUi()
     m_browser->setOpenLinks(false);
     m_browser->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_browser, &QTextBrowser::customContextMenuRequested, this, &EpubView::showBrowserContextMenu);
+    connect(m_browser, &QTextBrowser::anchorClicked, this, &EpubView::onVideoLinkActivated);
     applyPageColors();
     m_browser->viewport()->installEventFilter(this); // scrolling past the top/bottom edge turns the chapter
     m_browser->installEventFilter(this); // ditto for arrow-key scrolling past the edge (see eventFilter())
@@ -392,6 +400,53 @@ void EpubView::showBrowserContextMenu(const QPoint &pos)
     }
 
     menu.exec(m_browser->mapToGlobal(pos));
+}
+
+void EpubView::onVideoLinkActivated(const QUrl &url)
+{
+    const QString scheme = url.scheme();
+    if (scheme != QLatin1String("mnemosyne-video")) {
+        return; // an ordinary in-book link; setOpenLinks(false) means Qt won't follow it either way
+    }
+
+    bool ok = false;
+    const int videoIndex = url.toString().mid(scheme.size() + 1).toInt(&ok);
+    if (!ok || !m_document) {
+        return;
+    }
+
+    const QVector<QString> videoPaths = m_document->chapterVideoPaths(m_currentChapter);
+    if (videoIndex < 0 || videoIndex >= videoPaths.size() || videoPaths.at(videoIndex).isEmpty()) {
+        return;
+    }
+    const QString archivePath = videoPaths.at(videoIndex);
+
+    bool readOk = false;
+    const QByteArray data = m_document->readResource(archivePath, &readOk);
+    if (!readOk) {
+        QMessageBox::warning(this, tr("Could Not Play Video"), tr("Could not read the video from this book."));
+        return;
+    }
+
+    // Cached by book + archive path, not re-extracted on every click: videos
+    // can be tens of megabytes, and the same one is often replayed.
+    const QString cacheDir =
+        QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/video-playback");
+    QDir().mkpath(cacheDir);
+    const QString tempPath =
+        cacheDir + QLatin1Char('/') + m_bookHash + QLatin1Char('-') + QFileInfo(archivePath).fileName();
+
+    if (!QFileInfo::exists(tempPath)) {
+        QFile tempFile(tempPath);
+        if (!tempFile.open(QIODevice::WriteOnly) || tempFile.write(data) != data.size()) {
+            QMessageBox::warning(this, tr("Could Not Play Video"), tr("Could not prepare the video for playback."));
+            return;
+        }
+    }
+
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(tempPath))) {
+        QMessageBox::warning(this, tr("Could Not Play Video"), tr("No application is available to play this video."));
+    }
 }
 
 void EpubView::restoreProgressAndCheckSync()
