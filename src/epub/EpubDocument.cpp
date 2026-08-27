@@ -13,6 +13,13 @@
 
 namespace {
 
+// See chapterHtml()'s image-embedding pass: an image wider than this gets
+// explicit pixel width/height attributes scaling it down to fit, since
+// QTextDocument doesn't honor CSS percentage sizing at all. Comfortably
+// narrower than most of this app's reading pane widths without looking
+// cramped on a narrower one.
+constexpr int kMaxEmbeddedImageWidth = 720;
+
 QString resolveEpubPath(const QString &baseDir, const QString &href)
 {
     QString h = href;
@@ -554,6 +561,34 @@ QString EpubDocument::chapterHtml(int spineIndex) const
                 if (imgOk) {
                     const QString dataUri = QStringLiteral("data:%1;base64,%2").arg(mimeTypeForImagePath(imgPath), QString::fromLatin1(imgData.toBase64()));
                     tag.replace(srcRe, QStringLiteral("src=\"%1\"").arg(dataUri));
+
+                    // QTextDocument (this app's EPUB renderer) doesn't honor
+                    // percentage-based CSS sizing on <img> at all -- confirmed
+                    // empirically: an <img style="max-width:100%"> (what a
+                    // well-authored EPUB's own cover page often specifies)
+                    // still renders at the image's native pixel size
+                    // regardless, which for a full-bleed cover can be
+                    // thousands of pixels wide, overflowing and clipping past
+                    // the page's edge instead of scaling down as intended.
+                    // Explicit pixel width/height attributes DO scale
+                    // correctly (also confirmed empirically), so an oversized
+                    // image gets capped to one here, computed from its own
+                    // aspect ratio.
+                    const QImage image = QImage::fromData(imgData);
+                    if (!image.isNull() && image.width() > kMaxEmbeddedImageWidth) {
+                        const int scaledHeight = (image.height() * kMaxEmbeddedImageWidth) / image.width();
+                        static const QRegularExpression widthAttrRe(QStringLiteral("\\bwidth\\s*=\\s*(\"[^\"]*\"|'[^']*')"),
+                                                                     QRegularExpression::CaseInsensitiveOption);
+                        static const QRegularExpression heightAttrRe(QStringLiteral("\\bheight\\s*=\\s*(\"[^\"]*\"|'[^']*')"),
+                                                                      QRegularExpression::CaseInsensitiveOption);
+                        tag.remove(widthAttrRe);
+                        tag.remove(heightAttrRe);
+                        // Position 4, not a literal "<img" replace: the tag
+                        // may be spelled "<IMG" (the opening regex match is
+                        // case-insensitive), but either way it's exactly 4
+                        // characters before here.
+                        tag.insert(4, QStringLiteral(" width=\"%1\" height=\"%2\"").arg(kMaxEmbeddedImageWidth).arg(scaledHeight));
+                    }
                 }
             }
 
