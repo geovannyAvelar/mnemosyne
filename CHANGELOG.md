@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-08-27
+
+### Added
+
+- Thumbnails on the Library's recent-documents grid: a real preview of the first page (PDF/CBZ) or first chapter (EPUB/MOBI/Markdown/TXT), rendered off the UI thread and cached to disk so reopening the library doesn't re-render every entry. Falls back to a drawn placeholder (a dog-eared page bearing the format label) until the real thumbnail is ready, or when no cheap render is available (HTML).
+- A Book Info panel for EPUB and MOBI, showing title/authors/publisher/description/cover pulled straight from the file's own OPF/EXTH metadata — no network access needed. When the book has an ISBN and "Look Up Book Info Online" is turned on (off by default, since it's the app's only network call unrelated to Drive sync), an Open Library lookup enhances that on top, field-by-field, and the result is disk-cached by ISBN. The panel joins the existing Contents/Bookmarks/Search sidebar group — it only appears when the current tab actually has something to show, and hides/shows together with the rest via the sidebar toggle.
+- EPUB `<video>` elements now play: since the EPUB chapter renderer has no video support at all (the tag previously just vanished silently), each one becomes a "▶ Play Video" link that extracts the file (preferring an MP4 source) from the archive to a cache file and hands it to the OS's default video player.
+- A way to remove books from the Library's recent-documents list: right-click an entry for a "Remove from Recent" action, which confirms first (defaulting to No) before removing just that entry. The file itself is untouched.
+- Opening files by dragging them onto the window, one or more at a time — reuses the same open path as File > Open, so an unsupported file still gets the usual warning instead of failing silently.
+
+### Fixed
+
+- An oversized EPUB image (e.g. a full-bleed cover several thousand pixels wide) no longer overflows and clips past the page. The EPUB renderer ignores percentage-based CSS image sizing entirely — even when the book's own stylesheet already specifies `max-width:100%` — so such images are now capped with explicit pixel dimensions (aspect ratio preserved) during rendering.
+
 ## [1.6.2] - 2026-08-26
 
 ### Fixed
