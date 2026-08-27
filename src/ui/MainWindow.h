@@ -17,6 +17,8 @@ class LibraryView;
 class SearchDock;
 class TocDock;
 class QAction;
+class QDragEnterEvent;
+class QDropEvent;
 class QMenu;
 class QTabWidget;
 class QToolBar;
@@ -32,6 +34,8 @@ public:
 
 protected:
     void changeEvent(QEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private slots:
     void openFile();

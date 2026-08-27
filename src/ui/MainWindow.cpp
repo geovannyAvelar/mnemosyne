@@ -36,6 +36,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QDateTime>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -45,6 +47,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QSettings>
 #include <QSizePolicy>
 #include <QTabBar>
@@ -72,6 +75,7 @@ MainWindow::MainWindow(QWidget *parent)
     , m_darkPalette(Theme::darkPalette())
 {
     setWindowTitle(tr("Mnemosyne"));
+    setAcceptDrops(true);
 
     setupDocks();
     setupTabs();
@@ -147,6 +151,26 @@ void MainWindow::changeEvent(QEvent *event)
         m_wasMaximizedBeforeFullScreen = false;
         showMaximized();
     }
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (event->mimeData()->hasUrls()) {
+        event->acceptProposedAction();
+    }
+}
+
+void MainWindow::dropEvent(QDropEvent *event)
+{
+    // openPath() already shows its own warning for a URL that isn't a file
+    // this app recognizes (or exist at all), same as picking one via
+    // File > Open, so nothing here filters by extension first.
+    for (const QUrl &url : event->mimeData()->urls()) {
+        if (url.isLocalFile()) {
+            openPath(url.toLocalFile());
+        }
+    }
+    event->acceptProposedAction();
 }
 
 void MainWindow::setupTabs()
