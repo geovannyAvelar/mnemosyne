@@ -3,10 +3,14 @@
 #include "ThumbnailProvider.h"
 #include "app/RecentFiles.h"
 
+#include <QAction>
+#include <QFileInfo>
 #include <QFont>
 #include <QLabel>
 #include <QListWidget>
 #include <QLocale>
+#include <QMenu>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
@@ -103,8 +107,38 @@ LibraryView::LibraryView(QWidget *parent)
     m_list->setIconSize(thumbSize);
     m_list->setGridSize(QSize(thumbSize.width() + 28, thumbSize.height() + 64));
     m_list->setWordWrap(true);
+    m_list->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
         emit fileActivated(item->data(Qt::UserRole).toString());
+    });
+    connect(m_list, &QListWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        QListWidgetItem *item = m_list->itemAt(pos);
+        // The empty-state placeholder item has no UserRole path (see
+        // refresh()), so it's excluded here too rather than needing its own
+        // separate flags check.
+        const QString filePath = item ? item->data(Qt::UserRole).toString() : QString();
+        if (filePath.isEmpty()) {
+            return;
+        }
+
+        QMenu menu(m_list);
+        QAction *removeAction = menu.addAction(tr("Remove from Recent"));
+        connect(removeAction, &QAction::triggered, this, [this, filePath] {
+            // Explicit default button (No): Enter/Return confirms the safe
+            // choice rather than the removal, matching how other "are you
+            // sure" prompts default to the non-destructive option.
+            const auto choice = QMessageBox::question(
+                this, tr("Remove from Recent"),
+                tr("Remove \"%1\" from Recent Documents?\n\nThe file itself won't be deleted.")
+                    .arg(QFileInfo(filePath).fileName()),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (choice != QMessageBox::Yes) {
+                return;
+            }
+            RecentFiles::remove(filePath);
+            refresh();
+        });
+        menu.exec(m_list->mapToGlobal(pos));
     });
 
     connect(m_thumbnailProvider, &ThumbnailProvider::thumbnailReady, this,
