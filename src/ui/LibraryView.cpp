@@ -1,15 +1,76 @@
 #include "LibraryView.h"
 
+#include "ThumbnailProvider.h"
 #include "app/RecentFiles.h"
 
+#include <QFont>
 #include <QLabel>
 #include <QListWidget>
 #include <QLocale>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPushButton>
 #include <QVBoxLayout>
 
+namespace {
+
+// Shown until (or unless) ThumbnailProvider produces a real preview: a
+// plain dog-eared page bearing the format label, drawn instead of shipped
+// as an asset so it stays crisp at the thumbnail's device pixel ratio and
+// needs no theme-specific variant (transparent background, muted-alpha
+// strokes read fine on both light and dark).
+QPixmap placeholderThumbnail(const QString &format)
+{
+    const QSize size = ThumbnailProvider::thumbnailSize();
+    const qreal dpr = 2.0;
+
+    QPixmap pixmap(size * dpr);
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    const QColor stroke(0x8A, 0x87, 0x80, 150);
+    const QColor fill(0x8A, 0x87, 0x80, 26);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    const qreal margin = 10.0;
+    const qreal foldSize = 18.0;
+    const QRectF rect(margin, margin, size.width() - margin * 2, size.height() - margin * 2);
+
+    QPainterPath page;
+    page.moveTo(rect.left(), rect.top());
+    page.lineTo(rect.right() - foldSize, rect.top());
+    page.lineTo(rect.right(), rect.top() + foldSize);
+    page.lineTo(rect.right(), rect.bottom());
+    page.lineTo(rect.left(), rect.bottom());
+    page.closeSubpath();
+
+    painter.setPen(QPen(stroke, 1.4));
+    painter.setBrush(fill);
+    painter.drawPath(page);
+
+    QPainterPath fold;
+    fold.moveTo(rect.right() - foldSize, rect.top());
+    fold.lineTo(rect.right() - foldSize, rect.top() + foldSize);
+    fold.lineTo(rect.right(), rect.top() + foldSize);
+    painter.drawPath(fold);
+
+    QFont font = painter.font();
+    font.setPointSizeF(9.0);
+    font.setWeight(QFont::DemiBold);
+    painter.setFont(font);
+    painter.setPen(stroke);
+    painter.drawText(rect.adjusted(4, 0, -4, -12), Qt::AlignBottom | Qt::AlignHCenter, format.toUpper());
+
+    return pixmap;
+}
+
+} // namespace
+
 LibraryView::LibraryView(QWidget *parent)
     : QWidget(parent)
+    , m_thumbnailProvider(new ThumbnailProvider(this))
 {
     auto *layout = new QVBoxLayout(this);
     // Extra top margin beyond the other sides' 32px: on macOS the window's
@@ -30,10 +91,32 @@ LibraryView::LibraryView(QWidget *parent)
     auto *recentLabel = new QLabel(tr("RECENT DOCUMENTS"), this);
     recentLabel->setObjectName(QStringLiteral("sectionLabel"));
 
+    const QSize thumbSize = ThumbnailProvider::thumbnailSize();
+
     m_list = new QListWidget(this);
+    m_list->setViewMode(QListView::IconMode);
+    m_list->setMovement(QListView::Static);
+    m_list->setResizeMode(QListView::Adjust);
+    m_list->setWrapping(true);
+    m_list->setUniformItemSizes(true);
+    m_list->setSpacing(12);
+    m_list->setIconSize(thumbSize);
+    m_list->setGridSize(QSize(thumbSize.width() + 28, thumbSize.height() + 64));
+    m_list->setWordWrap(true);
     connect(m_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
         emit fileActivated(item->data(Qt::UserRole).toString());
     });
+
+    connect(m_thumbnailProvider, &ThumbnailProvider::thumbnailReady, this,
+            [this](const QString &filePath, const QPixmap &pixmap) {
+                for (int i = 0; i < m_list->count(); ++i) {
+                    QListWidgetItem *item = m_list->item(i);
+                    if (item->data(Qt::UserRole).toString() == filePath) {
+                        item->setIcon(QIcon(pixmap));
+                        break;
+                    }
+                }
+            });
 
     layout->addWidget(title);
     layout->addSpacing(4);
@@ -64,5 +147,9 @@ void LibraryView::refresh()
         auto *item = new QListWidgetItem(text, m_list);
         item->setData(Qt::UserRole, entry.filePath);
         item->setToolTip(entry.filePath);
+        item->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
+
+        const QPixmap cached = m_thumbnailProvider->request(entry.filePath, entry.format);
+        item->setIcon(QIcon(cached.isNull() ? placeholderThumbnail(entry.format) : cached));
     }
 }

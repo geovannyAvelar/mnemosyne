@@ -196,6 +196,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/BookmarksDock.cpp
     ui/LibraryView.h
     ui/LibraryView.cpp
+    ui/ThumbnailProvider.h
+    ui/ThumbnailProvider.cpp
     ui/SearchDock.h
     ui/SearchDock.cpp
     ui/SyncPromptBar.h

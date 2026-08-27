@@ -3,6 +3,7 @@
 #include <QWidget>
 
 class QListWidget;
+class ThumbnailProvider;
 
 class LibraryView : public QWidget
 {
@@ -19,4 +20,5 @@ signals:
 
 private:
     QListWidget *m_list;
+    ThumbnailProvider *m_thumbnailProvider;
 };
