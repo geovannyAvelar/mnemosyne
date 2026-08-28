@@ -1,22 +1,21 @@
 #include "MainWindow.h"
 
 #include "app/BookMetadataClient.h"
-#include "app/BookmarkStore.h"
 #include "app/FileIdentity.h"
+#include "app/HighlightStore.h"
 #include "app/RecentFiles.h"
 #include "app/SyncFolder.h"
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
 #include "app/GoogleAuth.h"
 #endif
 #include "comic/CbzDocument.h"
-#include "core/Bookmark.h"
+#include "core/Highlight.h"
 #include "core/ReaderView.h"
 #include "epub/EpubDocument.h"
 #include "markdown/MarkdownDocument.h"
 #include "mobi/MobiDocument.h"
 #include "txt/TxtDocument.h"
 #include "ui/BookInfoDock.h"
-#include "ui/BookmarksDock.h"
 #include "ui/ComicView.h"
 #include "ui/EpubView.h"
 #ifdef MNEMOSYNE_ENABLE_HTML
@@ -25,6 +24,8 @@
 #include "ui/LibraryView.h"
 #include "ui/MarkdownView.h"
 #include "ui/MobiView.h"
+#include "ui/NoteDialog.h"
+#include "ui/NotesDock.h"
 #include "ui/PdfView.h"
 #include "ui/SearchDock.h"
 #include "ui/Theme.h"
@@ -35,15 +36,12 @@
 
 #include <QAction>
 #include <QApplication>
-#include <QDateTime>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
-#include <QInputDialog>
-#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -203,9 +201,9 @@ void MainWindow::setupDocks()
     m_tocDock = new TocDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, m_tocDock);
 
-    m_bookmarksDock = new BookmarksDock(this);
-    addDockWidget(Qt::LeftDockWidgetArea, m_bookmarksDock);
-    tabifyDockWidget(m_tocDock, m_bookmarksDock);
+    m_notesDock = new NotesDock(this);
+    addDockWidget(Qt::LeftDockWidgetArea, m_notesDock);
+    tabifyDockWidget(m_tocDock, m_notesDock);
 
     m_searchDock = new SearchDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, m_searchDock);
@@ -269,7 +267,7 @@ void MainWindow::setupDocks()
     // The tab strip above (from setTabPosition) already labels each dock, so
     // each dock's own title bar would just be a redundant duplicate label.
     m_tocDock->setTitleBarWidget(new QWidget(m_tocDock));
-    m_bookmarksDock->setTitleBarWidget(new QWidget(m_bookmarksDock));
+    m_notesDock->setTitleBarWidget(new QWidget(m_notesDock));
     m_searchDock->setTitleBarWidget(new QWidget(m_searchDock));
     m_bookInfoDock->setTitleBarWidget(new QWidget(m_bookInfoDock));
 
@@ -281,7 +279,7 @@ void MainWindow::setupDocks()
         }
     });
 
-    connect(m_bookmarksDock, &BookmarksDock::bookmarkActivated, this, [this](int targetIndex) {
+    connect(m_notesDock, &NotesDock::noteActivated, this, [this](int targetIndex) {
         if (m_currentView) {
             TocNode node;
             node.pageNumber = targetIndex;
@@ -289,14 +287,36 @@ void MainWindow::setupDocks()
         }
     });
 
-    connect(m_bookmarksDock, &BookmarksDock::addBookmarkRequested, this, &MainWindow::addBookmarkForCurrentPosition);
-
-    connect(m_bookmarksDock, &BookmarksDock::removeBookmarkRequested, this, [this](int index) {
+    connect(m_notesDock, &NotesDock::editNoteRequested, this, [this](int index) {
         if (m_currentFilePath.isEmpty()) {
             return;
         }
-        BookmarkStore::removeBookmark(FileIdentity::contentHash(m_currentFilePath), index);
-        refreshBookmarksDock();
+        const QString bookHash = FileIdentity::contentHash(m_currentFilePath);
+        const QVector<Highlight> highlights = HighlightStore::highlightsFor(bookHash);
+        if (index < 0 || index >= highlights.size()) {
+            return;
+        }
+        const std::optional<NoteDialog::Result> result = NoteDialog::show(this, highlights[index].note, highlights[index].color);
+        if (!result) {
+            return;
+        }
+        HighlightStore::setNote(bookHash, index, result->note);
+        HighlightStore::setColor(bookHash, index, result->color);
+        refreshNotesDock();
+        if (m_currentView) {
+            m_currentView->refreshHighlights();
+        }
+    });
+
+    connect(m_notesDock, &NotesDock::removeNoteRequested, this, [this](int index) {
+        if (m_currentFilePath.isEmpty()) {
+            return;
+        }
+        HighlightStore::removeHighlight(FileIdentity::contentHash(m_currentFilePath), index);
+        refreshNotesDock();
+        if (m_currentView) {
+            m_currentView->refreshHighlights();
+        }
     });
 
     connect(m_searchDock, &SearchDock::searchRequested, this, [this](const QString &query) {
@@ -432,12 +452,12 @@ void MainWindow::toggleSidebar()
     // hiding it. isHidden() reflects just the dock's own explicit
     // show()/hide() state, independent of the window (see EpubView::
     // hasPendingSyncPrompt() for the same distinction documented before).
-    const bool currentlyVisible = !m_tocDock->isHidden() || !m_bookmarksDock->isHidden() || !m_searchDock->isHidden();
+    const bool currentlyVisible = !m_tocDock->isHidden() || !m_notesDock->isHidden() || !m_searchDock->isHidden();
 
     if (currentlyVisible) {
         setFocus();
         m_tocDock->hide();
-        m_bookmarksDock->hide();
+        m_notesDock->hide();
         m_searchDock->hide();
         m_bookInfoDock->hide(); // regardless of content -- refreshBookInfoDock() reconciles on show
         QSettings().setValue(QStringLiteral("sidebarVisible"), false);
@@ -464,7 +484,7 @@ void MainWindow::toggleFullScreen()
 void MainWindow::showSidebar()
 {
     m_tocDock->show();
-    m_bookmarksDock->show();
+    m_notesDock->show();
     m_searchDock->show();
     m_tocDock->raise();
     // If the dock group was last hidden while a dock other than m_tocDock
@@ -514,15 +534,9 @@ void MainWindow::setupMenus()
     findAction->setShortcut(QKeySequence::Find);
     connect(findAction, &QAction::triggered, this, &MainWindow::focusSearch);
 
-    QMenu *bookmarksMenu = menuBar()->addMenu(tr("&Bookmarks"));
-    m_addBookmarkAction = bookmarksMenu->addAction(tr("&Add Bookmark..."));
-    m_addBookmarkAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
-    m_addBookmarkAction->setEnabled(false);
-    connect(m_addBookmarkAction, &QAction::triggered, this, &MainWindow::addBookmarkForCurrentPosition);
-
     QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
     viewMenu->addAction(m_tocDock->toggleViewAction());
-    viewMenu->addAction(m_bookmarksDock->toggleViewAction());
+    viewMenu->addAction(m_notesDock->toggleViewAction());
     viewMenu->addAction(m_searchDock->toggleViewAction());
     viewMenu->addAction(m_bookInfoDock->toggleViewAction());
     viewMenu->addSeparator();
@@ -628,6 +642,7 @@ void MainWindow::openPath(const QString &filePath)
         std::unique_ptr<IDocument> document = openDocument(filePath, &errorMessage);
         if (document) {
             auto *pdfView = new PdfView(std::move(document), filePath, m_tabWidget);
+            connect(pdfView, &PdfView::highlightsChanged, this, &MainWindow::refreshNotesDock);
             widget = pdfView;
             view = pdfView;
         }
@@ -642,6 +657,7 @@ void MainWindow::openPath(const QString &filePath)
             localInfo.cover = document->cover();
             auto *epubView = new EpubView(std::move(document), filePath, m_tabWidget);
             epubView->setDarkMode(m_darkModeAction->isChecked());
+            connect(epubView, &EpubView::highlightsChanged, this, &MainWindow::refreshNotesDock);
             widget = epubView;
             view = epubView;
         }
@@ -650,6 +666,7 @@ void MainWindow::openPath(const QString &filePath)
         if (document) {
             auto *markdownView = new MarkdownView(std::move(document), filePath, m_tabWidget);
             markdownView->setDarkMode(m_darkModeAction->isChecked());
+            connect(markdownView, &MarkdownView::highlightsChanged, this, &MainWindow::refreshNotesDock);
             widget = markdownView;
             view = markdownView;
         }
@@ -658,6 +675,7 @@ void MainWindow::openPath(const QString &filePath)
         if (document) {
             auto *txtView = new TxtView(std::move(document), filePath, m_tabWidget);
             txtView->setDarkMode(m_darkModeAction->isChecked());
+            connect(txtView, &TxtView::highlightsChanged, this, &MainWindow::refreshNotesDock);
             widget = txtView;
             view = txtView;
         }
@@ -679,6 +697,7 @@ void MainWindow::openPath(const QString &filePath)
             localInfo.cover = document->cover();
             auto *mobiView = new MobiView(std::move(document), filePath, m_tabWidget);
             mobiView->setDarkMode(m_darkModeAction->isChecked());
+            connect(mobiView, &MobiView::highlightsChanged, this, &MainWindow::refreshNotesDock);
             widget = mobiView;
             view = mobiView;
         }
@@ -722,10 +741,9 @@ void MainWindow::onTabChanged(int index)
         m_currentIsbn.clear();
         m_currentLocalInfo = BookMetadata();
         m_tocDock->clear();
-        m_bookmarksDock->clear();
+        m_notesDock->clear();
         m_searchDock->clear();
         m_bookInfoDock->clear();
-        m_addBookmarkAction->setEnabled(false);
         setWindowTitle(tr("Mnemosyne"));
         if (widget == m_libraryView) {
             m_libraryView->refresh();
@@ -740,10 +758,9 @@ void MainWindow::onTabChanged(int index)
 
     if (m_currentView) {
         m_tocDock->setTableOfContents(m_currentView->tableOfContents());
-        refreshBookmarksDock();
+        refreshNotesDock();
         m_searchDock->clear();
         refreshBookInfoDock();
-        m_addBookmarkAction->setEnabled(true);
         setWindowTitle(tr("%1 — Mnemosyne").arg(m_currentView->documentTitle()));
     }
 }
@@ -794,28 +811,6 @@ void MainWindow::onTabCloseRequested(int index)
     widget->deleteLater();
 }
 
-void MainWindow::addBookmarkForCurrentPosition()
-{
-    if (!m_currentView || m_currentFilePath.isEmpty()) {
-        return;
-    }
-
-    bool ok = false;
-    const QString label = QInputDialog::getText(this, tr("Add Bookmark"), tr("Label (optional):"),
-                                                  QLineEdit::Normal, QString(), &ok);
-    if (!ok) {
-        return;
-    }
-
-    Bookmark bookmark;
-    bookmark.targetIndex = m_currentView->currentPosition();
-    bookmark.label = label;
-    bookmark.createdAt = QDateTime::currentDateTime();
-
-    BookmarkStore::addBookmark(FileIdentity::contentHash(m_currentFilePath), bookmark);
-    refreshBookmarksDock();
-}
-
 void MainWindow::focusSearch()
 {
     showSidebar(); // the three sidebar docks are tabified together and always shown/hidden as one group
@@ -843,13 +838,13 @@ void MainWindow::setDarkModeEnabled(bool enabled)
     }
 }
 
-void MainWindow::refreshBookmarksDock()
+void MainWindow::refreshNotesDock()
 {
     if (m_currentFilePath.isEmpty()) {
-        m_bookmarksDock->clear();
+        m_notesDock->clear();
         return;
     }
-    m_bookmarksDock->setBookmarks(BookmarkStore::bookmarksFor(FileIdentity::contentHash(m_currentFilePath)));
+    m_notesDock->setHighlights(HighlightStore::highlightsFor(FileIdentity::contentHash(m_currentFilePath)));
 }
 
 void MainWindow::populateOpenRecentMenu()

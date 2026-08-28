@@ -9,6 +9,7 @@
 #include "app/ProgressSyncLog.h"
 #include "app/ReadingProgressStore.h"
 #include "core/SearchUtil.h"
+#include "ui/NoteDialog.h"
 #include "ui/SyncPromptBar.h"
 
 #include <QDateTime>
@@ -312,13 +313,13 @@ void EpubView::updateNavigationState()
 void EpubView::applyHighlightsToBrowser()
 {
     QList<QTextEdit::ExtraSelection> selections;
-    QTextCharFormat format;
-    format.setBackground(QColor(255, 235, 59, 140));
 
     for (const Highlight &highlight : m_highlights) {
         if (highlight.targetIndex != m_currentChapter) {
             continue;
         }
+        QTextCharFormat format;
+        format.setBackground(highlight.color);
         for (const QTextCursor &occurrence : findAllOccurrences(m_browser->document(), highlight.text)) {
             QTextEdit::ExtraSelection selection;
             selection.cursor = occurrence;
@@ -344,6 +345,12 @@ void EpubView::applyHighlightsToBrowser()
     m_browser->setExtraSelections(selections);
 }
 
+void EpubView::refreshHighlights()
+{
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
+    applyHighlightsToBrowser();
+}
+
 void EpubView::addHighlightForSelection()
 {
     const QTextCursor cursor = m_browser->textCursor();
@@ -359,6 +366,32 @@ void EpubView::addHighlightForSelection()
     HighlightStore::addHighlight(m_bookHash, highlight);
     m_highlights = HighlightStore::highlightsFor(m_bookHash);
     applyHighlightsToBrowser();
+    emit highlightsChanged();
+}
+
+void EpubView::addNoteForSelection()
+{
+    const QTextCursor cursor = m_browser->textCursor();
+    if (!cursor.hasSelection()) {
+        return;
+    }
+
+    const std::optional<NoteDialog::Result> result = NoteDialog::show(this, QString(), kDefaultHighlightColor);
+    if (!result || result->note.isEmpty()) {
+        return;
+    }
+
+    Highlight highlight;
+    highlight.targetIndex = m_currentChapter;
+    highlight.text = cursor.selectedText();
+    highlight.createdAt = QDateTime::currentDateTime();
+    highlight.note = result->note;
+    highlight.color = result->color;
+
+    HighlightStore::addHighlight(m_bookHash, highlight);
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
+    applyHighlightsToBrowser();
+    emit highlightsChanged();
 }
 
 void EpubView::showBrowserContextMenu(const QPoint &pos)
@@ -376,6 +409,10 @@ void EpubView::showBrowserContextMenu(const QPoint &pos)
     highlightAction->setEnabled(hasSelection);
     connect(highlightAction, &QAction::triggered, this, &EpubView::addHighlightForSelection);
 
+    QAction *addNoteAction = menu.addAction(tr("Add Note..."));
+    addNoteAction->setEnabled(hasSelection);
+    connect(addNoteAction, &QAction::triggered, this, &EpubView::addNoteForSelection);
+
     if (!hasSelection) {
         const int clickPosition = m_browser->cursorForPosition(pos).position();
         for (int i = 0; i < m_highlights.size(); ++i) {
@@ -388,11 +425,25 @@ void EpubView::showBrowserContextMenu(const QPoint &pos)
             });
             if (clickedInside) {
                 menu.addSeparator();
-                QAction *removeAction = menu.addAction(tr("Remove Highlight"));
+                const bool hasNote = !m_highlights[i].note.isEmpty();
+                QAction *noteAction = menu.addAction(hasNote ? tr("Edit Note...") : tr("Add Note..."));
+                connect(noteAction, &QAction::triggered, this, [this, i] {
+                    const std::optional<NoteDialog::Result> result = NoteDialog::show(this, m_highlights[i].note, m_highlights[i].color);
+                    if (!result) {
+                        return;
+                    }
+                    HighlightStore::setNote(m_bookHash, i, result->note);
+                    HighlightStore::setColor(m_bookHash, i, result->color);
+                    m_highlights = HighlightStore::highlightsFor(m_bookHash);
+                    applyHighlightsToBrowser();
+                    emit highlightsChanged();
+                });
+                QAction *removeAction = menu.addAction(hasNote ? tr("Remove Note") : tr("Remove Highlight"));
                 connect(removeAction, &QAction::triggered, this, [this, i] {
                     HighlightStore::removeHighlight(m_bookHash, i);
                     m_highlights = HighlightStore::highlightsFor(m_bookHash);
                     applyHighlightsToBrowser();
+                    emit highlightsChanged();
                 });
                 break;
             }

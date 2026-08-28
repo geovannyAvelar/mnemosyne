@@ -75,7 +75,7 @@ placeholder comment in `src/CMakeLists.txt`) is:
   it is portable Qt Quick, confirmed to have no Android-only API.
 - A new `quick/main_ios.mm` entry point, structurally mirroring
   `quick/main_android.cpp` (same `QGuiApplication` + `QQmlApplicationEngine`
-  + context-property wiring for `BookmarksModel`, `HighlightsModel`,
+  + context-property wiring for `HighlightsModel`,
   `LibraryModel`, `PdfDocumentModel`, `EpubReaderModel`,
   `PdfSelectionController`, `SyncController`, `SmokeTestBridge`) minus
   `AndroidStorageAccess`.

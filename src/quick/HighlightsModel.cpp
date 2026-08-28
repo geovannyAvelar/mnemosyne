@@ -29,6 +29,10 @@ QVariant HighlightsModel::data(const QModelIndex &index, int role) const
         return highlight.text;
     case CreatedAtRole:
         return highlight.createdAt;
+    case NoteRole:
+        return highlight.note;
+    case ColorRole:
+        return highlight.color;
     default:
         return {};
     }
@@ -41,6 +45,8 @@ QHash<int, QByteArray> HighlightsModel::roleNames() const
         {PageRectRole, "pageRect"},
         {TextRole, "text"},
         {CreatedAtRole, "createdAt"},
+        {NoteRole, "note"},
+        {ColorRole, "color"},
     };
 }
 

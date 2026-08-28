@@ -36,8 +36,8 @@ public:
     bool isOpen() const { return m_document != nullptr; }
     int pageCount() const { return m_document ? m_document->pageCount() : 0; }
     QString title() const { return m_document ? m_document->title() : QString(); }
-    // Content hash used to key BookmarkStore/ReadingProgressStore entries
-    // for the currently-open document — see BookmarksModel::bookHash.
+    // Content hash used to key HighlightStore/ReadingProgressStore entries
+    // for the currently-open document — see HighlightsModel::bookHash.
     QString bookHash() const { return m_bookHash; }
     int currentPage() const { return m_currentPage; }
     void setCurrentPage(int page);

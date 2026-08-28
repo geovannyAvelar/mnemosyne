@@ -28,6 +28,8 @@ void writeHighlights(const QString &bookHash, const QVector<Highlight> &highligh
         settings.setValue("rectH", highlights[i].pageRect.height());
         settings.setValue("text", highlights[i].text);
         settings.setValue("createdAt", highlights[i].createdAt);
+        settings.setValue("note", highlights[i].note);
+        settings.setValue("color", highlights[i].color.rgba());
     }
     settings.endArray();
 }
@@ -54,6 +56,8 @@ QVector<Highlight> highlightsFor(const QString &bookHash)
         }
         h.text = settings.value("text").toString();
         h.createdAt = settings.value("createdAt").toDateTime();
+        h.note = settings.value("note").toString();
+        h.color = QColor::fromRgba(settings.value("color", kDefaultHighlightColor.rgba()).toUInt());
         result.append(h);
     }
     settings.endArray();
@@ -81,6 +85,26 @@ void removeHighlight(const QString &bookHash, int index)
         return;
     }
     highlights.removeAt(index);
+    writeHighlights(bookHash, highlights);
+}
+
+void setNote(const QString &bookHash, int index, const QString &note)
+{
+    QVector<Highlight> highlights = highlightsFor(bookHash);
+    if (index < 0 || index >= highlights.size()) {
+        return;
+    }
+    highlights[index].note = note;
+    writeHighlights(bookHash, highlights);
+}
+
+void setColor(const QString &bookHash, int index, const QColor &color)
+{
+    QVector<Highlight> highlights = highlightsFor(bookHash);
+    if (index < 0 || index >= highlights.size()) {
+        return;
+    }
+    highlights[index].color = color;
     writeHighlights(bookHash, highlights);
 }
 

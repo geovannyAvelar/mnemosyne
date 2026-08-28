@@ -1,4 +1,3 @@
-#include "app/BookmarkStore.h"
 #include "app/HighlightStore.h"
 #include "app/RecentFiles.h"
 
@@ -19,14 +18,17 @@ private slots:
     void recentFilesReopeningMovesToFront();
     void recentFilesCanBeRemoved();
 
-    void bookmarksRoundTripSortedByPosition();
-    void bookmarksAtSamePositionReplaceRatherThanDuplicate();
-    void bookmarksCanBeRemovedByIndex();
-
     void highlightsRoundTripWithRectAndText();
     void multipleHighlightsOnSamePageCoexist();
     void highlightsCanBeRemovedByIndex();
     void highlightsAreIsolatedPerFile();
+
+    void highlightNoteDefaultsToEmpty();
+    void highlightNoteCanBeSetAndCleared();
+    void settingNoteOnInvalidIndexIsNoOp();
+
+    void highlightColorDefaultsToYellow();
+    void highlightColorRoundTrips();
 };
 
 void AppPersistenceTest::initTestCase()
@@ -81,47 +83,6 @@ void AppPersistenceTest::recentFilesCanBeRemoved()
     QCOMPARE(entries[0].filePath, QStringLiteral("/tmp/b.epub"));
 }
 
-void AppPersistenceTest::bookmarksRoundTripSortedByPosition()
-{
-    const QString book = "/tmp/book.epub";
-    BookmarkStore::addBookmark(book, Bookmark{5, "Five", QDateTime::currentDateTime()});
-    BookmarkStore::addBookmark(book, Bookmark{1, "One", QDateTime::currentDateTime()});
-    BookmarkStore::addBookmark(book, Bookmark{3, "Three", QDateTime::currentDateTime()});
-
-    const QVector<Bookmark> bookmarks = BookmarkStore::bookmarksFor(book);
-    QCOMPARE(bookmarks.size(), 3);
-    QCOMPARE(bookmarks[0].targetIndex, 1);
-    QCOMPARE(bookmarks[1].targetIndex, 3);
-    QCOMPARE(bookmarks[2].targetIndex, 5);
-
-    // A different book's bookmarks must not bleed into this one.
-    QVERIFY(BookmarkStore::bookmarksFor("/tmp/other.pdf").isEmpty());
-}
-
-void AppPersistenceTest::bookmarksAtSamePositionReplaceRatherThanDuplicate()
-{
-    const QString book = "/tmp/book.epub";
-    BookmarkStore::addBookmark(book, Bookmark{2, "First Label", QDateTime::currentDateTime()});
-    BookmarkStore::addBookmark(book, Bookmark{2, "Replaced Label", QDateTime::currentDateTime()});
-
-    const QVector<Bookmark> bookmarks = BookmarkStore::bookmarksFor(book);
-    QCOMPARE(bookmarks.size(), 1);
-    QCOMPARE(bookmarks[0].label, QStringLiteral("Replaced Label"));
-}
-
-void AppPersistenceTest::bookmarksCanBeRemovedByIndex()
-{
-    const QString book = "/tmp/book.epub";
-    BookmarkStore::addBookmark(book, Bookmark{1, "One", QDateTime::currentDateTime()});
-    BookmarkStore::addBookmark(book, Bookmark{2, "Two", QDateTime::currentDateTime()});
-
-    BookmarkStore::removeBookmark(book, 0); // removes "One" (sorted first)
-
-    const QVector<Bookmark> bookmarks = BookmarkStore::bookmarksFor(book);
-    QCOMPARE(bookmarks.size(), 1);
-    QCOMPARE(bookmarks[0].label, QStringLiteral("Two"));
-}
-
 void AppPersistenceTest::highlightsRoundTripWithRectAndText()
 {
     const QString book = "/tmp/book.pdf";
@@ -172,6 +133,65 @@ void AppPersistenceTest::highlightsAreIsolatedPerFile()
 {
     HighlightStore::addHighlight("/tmp/a.pdf", Highlight{0, QRectF(0, 0, 10, 10), "in a", QDateTime::currentDateTime()});
     QVERIFY(HighlightStore::highlightsFor("/tmp/b.pdf").isEmpty());
+}
+
+void AppPersistenceTest::highlightNoteDefaultsToEmpty()
+{
+    const QString book = "/tmp/book.pdf";
+    HighlightStore::addHighlight(book, Highlight{1, QRectF(0, 0, 10, 10), "no note yet", QDateTime::currentDateTime()});
+
+    const QVector<Highlight> highlights = HighlightStore::highlightsFor(book);
+    QCOMPARE(highlights.size(), 1);
+    QVERIFY(highlights[0].note.isEmpty());
+}
+
+void AppPersistenceTest::highlightNoteCanBeSetAndCleared()
+{
+    const QString book = "/tmp/book.pdf";
+    HighlightStore::addHighlight(book, Highlight{1, QRectF(0, 0, 10, 10), "annotated", QDateTime::currentDateTime()});
+
+    HighlightStore::setNote(book, 0, "a comment on this passage");
+    QCOMPARE(HighlightStore::highlightsFor(book)[0].note, QStringLiteral("a comment on this passage"));
+
+    HighlightStore::setNote(book, 0, QString());
+    QVERIFY(HighlightStore::highlightsFor(book)[0].note.isEmpty());
+}
+
+void AppPersistenceTest::settingNoteOnInvalidIndexIsNoOp()
+{
+    const QString book = "/tmp/book.pdf";
+    HighlightStore::addHighlight(book, Highlight{1, QRectF(0, 0, 10, 10), "only one", QDateTime::currentDateTime()});
+
+    HighlightStore::setNote(book, -1, "nope");
+    HighlightStore::setNote(book, 5, "nope");
+
+    QVERIFY(HighlightStore::highlightsFor(book)[0].note.isEmpty());
+}
+
+void AppPersistenceTest::highlightColorDefaultsToYellow()
+{
+    const QString book = "/tmp/book.pdf";
+    HighlightStore::addHighlight(book, Highlight{1, QRectF(0, 0, 10, 10), "a real highlight", QDateTime::currentDateTime()});
+
+    QCOMPARE(HighlightStore::highlightsFor(book)[0].color, kDefaultHighlightColor);
+}
+
+void AppPersistenceTest::highlightColorRoundTrips()
+{
+    const QString book = "/tmp/book.pdf";
+    Highlight annotated;
+    annotated.targetIndex = 1;
+    annotated.pageRect = QRectF(0, 0, 10, 10);
+    annotated.text = "a passage with a note in a custom color";
+    annotated.createdAt = QDateTime::currentDateTime();
+    annotated.note = "why this passage matters";
+    annotated.color = QColor(33, 150, 243, 140); // blue, picked from the palette
+
+    HighlightStore::addHighlight(book, annotated);
+
+    const Highlight &roundTripped = HighlightStore::highlightsFor(book)[0];
+    QCOMPARE(roundTripped.color, QColor(33, 150, 243, 140));
+    QCOMPARE(roundTripped.note, QStringLiteral("why this passage matters"));
 }
 
 QTEST_MAIN(AppPersistenceTest)

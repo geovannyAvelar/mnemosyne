@@ -136,12 +136,6 @@ target_link_libraries(library_model_test PRIVATE mnemosynequick Qt6::Test)
 
 add_test(NAME LibraryModelTest COMMAND library_model_test)
 
-qt_add_executable(bookmarks_model_test BookmarksModelTest.cpp)
-
-target_link_libraries(bookmarks_model_test PRIVATE mnemosynequick Qt6::Test)
-
-add_test(NAME BookmarksModelTest COMMAND bookmarks_model_test)
-
 qt_add_executable(pdf_document_model_test PdfDocumentModelTest.cpp)
 
 target_link_libraries(pdf_document_model_test PRIVATE mnemosynequick Qt6::Test)

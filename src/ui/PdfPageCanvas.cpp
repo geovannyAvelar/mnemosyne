@@ -36,9 +36,9 @@ void PdfPageCanvas::setSelectionRects(const QVector<QRect> &rects)
     update();
 }
 
-void PdfPageCanvas::setHighlightRects(const QVector<QRect> &rects)
+void PdfPageCanvas::setHighlightRects(const QVector<HighlightMark> &marks)
 {
-    m_highlightRects = rects;
+    m_highlightRects = marks;
     update();
 }
 
@@ -53,8 +53,8 @@ void PdfPageCanvas::paintEvent(QPaintEvent *)
     QPainter painter(this);
     painter.drawImage(0, 0, m_image);
 
-    for (const QRect &rect : m_highlightRects) {
-        painter.fillRect(rect, QColor(255, 235, 59, 110));
+    for (const HighlightMark &mark : m_highlightRects) {
+        painter.fillRect(mark.rect, mark.color);
     }
 
     // Bolder/more saturated than persisted highlights so a dozen search hits

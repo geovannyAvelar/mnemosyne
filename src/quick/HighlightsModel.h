@@ -7,8 +7,9 @@
 #include <QVector>
 
 // QML-facing list model over app/HighlightStore.h, scoped to whichever
-// document is currently open — same pattern as BookmarksModel (see that
-// class for the reasoning behind the settable bookHash property).
+// document is currently open via the settable bookHash property (see
+// FileIdentity::contentHash for why a content hash is used as the key
+// instead of the file path).
 class HighlightsModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -20,6 +21,8 @@ public:
         PageRectRole, // PDF only; null (all-zero) for EPUB, see core/Highlight.h
         TextRole,
         CreatedAtRole,
+        NoteRole,
+        ColorRole,
     };
     Q_ENUM(Roles)
 

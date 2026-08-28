@@ -12,6 +12,7 @@
 #include "core/SearchUtil.h"
 #include "core/TextSelectionUtil.h"
 #include "pdf/PopplerPdfDocument.h"
+#include "ui/NoteDialog.h"
 #include "ui/PdfPageCanvas.h"
 #include "ui/SyncPromptBar.h"
 
@@ -336,13 +337,13 @@ void PdfView::updateSelectionFromDrag()
 
 void PdfView::refreshHighlightOverlay()
 {
-    QVector<QRect> pixelRects;
+    QVector<PdfPageCanvas::HighlightMark> marks;
     for (const Highlight &highlight : m_highlights) {
         if (highlight.targetIndex == m_currentPage) {
-            pixelRects.append(pageRectToPixelRect(highlight.pageRect, m_zoom));
+            marks.append({pageRectToPixelRect(highlight.pageRect, m_zoom), highlight.color});
         }
     }
-    m_canvas->setHighlightRects(pixelRects);
+    m_canvas->setHighlightRects(marks);
 }
 
 void PdfView::refreshSearchOverlay()
@@ -383,6 +384,12 @@ int PdfView::highlightIndexAtPagePoint(const QPointF &pagePoint) const
     return -1;
 }
 
+void PdfView::refreshHighlights()
+{
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
+    refreshHighlightOverlay();
+}
+
 void PdfView::addHighlightForSelection()
 {
     if (!m_canvas->hasSelection() || m_selectedText.isEmpty()) {
@@ -401,6 +408,35 @@ void PdfView::addHighlightForSelection()
     m_canvas->clearSelection();
     m_selectedText.clear();
     refreshHighlightOverlay();
+    emit highlightsChanged();
+}
+
+void PdfView::addNoteForSelection()
+{
+    if (!m_canvas->hasSelection() || m_selectedText.isEmpty()) {
+        return;
+    }
+
+    const std::optional<NoteDialog::Result> result = NoteDialog::show(this, QString(), kDefaultHighlightColor);
+    if (!result || result->note.isEmpty()) {
+        return;
+    }
+
+    Highlight highlight;
+    highlight.targetIndex = m_currentPage;
+    highlight.pageRect = m_selectedBoundingPageRect;
+    highlight.text = m_selectedText;
+    highlight.createdAt = QDateTime::currentDateTime();
+    highlight.note = result->note;
+    highlight.color = result->color;
+
+    HighlightStore::addHighlight(m_bookHash, highlight);
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
+
+    m_canvas->clearSelection();
+    m_selectedText.clear();
+    refreshHighlightOverlay();
+    emit highlightsChanged();
 }
 
 void PdfView::showCanvasContextMenu(const QPoint &pos)
@@ -415,15 +451,34 @@ void PdfView::showCanvasContextMenu(const QPoint &pos)
     highlightAction->setEnabled(!m_selectedText.isEmpty());
     connect(highlightAction, &QAction::triggered, this, &PdfView::addHighlightForSelection);
 
+    QAction *addNoteAction = menu.addAction(tr("Add Note..."));
+    addNoteAction->setEnabled(!m_selectedText.isEmpty());
+    connect(addNoteAction, &QAction::triggered, this, &PdfView::addNoteForSelection);
+
     const QPointF pagePoint(pos.x() / m_canvas->scale(), pos.y() / m_canvas->scale());
     const int existingHighlightIndex = highlightIndexAtPagePoint(pagePoint);
     if (existingHighlightIndex >= 0) {
         menu.addSeparator();
-        QAction *removeAction = menu.addAction(tr("Remove Highlight"));
+        const bool hasNote = !m_highlights[existingHighlightIndex].note.isEmpty();
+        QAction *noteAction = menu.addAction(hasNote ? tr("Edit Note...") : tr("Add Note..."));
+        connect(noteAction, &QAction::triggered, this, [this, existingHighlightIndex] {
+            const std::optional<NoteDialog::Result> result = NoteDialog::show(
+                this, m_highlights[existingHighlightIndex].note, m_highlights[existingHighlightIndex].color);
+            if (!result) {
+                return;
+            }
+            HighlightStore::setNote(m_bookHash, existingHighlightIndex, result->note);
+            HighlightStore::setColor(m_bookHash, existingHighlightIndex, result->color);
+            m_highlights = HighlightStore::highlightsFor(m_bookHash);
+            refreshHighlightOverlay();
+            emit highlightsChanged();
+        });
+        QAction *removeAction = menu.addAction(hasNote ? tr("Remove Note") : tr("Remove Highlight"));
         connect(removeAction, &QAction::triggered, this, [this, existingHighlightIndex] {
             HighlightStore::removeHighlight(m_bookHash, existingHighlightIndex);
             m_highlights = HighlightStore::highlightsFor(m_bookHash);
             refreshHighlightOverlay();
+            emit highlightsChanged();
         });
     }
 

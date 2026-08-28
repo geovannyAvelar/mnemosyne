@@ -1,9 +1,8 @@
-# Widgets-free layer: document parsing/rendering, bookmarks/highlights,
+# Widgets-free layer: document parsing/rendering, highlights/notes,
 # reading-progress + Drive sync, OAuth. Nothing here may depend on
 # Qt6::Widgets — this is the boundary a future mobile (Qt Quick/QML) front
 # end would link against instead of mnemosynedesktopui.
 set(MNEMOSYNE_CORE_SOURCES
-    core/Bookmark.h
     core/Highlight.h
     core/ReadingProgress.h
     core/Document.h
@@ -21,8 +20,6 @@ set(MNEMOSYNE_CORE_SOURCES
     app/RecentFiles.cpp
     app/BookMetadataClient.h
     app/BookMetadataClient.cpp
-    app/BookmarkStore.h
-    app/BookmarkStore.cpp
     app/HighlightStore.h
     app/HighlightStore.cpp
     app/DeviceIdentity.h
@@ -150,8 +147,6 @@ set(MNEMOSYNE_QUICK_SOURCES
     quick/PdfDocumentModel.cpp
     quick/EpubReaderModel.h
     quick/EpubReaderModel.cpp
-    quick/BookmarksModel.h
-    quick/BookmarksModel.cpp
     quick/HighlightsModel.h
     quick/HighlightsModel.cpp
     quick/PdfSelectionController.h
@@ -194,10 +189,12 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/TxtView.cpp
     ui/TocDock.h
     ui/TocDock.cpp
-    ui/BookmarksDock.h
-    ui/BookmarksDock.cpp
+    ui/NotesDock.h
+    ui/NotesDock.cpp
     ui/BookInfoDock.h
     ui/BookInfoDock.cpp
+    ui/NoteDialog.h
+    ui/NoteDialog.cpp
     ui/LibraryView.h
     ui/LibraryView.cpp
     ui/ThumbnailProvider.h
@@ -342,7 +339,6 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/LibraryScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/PdfReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/components/PdfPageItem.qml
-        ${CMAKE_SOURCE_DIR}/qml/components/BookmarksSheet.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SelectionToolbar.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SyncPromptBar.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml

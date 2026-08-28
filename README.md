@@ -13,11 +13,11 @@ A native desktop reader for PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and 
 - **Markdown** — rendered via Qt's own Markdown support (`QTextDocument::setMarkdown()`), with a heading-derived table of contents, search, zoom, dark mode, and highlights — same feature set as EPUB.
 - **MOBI/AZW/AZW3** — rendered via [libmobi](https://github.com/bfabiszewski/libmobi) (LGPLv3), with the same chapter/table-of-contents/zoom/dark-mode/highlight feature set as EPUB. **DRM-protected files are refused outright** — Mnemosyne never attempts to decrypt anything; it's a reader for files you already have unencrypted access to, not a DRM-removal tool. Embedded images aren't rendered yet (text/formatting only).
 - **CBZ comics** — a zip of page images, reusing the same archive-reading code EPUB uses (no new dependency). Page navigation and zoom like PDF; no table of contents, search, or highlights, since there's no text layer to drive them.
-- **Plain text (.txt)** — search, zoom, dark mode, highlights, bookmarks, and reading-progress sync, same as EPUB/Markdown, just addressed by raw character offset instead of a chapter/heading since plain text has no structure to derive one from.
+- **Plain text (.txt)** — search, zoom, dark mode, highlights, and reading-progress sync, same as EPUB/Markdown, just addressed by raw character offset instead of a chapter/heading since plain text has no structure to derive one from.
 - **Library / tabs** — open multiple books at once in tabs, with a persistent Library tab and recent-files list.
-- **Bookmarks and highlights**, stored locally per book.
+- **Highlights and notes**, stored locally per book — highlight a passage in a color of your choosing, optionally attach a note to it, and browse every note in the sidebar's Notes tab.
 - **Scroll-to-turn-page** — scrolling past the top/bottom edge of a page or chapter advances to the next/previous one.
-- **Collapsible sidebar** — hide the table of contents / bookmarks / search dock with a single chevron toggle.
+- **Collapsible sidebar** — hide the table of contents / notes / search dock with a single chevron toggle.
 - **Cross-device reading progress sync** — point Mnemosyne at a cloud-synced folder (Google Drive, iCloud Drive, Dropbox, etc.) and it writes an append-only per-device log of page/zoom changes. Other devices reading the same folder detect newer progress and prompt before jumping to it. Books are matched across devices by content hash, not file path.
 
 ## Requirements

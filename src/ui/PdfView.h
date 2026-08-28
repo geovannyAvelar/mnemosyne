@@ -32,6 +32,7 @@ public:
     int currentPosition() const override;
     QVector<SearchResult> search(const QString &query) const override;
     void setSearchTerm(const QString &term) override;
+    void refreshHighlights() override;
 
     // Same search as above, but independent of any PdfView instance: opens
     // its own Poppler document from filePath rather than touching a live
@@ -56,6 +57,12 @@ public slots:
     void zoomOut();
     void copySelection();
     void addHighlightForSelection();
+    void addNoteForSelection();
+
+signals:
+    // Emitted whenever this view adds, edits, or removes a highlight/note,
+    // so MainWindow can keep the Notes dock in sync without polling.
+    void highlightsChanged();
 
 private:
     void setupUi();

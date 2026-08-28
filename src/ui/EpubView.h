@@ -30,6 +30,7 @@ public:
     int currentPosition() const override;
     QVector<SearchResult> search(const QString &query) const override;
     void setSearchTerm(const QString &term) override;
+    void refreshHighlights() override;
 
     // Same search as above, but independent of any EpubView instance: opens
     // its own EpubDocument (and zip archive handle) from filePath rather
@@ -56,6 +57,11 @@ public slots:
     void zoomIn();
     void zoomOut();
 
+signals:
+    // Emitted whenever this view adds, edits, or removes a highlight/note,
+    // so MainWindow can keep the Notes dock in sync without polling.
+    void highlightsChanged();
+
 private:
     void setupUi();
     void renderCurrentChapter();
@@ -63,6 +69,7 @@ private:
     void applyPageColors();
     void applyHighlightsToBrowser();
     void addHighlightForSelection();
+    void addNoteForSelection();
     void showBrowserContextMenu(const QPoint &pos);
     void onVideoLinkActivated(const QUrl &url);
     void setFontZoomSteps(int steps);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QImage>
 #include <QPoint>
 #include <QVector>
@@ -36,9 +37,17 @@ public:
     // caller on every selectionChanged() while dragging.
     void setSelectionRects(const QVector<QRect> &rects);
 
+    // A persisted highlight rect (image pixels) plus the color it was
+    // created with — each highlight/note can have its own color.
+    struct HighlightMark
+    {
+        QRect rect;
+        QColor color;
+    };
+
     // Persisted highlight rects (image pixels) for the currently shown page,
     // drawn under the live selection overlay.
-    void setHighlightRects(const QVector<QRect> &rects);
+    void setHighlightRects(const QVector<HighlightMark> &marks);
 
     // Search-match rects (image pixels) for the currently shown page, drawn
     // in a bolder yellow than persisted highlights — a bingo-dauber mark for
@@ -68,6 +77,6 @@ private:
     bool m_hasSelection = false;
 
     QVector<QRect> m_selectionRects;
-    QVector<QRect> m_highlightRects;
+    QVector<HighlightMark> m_highlightRects;
     QVector<QRect> m_searchRects;
 };

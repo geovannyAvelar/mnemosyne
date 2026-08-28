@@ -1,5 +1,4 @@
 #include "AndroidStorageAccess.h"
-#include "BookmarksModel.h"
 #include "EpubReaderModel.h"
 #include "HighlightsModel.h"
 #include "LibraryModel.h"
@@ -33,7 +32,6 @@ int main(int argc, char *argv[])
 
     PdfDocumentModel pdfDocumentModel(pdfPageImageProvider);
     EpubReaderModel epubReaderModel;
-    BookmarksModel bookmarksModel;
     HighlightsModel highlightsModel;
     PdfSelectionController pdfSelectionController(&pdfDocumentModel);
     SyncController syncController;
@@ -44,7 +42,6 @@ int main(int argc, char *argv[])
     context->setContextProperty("libraryModel", &libraryModel);
     context->setContextProperty("pdfDocumentModel", &pdfDocumentModel);
     context->setContextProperty("epubReaderModel", &epubReaderModel);
-    context->setContextProperty("bookmarksModel", &bookmarksModel);
     context->setContextProperty("highlightsModel", &highlightsModel);
     context->setContextProperty("pdfSelectionController", &pdfSelectionController);
     context->setContextProperty("syncController", &syncController);

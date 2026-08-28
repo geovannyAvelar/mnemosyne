@@ -11,7 +11,7 @@
 // content:// URI to a real file in the app's private cache (via QFile,
 // which Qt's Android content-resolver file engine *does* understand) and
 // returns that local path. Everything downstream of this call — FileIdentity,
-// openDocument(), EpubDocument, BookmarkStore, ReadingProgressStore — stays
+// openDocument(), EpubDocument, HighlightStore, ReadingProgressStore — stays
 // exactly the same unmodified desktop code operating on a real filesystem
 // path, on both platforms. Desktop paths and any non-content:// input pass
 // through unchanged.

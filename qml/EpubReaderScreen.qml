@@ -30,17 +30,8 @@ Item {
 
     required property var documentModel
 
-    property bool currentChapterBookmarked: false
-    function refreshBookmarkedState() {
-        currentChapterBookmarked = bookmarksModel.isBookmarked(root.documentModel.currentSpineIndex)
-    }
-
     Component.onDestruction: documentModel.close()
 
-    Connections {
-        target: bookmarksModel
-        function onModelReset() { root.refreshBookmarkedState() }
-    }
     Connections {
         target: highlightsModel
         function onModelReset() { root.applyHighlightsToChapter() }
@@ -90,7 +81,6 @@ Item {
 
     function loadCurrentChapter() {
         webView.loadHtml(root.documentModel.currentChapterHtml)
-        root.refreshBookmarkedState()
     }
 
     // Wraps every occurrence of each persisted highlight's text in a
@@ -146,15 +136,14 @@ Item {
     }
 
     Component.onCompleted: {
-        bookmarksModel.bookHash = root.documentModel.bookHash
         highlightsModel.bookHash = root.documentModel.bookHash
         loadCurrentChapter()
     }
 
-    // Bookmark/highlight actions, separate from chapter navigation below —
-    // combining both rows overflowed a single bottom bar (Qt Quick Layouts
-    // collapses items that don't fit to zero size rather than wrapping or
-    // clipping, which silently made the Next button untappable).
+    // Highlight action, separate from chapter navigation below — combining
+    // both rows overflowed a single bottom bar (Qt Quick Layouts collapses
+    // items that don't fit to zero size rather than wrapping or clipping,
+    // which silently made the Next button untappable).
     Rectangle {
         id: topBar
         anchors.top: syncPromptBar.bottom
@@ -169,21 +158,6 @@ Item {
             anchors.fill: parent
             anchors.margins: 4
             spacing: 2
-
-            Button {
-                text: "☰"
-                flat: true
-                onClicked: bookmarksSheet.open()
-            }
-
-            Button {
-                text: "★"
-                flat: true
-                palette.buttonText: root.currentChapterBookmarked ? Theme.accent : Theme.mutedText
-                onClicked: bookmarksModel.toggleBookmark(
-                    root.documentModel.currentSpineIndex,
-                    root.documentModel.title)
-            }
 
             Button {
                 text: qsTr("Highlight")
@@ -239,11 +213,5 @@ Item {
                 onClicked: root.documentModel.nextChapter()
             }
         }
-    }
-
-    BookmarksSheet {
-        id: bookmarksSheet
-        parent: root
-        onJumpRequested: (targetIndex) => root.documentModel.currentSpineIndex = targetIndex
     }
 }

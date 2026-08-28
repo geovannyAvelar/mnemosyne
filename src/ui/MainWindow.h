@@ -11,9 +11,9 @@
 #include <QVector>
 
 class BookInfoDock;
-class BookmarksDock;
 class IReaderView;
 class LibraryView;
+class NotesDock;
 class SearchDock;
 class TocDock;
 class QAction;
@@ -40,7 +40,6 @@ protected:
 private slots:
     void openFile();
     void showLibrary();
-    void addBookmarkForCurrentPosition();
     void focusSearch();
     void closeCurrentTab();
     void setDarkModeEnabled(bool enabled);
@@ -62,20 +61,19 @@ private:
     void showSidebar();
     void populateOpenRecentMenu();
     void populateSyncMenu();
-    void refreshBookmarksDock();
+    void refreshNotesDock();
     void refreshBookInfoDock();
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
     int findTabForFilePath(const QString &filePath) const;
 
     TocDock *m_tocDock = nullptr;
-    BookmarksDock *m_bookmarksDock = nullptr;
+    NotesDock *m_notesDock = nullptr;
     SearchDock *m_searchDock = nullptr;
     BookInfoDock *m_bookInfoDock = nullptr;
     BookMetadataClient *m_bookMetadataClient = nullptr;
     QMenu *m_openRecentMenu = nullptr;
     QMenu *m_syncMenu = nullptr;
-    QAction *m_addBookmarkAction = nullptr;
     QAction *m_darkModeAction = nullptr;
     QAction *m_sidebarToggleAction = nullptr;
     QAction *m_fullScreenAction = nullptr;
