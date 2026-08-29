@@ -47,6 +47,31 @@ dylibbundler -of -cd -b \
 
 echo "==> Building .dmg"
 rm -f "$DMG_PATH"
-hdiutil create -volname Mnemosyne -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_PATH"
+
+# hdiutil create briefly mounts the image under this exact volume name to
+# populate it -- a volume of the same name left mounted from an earlier
+# run (a previous CI attempt that didn't get to unmount it, or a developer
+# testing this script locally with the .dmg still open in Finder) makes it
+# fail with "Resource busy" despite the stale DMG *file* itself already
+# being removed above. Detaching it first is a no-op when nothing's
+# mounted (hence the || true).
+hdiutil detach "/Volumes/Mnemosyne" -quiet 2>/dev/null || true
+
+# hdiutil create is known to intermittently fail with "Resource busy" on
+# CI runners even with no genuinely stale mount (diskarbitrationd/mdworker
+# transiently holding a lock) -- retrying a couple of times before giving
+# up is the standard workaround, cheaper than chasing a root cause that's
+# often just runner-environment timing.
+for attempt in 1 2 3; do
+    if hdiutil create -volname Mnemosyne -srcfolder "$STAGE_DIR" -ov -format UDZO "$DMG_PATH"; then
+        break
+    fi
+    if [[ "$attempt" == 3 ]]; then
+        echo "error: hdiutil create failed after 3 attempts" >&2
+        exit 1
+    fi
+    echo "==> hdiutil create failed (attempt $attempt/3), retrying..." >&2
+    sleep 5
+done
 
 echo "==> Done: $DMG_PATH"
