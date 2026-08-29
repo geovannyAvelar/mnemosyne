@@ -13,6 +13,13 @@ struct Entry
     QString title;
     QString format; // "pdf" or "epub"
     QDateTime lastOpened;
+    // See FileIdentity::contentHash -- lets recordOpened() recognize "the
+    // same book" even when it was re-imported to a new path (iOS's
+    // document picker copies the picked file into this app's own sandbox
+    // under a fresh, randomly-named path on every single pick, so the
+    // same source PDF picked twice would otherwise never match by path
+    // alone and would show up twice in Recents).
+    QString contentHash;
 };
 
 // Returns entries sorted newest-first.

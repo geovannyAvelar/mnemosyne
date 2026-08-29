@@ -1,5 +1,7 @@
 #include "RecentFiles.h"
 
+#include "FileIdentity.h"
+
 #include <QSettings>
 
 #include <algorithm>
@@ -19,6 +21,7 @@ void writeEntries(const QVector<RecentFiles::Entry> &entries)
         settings.setValue("title", entries[i].title);
         settings.setValue("format", entries[i].format);
         settings.setValue("lastOpened", entries[i].lastOpened);
+        settings.setValue("contentHash", entries[i].contentHash);
     }
     settings.endArray();
 }
@@ -38,6 +41,7 @@ QVector<Entry> list()
         e.title = settings.value("title").toString();
         e.format = settings.value("format").toString();
         e.lastOpened = settings.value("lastOpened").toDateTime();
+        e.contentHash = settings.value("contentHash").toString();
         if (!e.filePath.isEmpty()) {
             entries.append(e);
         }
@@ -52,9 +56,25 @@ QVector<Entry> list()
 
 void recordOpened(const QString &filePath, const QString &title, const QString &format)
 {
+    const QString hash = FileIdentity::contentHash(filePath);
+
     QVector<Entry> entries = list();
     entries.erase(std::remove_if(entries.begin(), entries.end(),
-                                  [&](const Entry &e) { return e.filePath == filePath; }),
+                                  [&](const Entry &e) {
+                                      // Prefer matching by content hash so
+                                      // re-picking the same book through a
+                                      // path that changes on every import
+                                      // (see the Entry::contentHash doc
+                                      // comment) replaces the old entry
+                                      // instead of duplicating it. Entries
+                                      // written before this hash existed
+                                      // fall back to the old path-equality
+                                      // check.
+                                      if (!hash.isEmpty() && !e.contentHash.isEmpty()) {
+                                          return e.contentHash == hash;
+                                      }
+                                      return e.filePath == filePath;
+                                  }),
                   entries.end());
 
     Entry e;
@@ -62,6 +82,7 @@ void recordOpened(const QString &filePath, const QString &title, const QString &
     e.title = title;
     e.format = format;
     e.lastOpened = QDateTime::currentDateTime();
+    e.contentHash = hash;
     entries.prepend(e);
 
     if (entries.size() > kMaxEntries) {

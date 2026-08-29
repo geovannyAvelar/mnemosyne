@@ -104,6 +104,13 @@ if(ANDROID)
     # (from MNEMOSYNE_ANDROID_DEPS_PREFIX's .pc files, see top-level
     # CMakeLists.txt) resolve without a -L unless it's added explicitly here.
     target_link_directories(mnemosynecore PUBLIC ${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib)
+elseif(IOS)
+    # Same gotcha as Android above, but for a different reason: the Xcode
+    # generator doesn't reliably turn PkgConfig::POPPLER_QT6/LIBZIP's bare
+    # "-lpoppler-qt6"/"-lzip" (from MNEMOSYNE_IOS_DEPS_PREFIX's .pc files)
+    # into a Library Search Paths entry on its own, so the final app link
+    # fails with "library 'poppler-qt6' not found" without this.
+    target_link_directories(mnemosynecore PUBLIC ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib)
 endif()
 
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
@@ -153,6 +160,8 @@ set(MNEMOSYNE_QUICK_SOURCES
     quick/PdfSelectionController.cpp
     quick/SyncController.h
     quick/SyncController.cpp
+    quick/ThemeSettings.h
+    quick/ThemeSettings.cpp
 )
 
 add_library(mnemosynequick STATIC ${MNEMOSYNE_QUICK_SOURCES})
@@ -338,15 +347,16 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/Theme.qml
         ${CMAKE_SOURCE_DIR}/qml/LibraryScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/PdfReaderScreen.qml
-        ${CMAKE_SOURCE_DIR}/qml/components/PdfPageItem.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/PdfContinuousPageItem.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SelectionToolbar.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SyncPromptBar.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
     )
     foreach(_qml_file ${MNEMOSYNE_ANDROID_QML_FILES})
-        # Relative to qml/, not just the basename, so components/PdfPageItem.qml
-        # keeps its subdirectory — PdfReaderScreen.qml imports it as
+        # Relative to qml/, not just the basename, so
+        # components/PdfContinuousPageItem.qml keeps its subdirectory —
+        # PdfReaderScreen.qml imports it as
         # `import "components"`, which needs that structure preserved in
         # the module's resource tree.
         file(RELATIVE_PATH _qml_alias ${CMAKE_SOURCE_DIR}/qml ${_qml_file})
@@ -400,13 +410,135 @@ if(ANDROID)
         )
     endif()
 elseif(IOS)
-    # No MnemosyneIOS executable target yet — this is a placeholder so
-    # configuring with -DCMAKE_SYSTEM_NAME=iOS at least builds mnemosynecore
-    # and mnemosynequick against MNEMOSYNE_IOS_DEPS_PREFIX (see top-level
-    # CMakeLists.txt) instead of silently falling through to the desktop
-    # Widgets block. The real target — a quick/main_ios.mm entry point
-    # mirroring quick/main_android.cpp, an iOS document-picker bridge in
-    # place of AndroidStorageAccess, Xcode code signing, and Info.plist
-    # setup — is follow-up work; see docs/ios-build.md.
-    message(STATUS "MNEMOSYNE: building for iOS — mnemosynecore/mnemosynequick only, no app target yet (see docs/ios-build.md)")
+    # Mirrors the ANDROID branch above: same mnemosynequick bridge classes,
+    # same QML file set, an entry point (quick/main_ios.mm) structurally
+    # identical to quick/main_android.cpp, and IOSStorageAccess in place of
+    # AndroidStorageAccess as the document-picker bridge (both are kept out
+    # of mnemosynequick and linked directly into their platform's
+    # executable, same as AndroidStorageAccess always has been). See
+    # docs/ios-build.md for the dependency cross-compile this links against.
+    # Ghostscript/URW Base35 substitute fonts for Poppler's "generic" font
+    # backend (see PopplerFontSetup.cpp and scripts/build-ios-deps.sh) --
+    # MACOSX_PACKAGE_LOCATION copies these directly into the app bundle
+    # root (iOS bundles are flat, unlike macOS's Contents/Resources), which
+    # is what QCoreApplication::applicationDirPath() resolves to on iOS.
+    file(GLOB MNEMOSYNE_IOS_BASE14_FONTS ${CMAKE_SOURCE_DIR}/resources/pdf-base14-fonts/*.pfb)
+    set_source_files_properties(${MNEMOSYNE_IOS_BASE14_FONTS}
+        PROPERTIES MACOSX_PACKAGE_LOCATION "pdf-base14-fonts")
+
+    # App icon (ios/Assets.xcassets/AppIcon.appiconset) -- a single 1024x1024
+    # source image, opaque (no alpha, required for App Store icons). Xcode's
+    # asset catalog compiler (actool) recognizes the .xcassets extension and
+    # generates every actually-needed scaled variant from it at build time,
+    # so unlike the older per-size-file icon sets this needs no other
+    # declarations beyond XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME
+    # below pointing at the appiconset's name.
+    set(MNEMOSYNE_IOS_ASSET_CATALOG ${CMAKE_SOURCE_DIR}/ios/Assets.xcassets)
+    set_source_files_properties(${MNEMOSYNE_IOS_ASSET_CATALOG}
+        PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+
+    qt_add_executable(MnemosyneIOS
+        quick/main_ios.mm
+        quick/IOSStorageAccess.h
+        quick/IOSStorageAccess.mm
+        quick/PopplerFontSetup.h
+        quick/PopplerFontSetup.cpp
+        ${MNEMOSYNE_IOS_BASE14_FONTS}
+        ${MNEMOSYNE_IOS_ASSET_CATALOG}
+    )
+
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
+        PROPERTIES QT_RESOURCE_ALIAS test_multipage.pdf)
+
+    qt_add_resources(MnemosyneIOS smoke_test_fixtures
+        PREFIX /
+        FILES ${CMAKE_SOURCE_DIR}/tests/fixtures/test_multipage.pdf
+    )
+
+    set(MNEMOSYNE_IOS_QML_FILES
+        ${CMAKE_SOURCE_DIR}/qml/Main.qml
+        ${CMAKE_SOURCE_DIR}/qml/Theme.qml
+        ${CMAKE_SOURCE_DIR}/qml/LibraryScreen.qml
+        ${CMAKE_SOURCE_DIR}/qml/PdfReaderScreen.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/PdfContinuousPageItem.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/SelectionToolbar.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/SyncPromptBar.qml
+        ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
+        ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
+    )
+    foreach(_qml_file ${MNEMOSYNE_IOS_QML_FILES})
+        file(RELATIVE_PATH _qml_alias ${CMAKE_SOURCE_DIR}/qml ${_qml_file})
+        set_source_files_properties(${_qml_file} PROPERTIES QT_RESOURCE_ALIAS ${_qml_alias})
+    endforeach()
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/qml/Theme.qml
+        PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
+    # See the identical guard in the ANDROID branch above for why this is
+    # needed before qt_add_qml_module.
+    qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0002 NEW)
+    qt_policy(SET QTP0004 NEW)
+
+    qt_add_qml_module(MnemosyneIOS
+        URI MnemosyneIOS
+        VERSION 1.0
+        QML_FILES ${MNEMOSYNE_IOS_QML_FILES}
+    )
+
+    target_link_libraries(MnemosyneIOS PRIVATE
+        mnemosynequick
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::WebView
+        "-framework UIKit"
+        "-framework UniformTypeIdentifiers"
+    )
+
+    # PopplerFontSetup.cpp includes <GlobalParams.h> -- poppler-qt6's own
+    # public headers (already reachable via mnemosynecore's PkgConfig::
+    # POPPLER_QT6 Cflags) only cover include/poppler/qt6, not this
+    # top-level, ENABLE_UNSTABLE_API_ABI_HEADERS-only header.
+    target_include_directories(MnemosyneIOS PRIVATE ${MNEMOSYNE_IOS_DEPS_PREFIX}/include/poppler)
+
+    # Poppler-Qt6/libzip/Freetype were cross-compiled as static libraries
+    # (scripts/build-ios-deps.sh) rather than shared like Android's .so's --
+    # an iOS app bundle can embed dynamic frameworks, but that needs its
+    # own codesigning and an "Embed Frameworks" build phase per library, so
+    # static sidesteps all of that. Being static, they just need linking,
+    # not an Android-style QT_ANDROID_EXTRA_LIBS bundling step.
+    # z is poppler.a's own zlib dependency -- a static lib doesn't carry
+    # its dependency graph the way Android's .so's do, so the final
+    # executable link needs it spelled out explicitly (iOS's system
+    # libz.tbd, same one poppler's own configure step found).
+    target_link_libraries(MnemosyneIOS PRIVATE
+        ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libpoppler-qt6.a
+        ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libpoppler.a
+        ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libzip.a
+        ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libfreetype.a
+        z
+    )
+
+    # MACOSX_BUNDLE_GUI_IDENTIFIER is CMake's Apple-wide property name for
+    # both macOS .app bundles and iOS ones -- reusing the desktop target's
+    # identifier string here is harmless since Apple registers macOS and
+    # iOS App IDs separately even when the string matches (see the
+    # Mnemosyne desktop target above for the macOS one). Leaving
+    # DEVELOPMENT_TEAM/CODE_SIGN_STYLE unset lets Qt's Xcode-generator
+    # helper (QtPublicAppleHelpers.cmake) auto-detect the sole
+    # "Apple Development" identity on this machine and default to
+    # Automatic signing, the same as a fresh Xcode project would.
+    set_target_properties(MnemosyneIOS PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.geovannyavelar.Mnemosyne"
+        MACOSX_BUNDLE_BUNDLE_NAME "Mnemosyne"
+        XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "15.0"
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
+        # MACOSX_BUNDLE_BUNDLE_NAME alone only sets CFBundleName -- Qt's
+        # Info.plist template sets CFBundleDisplayName (what actually
+        # shows under the home screen icon) from Xcode's own PRODUCT_NAME
+        # build setting, which defaults to the CMake target name
+        # ("MnemosyneIOS") rather than this. Setting it explicitly is what
+        # makes the home screen label read "Mnemosyne" instead.
+        XCODE_ATTRIBUTE_PRODUCT_NAME "Mnemosyne"
+    )
 endif()

@@ -1,21 +1,23 @@
 pragma Singleton
 import QtQuick
 
-// Color tokens ported from src/ui/Theme.cpp's Colors struct (light palette
-// only, for now — dark mode is a later mobile-port pass, same as it was a
-// separate pass on desktop). Delivery mechanism differs (QML singleton
-// instead of QPalette + QSS) but the actual values are the same warm
-// cream/charcoal + terracotta palette.
+// Color tokens ported from src/ui/Theme.cpp's Colors struct (both the
+// light and dark palettes — values copied verbatim from lightColors()/
+// darkColors() there, so mobile and desktop stay visually consistent).
+// themeSettings is a QML context property (see ThemeSettings.h) backed by
+// the same QSettings "darkMode" key desktop's menu action uses.
 QtObject {
-    readonly property color window: "#FAF9F5"
-    readonly property color panel: "#F5F3EC"
-    readonly property color base: "#FFFFFF"
-    readonly property color raisedHover: "#EEECE3"
-    readonly property color border: "#E5E2D9"
-    readonly property color text: "#2B2A27"
-    readonly property color mutedText: "#8A877C"
+    readonly property bool dark: themeSettings.dark
+
+    readonly property color window: dark ? "#262624" : "#FAF9F5"
+    readonly property color panel: dark ? "#2A2A28" : "#F5F3EC"
+    readonly property color base: dark ? "#30302E" : "#FFFFFF"
+    readonly property color raisedHover: dark ? "#383835" : "#EEECE3"
+    readonly property color border: dark ? "#3D3D3A" : "#E5E2D9"
+    readonly property color text: dark ? "#F5F4EF" : "#2B2A27"
+    readonly property color mutedText: dark ? "#9B9993" : "#8A877C"
     readonly property color accent: "#D97756"
-    readonly property color accentHover: "#C2603F"
-    readonly property color accentPressed: "#AD5435"
+    readonly property color accentHover: dark ? "#E28A6C" : "#C2603F"
+    readonly property color accentPressed: dark ? "#C2603F" : "#AD5435"
     readonly property color accentText: "#FFFFFF"
 }

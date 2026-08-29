@@ -41,6 +41,29 @@ Item {
         }
 
         Text {
+            text: qsTr("APPEARANCE")
+            color: Theme.mutedText
+            font.pixelSize: 12
+            font.letterSpacing: 1
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Dark Mode")
+                color: Theme.text
+                font.pixelSize: 15
+            }
+
+            Switch {
+                checked: themeSettings.dark
+                onToggled: themeSettings.dark = checked
+            }
+        }
+
+        Text {
             text: qsTr("GOOGLE DRIVE SYNC")
             color: Theme.mutedText
             font.pixelSize: 12

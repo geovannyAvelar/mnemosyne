@@ -1,10 +1,11 @@
-#include "AndroidStorageAccess.h"
 #include "EpubReaderModel.h"
 #include "HighlightsModel.h"
+#include "IOSStorageAccess.h"
 #include "LibraryModel.h"
 #include "PdfDocumentModel.h"
 #include "PdfPageImageProvider.h"
 #include "PdfSelectionController.h"
+#include "PopplerFontSetup.h"
 #include "SmokeTestBridge.h"
 #include "SyncController.h"
 #include "ThemeSettings.h"
@@ -17,8 +18,10 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
 
+    setupPopplerBase14Fonts();
+
     SmokeTestBridge smokeTestBridge;
-    AndroidStorageAccess androidStorageAccess;
+    IOSStorageAccess iosStorageAccess;
     LibraryModel libraryModel;
 
     QQmlApplicationEngine engine;
@@ -40,7 +43,7 @@ int main(int argc, char *argv[])
 
     QQmlContext *context = engine.rootContext();
     context->setContextProperty("smokeTestBridge", &smokeTestBridge);
-    context->setContextProperty("documentPicker", &androidStorageAccess);
+    context->setContextProperty("documentPicker", &iosStorageAccess);
     context->setContextProperty("libraryModel", &libraryModel);
     context->setContextProperty("pdfDocumentModel", &pdfDocumentModel);
     context->setContextProperty("epubReaderModel", &epubReaderModel);
@@ -51,7 +54,7 @@ int main(int argc, char *argv[])
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
-    engine.loadFromModule("MnemosyneAndroid", "Main");
+    engine.loadFromModule("MnemosyneIOS", "Main");
 
     return app.exec();
 }

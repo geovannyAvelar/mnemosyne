@@ -20,9 +20,10 @@ QVariantList PdfSelectionController::selectionRects() const
     return rects;
 }
 
-void PdfSelectionController::beginSelection(qreal pageX, qreal pageY)
+void PdfSelectionController::beginSelection(int pageIndex, qreal pageX, qreal pageY)
 {
-    m_words = m_documentModel->wordsForPage(m_documentModel->currentPage());
+    m_activePageIndex = pageIndex;
+    m_words = m_documentModel->wordsForPage(pageIndex);
     m_anchorPoint = QPointF(pageX, pageY);
     applySelection(m_anchorPoint);
 }
@@ -38,6 +39,7 @@ void PdfSelectionController::updateSelection(qreal pageX, qreal pageY)
 void PdfSelectionController::clearSelection()
 {
     m_words.clear();
+    m_activePageIndex = -1;
     if (m_selectedText.isEmpty() && m_selectionRects.isEmpty()) {
         return;
     }

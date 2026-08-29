@@ -8,6 +8,17 @@ Item {
     signal fileActivated(string filePath, string title, string format)
     signal settingsRequested()
 
+    property string _errorMessage: ""
+    function showError(message) {
+        root._errorMessage = message
+        errorClearTimer.restart()
+    }
+    Timer {
+        id: errorClearTimer
+        interval: 5000
+        onTriggered: root._errorMessage = ""
+    }
+
     function guessFormat(name) {
         const lower = name.toLowerCase()
         if (lower.endsWith(".epub")) return "epub"
@@ -16,7 +27,7 @@ Item {
     }
 
     Connections {
-        target: androidStorageAccess
+        target: documentPicker
         function onDocumentPicked(uri, displayName) {
             libraryModel.recordOpened(uri, displayName, root.guessFormat(displayName))
         }
@@ -54,7 +65,7 @@ Item {
         Button {
             id: openButton
             text: qsTr("Open Document…")
-            onClicked: androidStorageAccess.pickDocument()
+            onClicked: documentPicker.pickDocument()
 
             background: Rectangle {
                 implicitHeight: 44
@@ -69,6 +80,26 @@ Item {
                 font.pixelSize: 16
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            visible: root._errorMessage.length > 0
+            implicitHeight: errorText.implicitHeight + 20
+            radius: 10
+            color: Theme.panel
+            border.color: Theme.border
+            border.width: 1
+
+            Text {
+                id: errorText
+                anchors.fill: parent
+                anchors.margins: 10
+                text: root._errorMessage
+                color: Theme.text
+                font.pixelSize: 13
+                wrapMode: Text.WordWrap
             }
         }
 
