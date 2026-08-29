@@ -189,7 +189,8 @@ void AppPersistenceTest::highlightColorRoundTrips()
 
     HighlightStore::addHighlight(book, annotated);
 
-    const Highlight &roundTripped = HighlightStore::highlightsFor(book)[0];
+    const QVector<Highlight> highlights = HighlightStore::highlightsFor(book);
+    const Highlight &roundTripped = highlights[0];
     QCOMPARE(roundTripped.color, QColor(33, 150, 243, 140));
     QCOMPARE(roundTripped.note, QStringLiteral("why this passage matters"));
 }
