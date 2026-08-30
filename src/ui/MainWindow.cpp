@@ -579,11 +579,7 @@ void MainWindow::showAbout()
         this, tr("About Mnemosyne"),
         tr("<h3>Mnemosyne</h3>"
            "<p>Version %1</p>"
-           "<p>A PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and plain text reader.</p>"
-           "<p><small>App icon derived from the \"books\" emoji (U+1F4DA) in the "
-           "<a href=\"https://github.com/googlefonts/noto-emoji\">Noto Emoji</a> project by Google, "
-           "used under the <a href=\"https://github.com/googlefonts/noto-emoji/blob/main/svg/LICENSE\">"
-           "Apache License, Version 2.0</a>.</small></p>")
+           "<p>A PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and plain text reader.</p>")
             .arg(QStringLiteral(MNEMOSYNE_VERSION)));
 }
 
