@@ -100,6 +100,9 @@ std::optional<RemoteEntry> latestFromDirectory(const QString &dir, const QString
             if (!entry.timestamp.isValid()) {
                 continue;
             }
+            if (entry.deviceName.compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0) {
+                continue; // dev/test machines often resolve their hostname to "localhost"; never worth a jump prompt
+            }
             if (!latest || entry.timestamp > latest->timestamp) {
                 latest = entry;
             }

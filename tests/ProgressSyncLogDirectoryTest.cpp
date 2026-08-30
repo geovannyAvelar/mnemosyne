@@ -19,6 +19,7 @@ private slots:
 
     void findsLatestEntryAcrossDevices();
     void excludesGivenDeviceId();
+    void excludesEntriesNamedLocalhost();
     void filtersByBookHash();
     void returnsNulloptForEmptyDirOrHash();
     void tolerateMalformedLine();
@@ -56,6 +57,31 @@ void ProgressSyncLogDirectoryTest::excludesGivenDeviceId()
     const auto latest =
         ProgressSyncLog::latestFromDirectory(m_dir->path(), QStringLiteral("book2"), QStringLiteral("device-a"));
     QVERIFY(!latest.has_value());
+}
+
+void ProgressSyncLogDirectoryTest::excludesEntriesNamedLocalhost()
+{
+    // Dev/test machines often resolve their hostname to "localhost" (see
+    // DeviceIdentity::name()); such entries should never surface as a jump
+    // prompt, matched case-insensitively.
+    ProgressSyncLog::appendEntryToDirectory(m_dir->path(), QStringLiteral("device-a"), QStringLiteral("localhost"),
+                                             QStringLiteral("book3"), QStringLiteral("Book Three"), 3, 1.0);
+
+    QVERIFY(!ProgressSyncLog::latestFromDirectory(m_dir->path(), QStringLiteral("book3"), QStringLiteral("nobody"))
+                 .has_value());
+
+    QThread::msleep(10);
+    ProgressSyncLog::appendEntryToDirectory(m_dir->path(), QStringLiteral("device-b"), QStringLiteral("Localhost"),
+                                             QStringLiteral("book3"), QStringLiteral("Book Three"), 4, 1.0);
+    QThread::msleep(10);
+    ProgressSyncLog::appendEntryToDirectory(m_dir->path(), QStringLiteral("device-c"), QStringLiteral("Device C"),
+                                             QStringLiteral("book3"), QStringLiteral("Book Three"), 8, 1.0);
+
+    const auto latest =
+        ProgressSyncLog::latestFromDirectory(m_dir->path(), QStringLiteral("book3"), QStringLiteral("nobody"));
+    QVERIFY(latest.has_value());
+    QCOMPARE(latest->deviceId, QStringLiteral("device-c"));
+    QCOMPARE(latest->position, 8);
 }
 
 void ProgressSyncLogDirectoryTest::filtersByBookHash()
