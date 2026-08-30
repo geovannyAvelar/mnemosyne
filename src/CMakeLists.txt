@@ -32,6 +32,8 @@ set(MNEMOSYNE_CORE_SOURCES
     app/ReadingProgressStore.cpp
     app/ProgressSyncLog.h
     app/ProgressSyncLog.cpp
+    platform/SystemAppearance.h
+    platform/SystemAppearance.cpp
     pdf/PopplerPdfDocument.h
     pdf/PopplerPdfDocument.cpp
     epub/ZipArchive.h
@@ -93,6 +95,16 @@ target_link_libraries(mnemosynecore PUBLIC
     PkgConfig::POPPLER_QT6
     PkgConfig::LIBZIP
 )
+
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT IOS)
+    # SystemAppearance.cpp falls back to querying the freedesktop desktop
+    # portal over D-Bus on Qt < 6.5 (no QStyleHints::colorScheme() yet --
+    # e.g. the qt6-base-dev apt package this project's Linux CI installs,
+    # see .github/workflows/build.yml). Qt >= 6.5 never takes that code
+    # path, but linking DBus is harmless either way.
+    find_package(Qt6 REQUIRED COMPONENTS DBus)
+    target_link_libraries(mnemosynecore PUBLIC Qt6::DBus)
+endif()
 
 if(NOT ANDROID AND NOT IOS)
     target_link_libraries(mnemosynecore PUBLIC PkgConfig::LIBMOBI)

@@ -6,6 +6,7 @@
 #include <QTimer>
 #endif
 
+#include "platform/SystemAppearance.h"
 #include "ui/MainWindow.h"
 #ifdef Q_OS_MACOS
 #include "platform/MacWindowChrome.h"
@@ -46,12 +47,20 @@ int main(int argc, char *argv[])
     // On macOS the app bundle's .icns (see MACOSX_BUNDLE_ICON_FILE) already
     // provides the Dock/Finder icon, and the OS applies its own rounded-square
     // mask and shadow to it. Setting a window icon here would override that
-    // with the flat, background-less icon used for the Windows/Linux taskbar.
-    QIcon appIcon;
-    for (int size : {16, 32, 48, 64, 128, 256, 512}) {
-        appIcon.addFile(QString(":/icons/mnemosyne_%1.png").arg(size), QSize(size, size));
-    }
-    QApplication::setWindowIcon(appIcon);
+    // with the icon used for the Windows/Linux taskbar, which also tracks the
+    // OS's own light/dark appearance setting (see SystemAppearance) so it
+    // matches the taskbar it sits in.
+    auto buildAppIcon = [](bool dark) {
+        QIcon icon;
+        for (int size : {16, 32, 48, 64, 128, 256, 512}) {
+            const QString suffix = dark ? QStringLiteral("_dark") : QString();
+            icon.addFile(QStringLiteral(":/icons/mnemosyne_%1%2.png").arg(size).arg(suffix), QSize(size, size));
+        }
+        return icon;
+    };
+    QApplication::setWindowIcon(buildAppIcon(SystemAppearance::instance().isDarkMode()));
+    QObject::connect(&SystemAppearance::instance(), &SystemAppearance::darkModeChanged, &app,
+                      [buildAppIcon](bool dark) { QApplication::setWindowIcon(buildAppIcon(dark)); });
 #endif
 
     QCommandLineParser parser;

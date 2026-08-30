@@ -7,5 +7,12 @@
         <file alias="mnemosyne_128.png">icons/mnemosyne_128.png</file>
         <file alias="mnemosyne_256.png">icons/mnemosyne_256.png</file>
         <file alias="mnemosyne_512.png">icons/mnemosyne_512.png</file>
+        <file alias="mnemosyne_16_dark.png">icons/mnemosyne_16_dark.png</file>
+        <file alias="mnemosyne_32_dark.png">icons/mnemosyne_32_dark.png</file>
+        <file alias="mnemosyne_48_dark.png">icons/mnemosyne_48_dark.png</file>
+        <file alias="mnemosyne_64_dark.png">icons/mnemosyne_64_dark.png</file>
+        <file alias="mnemosyne_128_dark.png">icons/mnemosyne_128_dark.png</file>
+        <file alias="mnemosyne_256_dark.png">icons/mnemosyne_256_dark.png</file>
+        <file alias="mnemosyne_512_dark.png">icons/mnemosyne_512_dark.png</file>
     </qresource>
 </RCC>
