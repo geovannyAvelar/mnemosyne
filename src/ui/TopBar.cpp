@@ -1,6 +1,7 @@
 #include "TopBar.h"
 
 #include <QChildEvent>
+#include <QDebug>
 #include <QMouseEvent>
 #include <QWindow>
 
@@ -15,6 +16,7 @@ TopBar::TopBar(const QString &title, QWidget *parent)
 
 void TopBar::mousePressEvent(QMouseEvent *event)
 {
+    qDebug() << "DIAG TopBar::mousePressEvent pos=" << event->pos() << "childAt=" << childAt(event->pos());
     if (event->button() == Qt::LeftButton && !childAt(event->pos())) {
         if (QWindow *handle = window()->windowHandle()) {
             handle->startSystemMove();

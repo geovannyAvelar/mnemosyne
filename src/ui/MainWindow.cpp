@@ -36,6 +36,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDebug>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QEvent>
@@ -46,12 +47,14 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QSettings>
 #include <QSizePolicy>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTimer>
 #include <QToolBar>
+#include <QWindow>
 #include <QWindowStateChangeEvent>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -104,6 +107,33 @@ MainWindow::MainWindow(QWidget *parent)
             toggleSidebar();
         }
     });
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+    qDebug() << "DIAG MainWindow::mousePressEvent pos=" << event->pos() << "childAt=" << childAt(event->pos());
+#ifdef Q_OS_MACOS
+    // Qt's Cocoa backend keeps a top contentsMargins() equal to the old
+    // native title bar's height -- a leftover safe-area inset from before
+    // MacWindowChrome::integrateTitleBar() (see main.cpp) removed that title
+    // bar, which it recomputes and reapplies on its own even after being
+    // explicitly zeroed, so it can't be gotten rid of from here. That margin
+    // pushes TopBar's top edge down, leaving a strip directly above it that
+    // belongs to no widget (TopBar's own empty-background drag handling,
+    // see TopBar::mousePressEvent(), never sees clicks that land outside
+    // its own bounds) and isn't native-draggable either, since Qt's content
+    // view already covers it. Handling it exactly like TopBar does --
+    // starting a window drag on an otherwise-unclaimed click -- covers that
+    // strip without needing to eliminate it.
+    if (event->button() == Qt::LeftButton && !childAt(event->pos())) {
+        if (QWindow *handle = windowHandle()) {
+            bool ok = handle->startSystemMove();
+            qDebug() << "DIAG MainWindow: startSystemMove() returned" << ok;
+            return;
+        }
+    }
+#endif
+    QMainWindow::mousePressEvent(event);
 }
 
 void MainWindow::changeEvent(QEvent *event)
@@ -403,6 +433,17 @@ void MainWindow::setupSidebarToggle()
     topBar->setFixedHeight(52);
 
     auto *trafficLights = new QWidget(topBar);
+    // QToolBarLayout stretches an added widget to the bar's full height by
+    // default, but the buttons inside are only as tall as their own
+    // sizeHint (14px). Left alone, that leftover vertical padding is still
+    // part of this container's geometry, so childAt() finds *it* there
+    // instead of nullptr, defeating TopBar::mousePressEvent()'s "empty
+    // background" check the same way the spacers below do. A Fixed vertical
+    // policy stops the layout from stretching the container in the first
+    // place, so that padding truly belongs to no widget and falls through
+    // to the toolbar for the drag -- unlike WA_TransparentForMouseEvents,
+    // this doesn't risk also swallowing clicks on the buttons themselves.
+    trafficLights->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *trafficLightsLayout = new QHBoxLayout(trafficLights);
     trafficLightsLayout->setContentsMargins(0, 0, 0, 0);
     trafficLightsLayout->setSpacing(8);
@@ -425,6 +466,10 @@ void MainWindow::setupSidebarToggle()
 
     auto *trafficLightSpacer = new QWidget(topBar);
     trafficLightSpacer->setFixedWidth(16);
+    // Otherwise this widget is what childAt() finds under the cursor here,
+    // which defeats TopBar::mousePressEvent()'s "empty background" check for
+    // starting a window drag -- see the matching spacer below.
+    trafficLightSpacer->setAttribute(Qt::WA_TransparentForMouseEvents);
     topBar->addWidget(trafficLightSpacer);
 #endif
 
@@ -438,6 +483,11 @@ void MainWindow::setupSidebarToggle()
 
     auto *spacer = new QWidget(topBar);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    // Without this, this widget -- not nullptr -- is what childAt() finds
+    // under the cursor across most of the bar's width, so
+    // TopBar::mousePressEvent() never sees "empty background" and the
+    // window-drag path never fires.
+    spacer->setAttribute(Qt::WA_TransparentForMouseEvents);
     topBar->addWidget(spacer);
 }
 

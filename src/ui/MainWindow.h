@@ -20,6 +20,7 @@ class QAction;
 class QDragEnterEvent;
 class QDropEvent;
 class QMenu;
+class QMouseEvent;
 class QTabWidget;
 class QToolBar;
 
@@ -33,6 +34,7 @@ public:
     void openPath(const QString &filePath);
 
 protected:
+    void mousePressEvent(QMouseEvent *event) override;
     void changeEvent(QEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
