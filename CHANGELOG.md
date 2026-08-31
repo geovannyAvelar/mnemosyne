@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.8.0] - 2026-08-31
+
+### Added
+
+- Notes: bookmarks are replaced by colorable highlight notes, browsable in a new Notes tab. Selecting text now offers "Add Note..." alongside "Highlight", opening one dialog with both the note text and a color palette (five presets plus a full picker) together — the same dialog edits an existing note. Every highlight now carries its own color instead of one fixed yellow for all of them. The sidebar's Bookmarks tab becomes a Notes tab listing every highlighted note with Edit/Remove and jump-to-page, and it updates live the moment a note is added, edited, or removed from the document itself.
+- A working iOS build: Poppler/libzip/freetype cross-compiled for arm64, a native app target, and a document-picker bridge that copies picked files into the app's own sandbox (iOS has no persistable content URI the way Android's SAF does). The mobile PDF reader is rewritten as a continuous vertical scroll (Adobe Reader-style) instead of one-page-at-a-time swiping, with pinch-zoom anchored to the page center, a persistent zoom/page-jump toolbar, and an in-app dark mode toggle sharing desktop's setting. Also fixes duplicated recent-documents entries on iOS (deduped by content hash instead of path, since the picker copies to a fresh path every time) and a broken recent entry that failed to open with no feedback.
+- A new app icon, replacing the Noto Emoji-derived book stack, masked to a circular badge across every platform and size. On Windows and Linux, the taskbar icon now switches between light/dark variants automatically to match the OS's own appearance setting.
+
+### Fixed
+
+- On macOS, a dead strip above the custom title bar that wasn't covered by any widget and couldn't be used to drag the window. Qt's Cocoa backend was caching title-bar frame margins from before the native title bar got stripped; the window frame is now nudged to force those margins to recompute, and clicks landing outside any child widget in that region now start a native window move.
+- Cross-device reading-progress sync no longer shows a spurious "jump to other device's position?" prompt when the other device's hostname is (or resolves to) "localhost", as dev/test machines often do.
+
+### Removed
+
+- The Noto Emoji attribution from the About dialog, no longer needed now that the app icon doesn't use Noto Emoji artwork.
+
 ## [1.7.0] - 2026-08-27
 
 ### Added
