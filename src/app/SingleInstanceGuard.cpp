@@ -51,7 +51,8 @@ bool SingleInstanceGuard::tryBecomePrimary(const QStringList &filesToOpen)
     // primary's listen() call needs more than a couple hundred ms to land).
     QLocalSocket socket;
     socket.connectToServer(serverName());
-    if (socket.waitForConnected(2000)) {
+    const bool connected = socket.waitForConnected(2000);
+    if (connected) {
         QByteArray payload;
         for (const QString &path : filesToOpen) {
             payload += path.toUtf8();
@@ -62,6 +63,10 @@ bool SingleInstanceGuard::tryBecomePrimary(const QStringList &filesToOpen)
         socket.disconnectFromServer();
         return false;
     }
+    // Cancel the pending connect attempt explicitly rather than leaving it
+    // for `socket`'s destructor to unwind -- on Windows in particular, an
+    // outstanding overlapped connect left dangling has been unreliable.
+    socket.abort();
 
     // No primary answered. Either this is the first instance, or a previous
     // one crashed and left its socket file behind (Linux/macOS only --
@@ -72,7 +77,16 @@ bool SingleInstanceGuard::tryBecomePrimary(const QStringList &filesToOpen)
 
     m_server = new QLocalServer(this);
     connect(m_server, &QLocalServer::newConnection, this, &SingleInstanceGuard::handleNewConnection);
-    if (!m_server->listen(serverName())) {
+    if (m_server->listen(serverName())) {
+        // On Windows, arming the pipe to actually accept an incoming
+        // connection finishes via the event loop rather than fully
+        // synchronously inside listen() -- without at least one iteration
+        // here, a client connecting right after this call returns (as
+        // SingleInstanceGuardTest does, and as two near-simultaneous
+        // real launches could) blocks for that client's entire
+        // waitForConnected() timeout instead of connecting immediately.
+        QCoreApplication::processEvents();
+    } else {
         // E.g. a permissions issue on the runtime directory -- fall back to
         // running unguarded rather than refusing to open at all. Logged
         // rather than silently swallowed: a listen() failure here means
