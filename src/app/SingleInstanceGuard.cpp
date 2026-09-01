@@ -63,6 +63,12 @@ bool SingleInstanceGuard::tryBecomePrimary(const QStringList &filesToOpen)
         socket.disconnectFromServer();
         return false;
     }
+    // Temporary diagnostic: this codepath has been silently failing in
+    // Windows CI (SingleInstanceGuardTest) with no clue why -- surfacing
+    // the actual socket error should tell us whether it's a real "nothing
+    // is listening" versus something else entirely.
+    qCWarning(lcSingleInstance) << "connect probe to" << serverName() << "did not connect, error"
+                                 << socket.error() << "-" << socket.errorString();
     // Cancel the pending connect attempt explicitly rather than leaving it
     // for `socket`'s destructor to unwind -- on Windows in particular, an
     // outstanding overlapped connect left dangling has been unreliable.
