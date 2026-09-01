@@ -18,7 +18,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
-#include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
@@ -26,6 +25,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QStandardPaths>
+#include <QTextBlock>
 #include <QTextBrowser>
 #include <QTextDocument>
 #include <QTimer>
@@ -55,6 +55,32 @@ QVector<QTextCursor> findAllOccurrences(QTextDocument *document, const QString &
     return occurrences;
 }
 
+// Same as findAllOccurrences, but only returns matches whose block number
+// falls within [startBlock, endBlock) -- used to scope a highlight's search
+// to its own chapter's content, now that multiple chapters can be loaded in
+// the same QTextDocument simultaneously (a phrase repeated verbatim in two
+// loaded chapters would otherwise cross-contaminate).
+QVector<QTextCursor> findOccurrencesInRange(QTextDocument *document, const QString &text, int startBlock, int endBlock)
+{
+    QVector<QTextCursor> occurrences;
+    if (text.isEmpty()) {
+        return occurrences;
+    }
+    QTextCursor cursor(document->findBlockByNumber(std::max(0, startBlock)));
+    while (true) {
+        cursor = document->find(text, cursor);
+        if (cursor.isNull() || cursor.blockNumber() >= endBlock) {
+            break;
+        }
+        if (cursor.blockNumber() >= startBlock) {
+            occurrences.append(cursor);
+        }
+    }
+    return occurrences;
+}
+
+constexpr int kEdgeThresholdPx = 300; // how close to the top/bottom edge triggers loading the next/previous chapter
+
 } // namespace
 
 EpubView::EpubView(std::unique_ptr<EpubDocument> document, QString filePath, QWidget *parent)
@@ -68,8 +94,7 @@ EpubView::EpubView(std::unique_ptr<EpubDocument> document, QString filePath, QWi
 {
     setupUi();
     restoreProgressAndCheckSync(); // sets m_currentChapter/m_fontZoomSteps before the first render, so there's no visible jump
-    renderCurrentChapter();
-    updateNavigationState();
+    loadWindowStartingAt(m_currentChapter);
 }
 
 QString EpubView::documentTitle() const
@@ -154,7 +179,12 @@ void EpubView::setDarkMode(bool enabled)
     }
     m_darkMode = enabled;
     applyPageColors();
-    renderCurrentChapter(); // re-inject/remove the dark-mode text-color override
+    // The dark-mode color override is injected per-fragment (see
+    // chapterHtmlFragment()), so it can't be patched into an
+    // already-merged multi-chapter document -- reset back to a single-
+    // chapter window, which the reader can re-grow by scrolling. Dark-mode
+    // toggling is rare enough that this is an acceptable tradeoff.
+    loadWindowStartingAt(m_currentChapter);
 }
 
 void EpubView::setupUi()
@@ -193,8 +223,8 @@ void EpubView::setupUi()
     connect(m_browser, &QTextBrowser::customContextMenuRequested, this, &EpubView::showBrowserContextMenu);
     connect(m_browser, &QTextBrowser::anchorClicked, this, &EpubView::onVideoLinkActivated);
     applyPageColors();
-    m_browser->viewport()->installEventFilter(this); // scrolling past the top/bottom edge turns the chapter
-    m_browser->installEventFilter(this); // ditto for arrow-key scrolling past the edge (see eventFilter())
+    m_browser->viewport()->installEventFilter(this); // Ctrl+wheel zoom
+    connect(m_browser->verticalScrollBar(), &QScrollBar::valueChanged, this, &EpubView::onScrolled);
 
     m_syncPromptBar = new SyncPromptBar(this);
 
@@ -219,39 +249,9 @@ void EpubView::applyPageColors()
     }
 }
 
-void EpubView::goToChapter(int spineIndex)
+QString EpubView::chapterHtmlFragment(int spineIndex) const
 {
-    if (!m_document) {
-        return;
-    }
-    spineIndex = std::clamp(spineIndex, 0, m_document->spineCount() - 1);
-    if (spineIndex == m_currentChapter) {
-        updateNavigationState();
-        return;
-    }
-    m_currentChapter = spineIndex;
-    renderCurrentChapter();
-    updateNavigationState();
-    scheduleProgressSave();
-}
-
-void EpubView::nextChapter()
-{
-    goToChapter(m_currentChapter + 1);
-}
-
-void EpubView::previousChapter()
-{
-    goToChapter(m_currentChapter - 1);
-}
-
-void EpubView::renderCurrentChapter()
-{
-    if (!m_document || m_document->spineCount() == 0) {
-        return;
-    }
-
-    QString html = m_document->chapterHtml(m_currentChapter);
+    QString html = m_document->chapterHtml(spineIndex);
     if (m_darkMode) {
         // The book's own CSS (e.g. "body { color: #222 }") would otherwise
         // stay in force and become unreadable against a dark page. Since this
@@ -268,8 +268,164 @@ void EpubView::renderCurrentChapter()
             html.prepend(override);
         }
     }
-    m_browser->setHtml(html);
+
+    // A boundary marker so loadWindowStartingAt() can scrollToAnchor()
+    // straight to this chapter's start.
+    const QString anchor = QStringLiteral("<a name=\"mnemosyne-chapter-%1\"></a>").arg(spineIndex);
+    const int bodyStart = html.indexOf(QStringLiteral("<body"), 0, Qt::CaseInsensitive);
+    const int bodyTagEnd = bodyStart >= 0 ? html.indexOf(QLatin1Char('>'), bodyStart) : -1;
+    if (bodyTagEnd >= 0) {
+        html.insert(bodyTagEnd + 1, anchor);
+    } else {
+        html.prepend(anchor);
+    }
+    return html;
+}
+
+void EpubView::loadWindowStartingAt(int spineIndex)
+{
+    if (!m_document || m_document->spineCount() == 0) {
+        return;
+    }
+    spineIndex = std::clamp(spineIndex, 0, m_document->spineCount() - 1);
+
+    m_chapterStartBlock.clear();
+    m_browser->setHtml(chapterHtmlFragment(spineIndex));
+    m_chapterStartBlock.insert(spineIndex, 0);
+    m_loadedChapterStart = spineIndex;
+    m_loadedChapterEnd = spineIndex;
+    m_currentChapter = spineIndex;
+
     applyHighlightsToBrowser();
+    updateNavigationState();
+    m_browser->scrollToAnchor(QStringLiteral("mnemosyne-chapter-%1").arg(spineIndex));
+}
+
+void EpubView::goToChapter(int spineIndex)
+{
+    if (!m_document) {
+        return;
+    }
+    spineIndex = std::clamp(spineIndex, 0, m_document->spineCount() - 1);
+    // Not just "already on this chapter": the loaded window may have grown
+    // past it via scrolling even while it's still the dominant one, and an
+    // explicit jump here should always reset to just that one chapter.
+    if (spineIndex == m_currentChapter && spineIndex == m_loadedChapterStart && spineIndex == m_loadedChapterEnd) {
+        updateNavigationState();
+        return;
+    }
+    loadWindowStartingAt(spineIndex);
+    scheduleProgressSave();
+}
+
+void EpubView::nextChapter()
+{
+    goToChapter(m_currentChapter + 1);
+}
+
+void EpubView::previousChapter()
+{
+    goToChapter(m_currentChapter - 1);
+}
+
+void EpubView::appendNextChapter()
+{
+    const int newChapterIndex = m_loadedChapterEnd + 1;
+    if (!m_document || newChapterIndex >= m_document->spineCount()) {
+        return;
+    }
+    m_loadingAdjacentChapter = true;
+
+    const int startBlock = m_browser->document()->blockCount();
+
+    QTextCursor cursor(m_browser->document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertBlock();
+    cursor.insertHtml(chapterHtmlFragment(newChapterIndex));
+
+    m_chapterStartBlock.insert(newChapterIndex, startBlock);
+    m_loadedChapterEnd = newChapterIndex;
+
+    applyHighlightsToBrowser();
+    m_loadingAdjacentChapter = false;
+}
+
+void EpubView::prependPreviousChapter()
+{
+    const int newChapterIndex = m_loadedChapterStart - 1;
+    if (newChapterIndex < 0) {
+        return;
+    }
+    m_loadingAdjacentChapter = true;
+
+    QScrollBar *vbar = m_browser->verticalScrollBar();
+    const int oldMax = vbar->maximum();
+    const int oldValue = vbar->value();
+    const int oldBlockCount = m_browser->document()->blockCount();
+
+    QTextCursor cursor(m_browser->document());
+    cursor.movePosition(QTextCursor::Start);
+    cursor.insertHtml(chapterHtmlFragment(newChapterIndex));
+    cursor.insertBlock(); // separate the just-inserted chapter from what follows it
+
+    const int insertedBlocks = m_browser->document()->blockCount() - oldBlockCount;
+    QHash<int, int> shifted;
+    for (auto it = m_chapterStartBlock.constBegin(); it != m_chapterStartBlock.constEnd(); ++it) {
+        shifted.insert(it.key(), it.value() + insertedBlocks);
+    }
+    m_chapterStartBlock = shifted;
+    m_chapterStartBlock.insert(newChapterIndex, 0);
+    m_loadedChapterStart = newChapterIndex;
+
+    // Keep the same content pixel-anchored under the viewport: shift the
+    // scroll value by exactly however much the document just grew.
+    vbar->setValue(oldValue + (vbar->maximum() - oldMax));
+
+    applyHighlightsToBrowser();
+    m_loadingAdjacentChapter = false;
+}
+
+void EpubView::onScrolled()
+{
+    if (m_loadingAdjacentChapter || !m_document) {
+        return;
+    }
+    QScrollBar *vbar = m_browser->verticalScrollBar();
+
+    if (vbar->value() >= vbar->maximum() - kEdgeThresholdPx && m_loadedChapterEnd < m_document->spineCount() - 1) {
+        appendNextChapter();
+    } else if (vbar->value() <= vbar->minimum() + kEdgeThresholdPx && m_loadedChapterStart > 0) {
+        prependPreviousChapter();
+    }
+
+    const QTextCursor topCursor = m_browser->cursorForPosition(QPoint(0, 0));
+    const int chapter = chapterAtBlockNumber(topCursor.blockNumber());
+    if (chapter != m_currentChapter) {
+        m_currentChapter = chapter;
+        updateNavigationState();
+        scheduleProgressSave();
+    }
+}
+
+int EpubView::chapterAtBlockNumber(int blockNumber) const
+{
+    int best = m_loadedChapterStart;
+    int bestBlock = -1;
+    for (auto it = m_chapterStartBlock.constBegin(); it != m_chapterStartBlock.constEnd(); ++it) {
+        if (it.value() <= blockNumber && it.value() > bestBlock) {
+            bestBlock = it.value();
+            best = it.key();
+        }
+    }
+    return best;
+}
+
+QPair<int, int> EpubView::chapterBlockRange(int spineIndex) const
+{
+    const int start = m_chapterStartBlock.value(spineIndex, 0);
+    const int nextStart = m_chapterStartBlock.value(spineIndex + 1, -1);
+    const int end = nextStart >= 0 ? nextStart : m_browser->document()->blockCount();
+    return {start, end};
 }
 
 void EpubView::zoomIn()
@@ -315,12 +471,14 @@ void EpubView::applyHighlightsToBrowser()
     QList<QTextEdit::ExtraSelection> selections;
 
     for (const Highlight &highlight : m_highlights) {
-        if (highlight.targetIndex != m_currentChapter) {
+        if (highlight.targetIndex < m_loadedChapterStart || highlight.targetIndex > m_loadedChapterEnd) {
             continue;
         }
+        const QPair<int, int> range = chapterBlockRange(highlight.targetIndex);
         QTextCharFormat format;
         format.setBackground(highlight.color);
-        for (const QTextCursor &occurrence : findAllOccurrences(m_browser->document(), highlight.text)) {
+        for (const QTextCursor &occurrence :
+             findOccurrencesInRange(m_browser->document(), highlight.text, range.first, range.second)) {
             QTextEdit::ExtraSelection selection;
             selection.cursor = occurrence;
             selection.format = format;
@@ -330,7 +488,8 @@ void EpubView::applyHighlightsToBrowser()
 
     // Bolder/more saturated than persisted highlights, and added last so it
     // paints on top — a dauber pass marking every hit of the active search
-    // term, distinct from highlights the reader made themselves.
+    // term, distinct from highlights the reader made themselves. Not scoped
+    // to one chapter's range: it's meant to cover everything loaded.
     if (!m_searchTerm.isEmpty()) {
         QTextCharFormat searchFormat;
         searchFormat.setBackground(QColor(255, 214, 0, 170));
@@ -359,7 +518,7 @@ void EpubView::addHighlightForSelection()
     }
 
     Highlight highlight;
-    highlight.targetIndex = m_currentChapter;
+    highlight.targetIndex = chapterAtBlockNumber(cursor.blockNumber());
     highlight.text = cursor.selectedText();
     highlight.createdAt = QDateTime::currentDateTime();
 
@@ -382,7 +541,7 @@ void EpubView::addNoteForSelection()
     }
 
     Highlight highlight;
-    highlight.targetIndex = m_currentChapter;
+    highlight.targetIndex = chapterAtBlockNumber(cursor.blockNumber());
     highlight.text = cursor.selectedText();
     highlight.createdAt = QDateTime::currentDateTime();
     highlight.note = result->note;
@@ -414,12 +573,16 @@ void EpubView::showBrowserContextMenu(const QPoint &pos)
     connect(addNoteAction, &QAction::triggered, this, &EpubView::addNoteForSelection);
 
     if (!hasSelection) {
-        const int clickPosition = m_browser->cursorForPosition(pos).position();
+        const QTextCursor clickCursor = m_browser->cursorForPosition(pos);
+        const int clickPosition = clickCursor.position();
+        const int clickedChapter = chapterAtBlockNumber(clickCursor.blockNumber());
+        const QPair<int, int> range = chapterBlockRange(clickedChapter);
         for (int i = 0; i < m_highlights.size(); ++i) {
-            if (m_highlights[i].targetIndex != m_currentChapter) {
+            if (m_highlights[i].targetIndex != clickedChapter) {
                 continue;
             }
-            const QVector<QTextCursor> occurrences = findAllOccurrences(m_browser->document(), m_highlights[i].text);
+            const QVector<QTextCursor> occurrences =
+                findOccurrencesInRange(m_browser->document(), m_highlights[i].text, range.first, range.second);
             const bool clickedInside = std::any_of(occurrences.begin(), occurrences.end(), [clickPosition](const QTextCursor &c) {
                 return clickPosition >= c.selectionStart() && clickPosition < c.selectionEnd();
             });
@@ -581,68 +744,18 @@ bool EpubView::eventFilter(QObject *watched, QEvent *event)
             }
             return true;
         }
-    }
 
-    if (watched == m_browser->viewport() && event->type() == QEvent::Wheel && !m_pageTurnCooldown) {
-        auto *wheelEvent = static_cast<QWheelEvent *>(event);
-        QScrollBar *vbar = m_browser->verticalScrollBar();
-        const int deltaY = wheelEvent->angleDelta().y();
-
-        // See PdfView::eventFilter for the sign convention and the
-        // min==max==0 (whole chapter fits in view) reasoning.
-        const bool scrollingDownPastBottom = deltaY < 0 && vbar->value() >= vbar->maximum();
-        const bool scrollingUpPastTop = deltaY > 0 && vbar->value() <= vbar->minimum();
-
-        if (scrollingDownPastBottom && m_document && m_currentChapter < m_document->spineCount() - 1) {
-            turnToNextChapterAndResumeAtTop();
-            return true;
-        }
-        if (scrollingUpPastTop && m_currentChapter > 0) {
-            turnToPreviousChapterAndResumeAtBottom();
-            return true;
-        }
-    }
-
-    // QTextBrowser handles Up/Down itself (scrolling the viewport), so this
-    // has to intercept the key press before it reaches m_browser's own
-    // handling -- unlike the wheel case above, nothing here would otherwise
-    // bubble up for EpubView to see.
-    if (watched == m_browser && event->type() == QEvent::KeyPress && !m_pageTurnCooldown) {
-        auto *keyEvent = static_cast<QKeyEvent *>(event);
-        if (keyEvent->key() == Qt::Key_Down || keyEvent->key() == Qt::Key_Up) {
-            QScrollBar *vbar = m_browser->verticalScrollBar();
-            if (keyEvent->key() == Qt::Key_Down && vbar->value() >= vbar->maximum() && m_document
-                && m_currentChapter < m_document->spineCount() - 1) {
-                turnToNextChapterAndResumeAtTop();
-                return true;
+        // Not consumed above -- native scrolling handles it. But if the
+        // scrollbar's range is degenerate (e.g. a chapter shorter than the
+        // viewport), its value won't actually change, so valueChanged won't
+        // fire and onScrolled() would never run to grow the loaded window.
+        // Call it directly, deferred past the native scroll this triggers.
+        QPointer<EpubView> self = this;
+        QTimer::singleShot(0, this, [self] {
+            if (self) {
+                self->onScrolled();
             }
-            if (keyEvent->key() == Qt::Key_Up && vbar->value() <= vbar->minimum() && m_currentChapter > 0) {
-                turnToPreviousChapterAndResumeAtBottom();
-                return true;
-            }
-        }
+        });
     }
-
     return QWidget::eventFilter(watched, event);
-}
-
-void EpubView::turnToNextChapterAndResumeAtTop()
-{
-    nextChapter();
-    m_browser->verticalScrollBar()->setValue(0); // resume at the top of the new chapter
-    m_pageTurnCooldown = true;
-    QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
-}
-
-void EpubView::turnToPreviousChapterAndResumeAtBottom()
-{
-    previousChapter();
-    QPointer<QTextBrowser> browser = m_browser;
-    QTimer::singleShot(0, this, [browser] {
-        if (browser) {
-            browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
-        }
-    });
-    m_pageTurnCooldown = true;
-    QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
 }

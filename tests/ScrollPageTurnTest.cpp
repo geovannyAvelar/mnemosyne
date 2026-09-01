@@ -1,14 +1,21 @@
+#include "app/FileIdentity.h"
+#include "app/HighlightStore.h"
+#include "core/Highlight.h"
 #include "epub/EpubDocument.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/EpubView.h"
+#include "ui/PdfPageCanvas.h"
 #include "ui/PdfView.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QKeyEvent>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSettings>
 #include <QTest>
 #include <QTextBrowser>
+#include <QTextDocument>
 #include <QWheelEvent>
 
 // FIXTURES_DIR is injected by CMake (see tests/CMakeLists.txt).
@@ -35,33 +42,31 @@ void sendKeyPress(QWidget *target, int key)
 
 } // namespace
 
-// Exercises the "scroll past the page edge turns the page" behavior added to
-// PdfView/EpubView's event filters. The scroll area/browser are located via
-// findChild() rather than adding test-only public accessors, since they're
-// already discoverable through the QObject parent-child tree Qt itself uses.
+// Exercises continuous-scroll behavior in PdfView/EpubView: scrolling past a
+// page/chapter boundary continues seamlessly into the next page/chapter's
+// content (no snap), and currentPosition() tracks whichever page/chapter is
+// dominantly visible as the reader scrolls.
 class ScrollPageTurnTest : public QObject
 {
     Q_OBJECT
 
 private slots:
     void initTestCase();
+    void cleanupTestCase();
 
-    void pdfScrollingPastBottomAdvancesAndLandsAtTop();
-    void pdfScrollingPastTopGoesBackAndLandsAtBottom();
-    void pdfDoesNotAdvancePastLastPage();
-    void pdfDoesNotGoBeforeFirstPage();
-    void pdfCooldownPreventsDoublePageTurn();
+    void pdfCurrentPageTracksScrollPosition();
+    void pdfWheelScrollMovesViewportContinuously();
+    void pdfDoesNotScrollPastLastPage();
+    void pdfDoesNotScrollBeforeFirstPage();
+    void pdfArrowDownScrollsViewport();
+    void pdfArrowUpAtTopStaysAtTop();
+    void pdfGoToPageScrollsToPageTop();
+    void pdfZoomPreservesCurrentPage();
 
-    void pdfArrowDownScrollsWithinPage();
-    void pdfArrowDownAtBottomAdvancesAndLandsAtTop();
-    void pdfArrowUpAtTopGoesBackAndLandsAtBottom();
-    void pdfArrowDownDoesNotAdvancePastLastPage();
-    void pdfArrowUpDoesNotGoBeforeFirstPage();
-
-    void epubScrollingPastBottomAdvancesChapter();
-    void epubScrollingPastTopGoesToPreviousChapter();
-    void epubArrowDownAtBottomAdvancesChapter();
-    void epubArrowUpAtTopGoesToPreviousChapter();
+    void epubScrollingNearBottomLoadsNextChapter();
+    void epubScrollingNearTopLoadsPreviousChapter();
+    void epubGoToChapterResetsLoadedWindow();
+    void epubHighlightSurvivesAcrossChapterWindow();
 
 private:
     std::unique_ptr<PdfView> makePdfView();
@@ -72,6 +77,12 @@ void ScrollPageTurnTest::initTestCase()
 {
     QCoreApplication::setOrganizationName(QStringLiteral("MnemosyneTest"));
     QCoreApplication::setApplicationName(QStringLiteral("MnemosyneTest"));
+    QSettings().clear(); // fresh state -- epubHighlightSurvivesAcrossChapterWindow persists a highlight
+}
+
+void ScrollPageTurnTest::cleanupTestCase()
+{
+    QSettings().clear(); // don't leave test settings behind on disk
 }
 
 std::unique_ptr<PdfView> ScrollPageTurnTest::makePdfView()
@@ -81,10 +92,12 @@ std::unique_ptr<PdfView> ScrollPageTurnTest::makePdfView()
     Q_ASSERT_X(doc, "makePdfView", qPrintable(error));
     auto view = std::make_unique<PdfView>(std::move(doc), fixturePath("test_multipage.pdf"));
     view->resize(400, 300); // smaller than a rendered page, so there's real scroll range to test
-    // Layout (and thus the scroll area's viewport size / scrollbar range)
-    // isn't fully realized until the widget is actually shown.
+    // Layout (and thus the scroll area's viewport size / scrollbar range /
+    // each PdfPageCanvas's y()) isn't fully realized until the widget is
+    // actually shown.
     view->show();
     static_cast<void>(QTest::qWaitForWindowExposed(view.get()));
+    QCoreApplication::processEvents(); // let the deferred initial-scroll-to-saved-page timer fire
     return view;
 }
 
@@ -100,141 +113,84 @@ std::unique_ptr<EpubView> ScrollPageTurnTest::makeEpubView()
     return view;
 }
 
-void ScrollPageTurnTest::pdfScrollingPastBottomAdvancesAndLandsAtTop()
+void ScrollPageTurnTest::pdfCurrentPageTracksScrollPosition()
 {
     auto view = makePdfView();
     auto *scrollArea = view->findChild<QScrollArea *>();
     QVERIFY(scrollArea);
-
-    QVERIFY(scrollArea->verticalScrollBar()->maximum() > 0); // page taller than the 300px viewport
-    scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
-
-    sendWheelScroll(scrollArea->viewport(), -120);
-
-    QCOMPARE(view->currentPosition(), 1);
-    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
-}
-
-void ScrollPageTurnTest::pdfScrollingPastTopGoesBackAndLandsAtBottom()
-{
-    auto view = makePdfView();
-    view->goToPage(1);
-    QCoreApplication::processEvents();
-    auto *scrollArea = view->findChild<QScrollArea *>();
-    QVERIFY(scrollArea);
-
-    scrollArea->verticalScrollBar()->setValue(0);
-    sendWheelScroll(scrollArea->viewport(), 120);
+    const QList<PdfPageCanvas *> canvases = view->findChildren<PdfPageCanvas *>();
+    QCOMPARE(canvases.size(), 3); // test_multipage.pdf's page count
 
     QCOMPARE(view->currentPosition(), 0);
 
-    // Landing at the bottom is deferred a tick (the new page's scroll range
-    // isn't known until layout catches up), so let the event loop run once.
-    QTRY_COMPARE_WITH_TIMEOUT(scrollArea->verticalScrollBar()->value(), scrollArea->verticalScrollBar()->maximum(), 2000);
-    QVERIFY(scrollArea->verticalScrollBar()->value() > 0); // genuinely at the bottom, not just stuck at 0
+    // Scroll so page 1's canvas dominates the viewport.
+    scrollArea->verticalScrollBar()->setValue(canvases[1]->y());
+    QCOMPARE(view->currentPosition(), 1);
+
+    // ... and page 2's.
+    scrollArea->verticalScrollBar()->setValue(canvases[2]->y());
+    QCOMPARE(view->currentPosition(), 2);
+
+    // Scrolling back up updates it again -- not a one-way ratchet.
+    scrollArea->verticalScrollBar()->setValue(canvases[0]->y());
+    QCOMPARE(view->currentPosition(), 0);
 }
 
-void ScrollPageTurnTest::pdfDoesNotAdvancePastLastPage()
+void ScrollPageTurnTest::pdfWheelScrollMovesViewportContinuously()
 {
     auto view = makePdfView();
-    view->goToPage(2); // the fixture's last page (0-based index 2 of 3)
+    auto *scrollArea = view->findChild<QScrollArea *>();
+    QVERIFY(scrollArea);
+    QVERIFY(scrollArea->verticalScrollBar()->maximum() > 0); // page taller than the 300px viewport
+
+    const int before = scrollArea->verticalScrollBar()->value();
+    sendWheelScroll(scrollArea->viewport(), -120); // scroll down
+    QVERIFY(scrollArea->verticalScrollBar()->value() > before); // moved, and nothing snapped it back
+}
+
+void ScrollPageTurnTest::pdfDoesNotScrollPastLastPage()
+{
+    auto view = makePdfView();
     auto *scrollArea = view->findChild<QScrollArea *>();
     QVERIFY(scrollArea);
 
     scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
-    sendWheelScroll(scrollArea->viewport(), -120);
+    QCOMPARE(view->currentPosition(), 2); // test_multipage.pdf's last page (0-based)
 
+    sendWheelScroll(scrollArea->viewport(), -120);
+    QCoreApplication::processEvents();
+
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), scrollArea->verticalScrollBar()->maximum());
     QCOMPARE(view->currentPosition(), 2); // stayed put, no crash
 }
 
-void ScrollPageTurnTest::pdfDoesNotGoBeforeFirstPage()
+void ScrollPageTurnTest::pdfDoesNotScrollBeforeFirstPage()
 {
     auto view = makePdfView();
     auto *scrollArea = view->findChild<QScrollArea *>();
     QVERIFY(scrollArea);
 
     scrollArea->verticalScrollBar()->setValue(0);
-    sendWheelScroll(scrollArea->viewport(), 120);
-
-    QCOMPARE(view->currentPosition(), 0);
-}
-
-void ScrollPageTurnTest::pdfCooldownPreventsDoublePageTurn()
-{
-    auto view = makePdfView();
-    auto *scrollArea = view->findChild<QScrollArea *>();
-    QVERIFY(scrollArea);
-
-    scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
-    sendWheelScroll(scrollArea->viewport(), -120); // triggers page 0 -> 1
-    QCOMPARE(view->currentPosition(), 1);
-
-    // Immediately simulate "already at the bottom of the new page too" and
-    // scroll again, well within the cooldown window.
-    scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
-    sendWheelScroll(scrollArea->viewport(), -120);
-
-    QCOMPARE(view->currentPosition(), 1); // did NOT skip ahead to page 2
-}
-
-void ScrollPageTurnTest::pdfArrowDownScrollsWithinPage()
-{
-    auto view = makePdfView();
-    auto *scrollArea = view->findChild<QScrollArea *>();
-    QVERIFY(scrollArea);
-
-    scrollArea->verticalScrollBar()->setValue(0);
-    sendKeyPress(view.get(), Qt::Key_Down);
-
-    QCOMPARE(view->currentPosition(), 0); // stayed on the same page
-    QVERIFY(scrollArea->verticalScrollBar()->value() > 0); // but scrolled down
-}
-
-void ScrollPageTurnTest::pdfArrowDownAtBottomAdvancesAndLandsAtTop()
-{
-    auto view = makePdfView();
-    auto *scrollArea = view->findChild<QScrollArea *>();
-    QVERIFY(scrollArea);
-
-    scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
-    sendKeyPress(view.get(), Qt::Key_Down);
-
-    QCOMPARE(view->currentPosition(), 1);
-    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
-}
-
-void ScrollPageTurnTest::pdfArrowUpAtTopGoesBackAndLandsAtBottom()
-{
-    auto view = makePdfView();
-    view->goToPage(1);
+    sendWheelScroll(scrollArea->viewport(), 120); // scroll up
     QCoreApplication::processEvents();
+
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+    QCOMPARE(view->currentPosition(), 0);
+}
+
+void ScrollPageTurnTest::pdfArrowDownScrollsViewport()
+{
+    auto view = makePdfView();
     auto *scrollArea = view->findChild<QScrollArea *>();
     QVERIFY(scrollArea);
 
     scrollArea->verticalScrollBar()->setValue(0);
-    sendKeyPress(view.get(), Qt::Key_Up);
+    sendKeyPress(view.get(), Qt::Key_Down);
 
-    QCOMPARE(view->currentPosition(), 0);
-
-    // Landing at the bottom is deferred a tick, same as the wheel case.
-    QTRY_COMPARE_WITH_TIMEOUT(scrollArea->verticalScrollBar()->value(), scrollArea->verticalScrollBar()->maximum(), 2000);
     QVERIFY(scrollArea->verticalScrollBar()->value() > 0);
 }
 
-void ScrollPageTurnTest::pdfArrowDownDoesNotAdvancePastLastPage()
-{
-    auto view = makePdfView();
-    view->goToPage(2); // the fixture's last page (0-based index 2 of 3)
-    auto *scrollArea = view->findChild<QScrollArea *>();
-    QVERIFY(scrollArea);
-
-    scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
-    sendKeyPress(view.get(), Qt::Key_Down);
-
-    QCOMPARE(view->currentPosition(), 2); // stayed put, no crash
-}
-
-void ScrollPageTurnTest::pdfArrowUpDoesNotGoBeforeFirstPage()
+void ScrollPageTurnTest::pdfArrowUpAtTopStaysAtTop()
 {
     auto view = makePdfView();
     auto *scrollArea = view->findChild<QScrollArea *>();
@@ -243,59 +199,153 @@ void ScrollPageTurnTest::pdfArrowUpDoesNotGoBeforeFirstPage()
     scrollArea->verticalScrollBar()->setValue(0);
     sendKeyPress(view.get(), Qt::Key_Up);
 
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0); // clamped, no crash
     QCOMPARE(view->currentPosition(), 0);
 }
 
-void ScrollPageTurnTest::epubScrollingPastBottomAdvancesChapter()
+void ScrollPageTurnTest::pdfGoToPageScrollsToPageTop()
+{
+    auto view = makePdfView();
+    auto *scrollArea = view->findChild<QScrollArea *>();
+    QVERIFY(scrollArea);
+    const QList<PdfPageCanvas *> canvases = view->findChildren<PdfPageCanvas *>();
+
+    view->goToPage(2);
+    QCOMPARE(view->currentPosition(), 2);
+
+    // goToPage()'s scrollbar positioning is deferred a tick (canvas y()
+    // isn't necessarily settled synchronously after a resize/materialize).
+    QTRY_COMPARE_WITH_TIMEOUT(scrollArea->verticalScrollBar()->value(), canvases[2]->y(), 2000);
+}
+
+void ScrollPageTurnTest::pdfZoomPreservesCurrentPage()
+{
+    auto view = makePdfView();
+    view->goToPage(1);
+    QCoreApplication::processEvents();
+    QTest::qWait(10);
+
+    QCOMPARE(view->currentPosition(), 1);
+    view->zoomIn();
+    QCoreApplication::processEvents();
+    QTest::qWait(10);
+
+    QCOMPARE(view->currentPosition(), 1); // still on the same page after re-layout
+}
+
+void ScrollPageTurnTest::epubScrollingNearBottomLoadsNextChapter()
 {
     auto view = makeEpubView();
+    QCOMPARE(view->currentPosition(), 0);
+
     auto *browser = view->findChild<QTextBrowser *>();
     QVERIFY(browser);
 
-    // This fixture's chapters are short enough that min==max==0, so any
-    // scroll-down should turn the page immediately (see the shared
-    // reasoning in PdfView::eventFilter's comment).
+    // This fixture's chapters are short enough that even both combined still
+    // fit in the 300px viewport (min == max == 0 throughout) -- any
+    // scroll-down gesture should still load the next chapter into the
+    // document, exercising onScrolled()'s degenerate-range fallback (see
+    // PdfView/EpubView::eventFilter's comment on it), even though nothing
+    // actually scrolls far enough to change which chapter dominates the
+    // viewport (that's covered separately for PDF, where the fixture has
+    // real scroll range; see pdfCurrentPageTracksScrollPosition()).
     sendWheelScroll(browser->viewport(), -120);
+    QTest::qWait(50); // let the deferred onScrolled() safety-net timer fire
 
-    QCOMPARE(view->currentPosition(), 1);
+    // Chapter 1's content is now actually loaded into the browser (grown,
+    // not replaced).
+    QString error;
+    auto referenceDoc = EpubDocument::load(fixturePath("test.epub"), &error);
+    QVERIFY(referenceDoc);
+    QTextDocument chapter1Reference;
+    chapter1Reference.setHtml(referenceDoc->chapterHtml(1));
+    const QString chapter1Snippet = chapter1Reference.toPlainText().trimmed().left(20);
+    QVERIFY(!chapter1Snippet.isEmpty());
+    QVERIFY(browser->toPlainText().contains(chapter1Snippet));
 }
 
-void ScrollPageTurnTest::epubScrollingPastTopGoesToPreviousChapter()
+void ScrollPageTurnTest::epubScrollingNearTopLoadsPreviousChapter()
 {
     auto view = makeEpubView();
     view->goToChapter(1);
+    QCOMPARE(view->currentPosition(), 1);
+
     auto *browser = view->findChild<QTextBrowser *>();
     QVERIFY(browser);
 
-    sendWheelScroll(browser->viewport(), 120);
+    sendWheelScroll(browser->viewport(), 120); // scroll up
+    QTest::qWait(50); // let the deferred onScrolled() safety-net timer fire
 
     QCOMPARE(view->currentPosition(), 0);
 }
 
-void ScrollPageTurnTest::epubArrowDownAtBottomAdvancesChapter()
+void ScrollPageTurnTest::epubGoToChapterResetsLoadedWindow()
 {
     auto view = makeEpubView();
     auto *browser = view->findChild<QTextBrowser *>();
     QVERIFY(browser);
 
-    // Same "min==max==0" reasoning as the wheel test above -- the key event
-    // has to be sent to the browser itself (not its viewport), since that's
-    // what EpubView's eventFilter watches for KeyPress.
-    sendKeyPress(browser, Qt::Key_Down);
+    QString error;
+    auto referenceDoc = EpubDocument::load(fixturePath("test.epub"), &error);
+    QVERIFY(referenceDoc);
+    QTextDocument chapter1Reference;
+    chapter1Reference.setHtml(referenceDoc->chapterHtml(1));
+    const QString chapter1Snippet = chapter1Reference.toPlainText().trimmed().left(20);
+    QVERIFY(!chapter1Snippet.isEmpty());
 
-    QCOMPARE(view->currentPosition(), 1);
+    // Grow the window to include chapter 1 by scrolling down.
+    sendWheelScroll(browser->viewport(), -120);
+    QTest::qWait(50); // let the deferred onScrolled() safety-net timer fire
+    QVERIFY(browser->toPlainText().contains(chapter1Snippet));
+
+    // An explicit TOC-style jump back to chapter 0 should reset cleanly --
+    // chapter 1's content shouldn't still be sitting in the document.
+    view->goToChapter(0);
+    QCOMPARE(view->currentPosition(), 0);
+    QVERIFY(!browser->toPlainText().contains(chapter1Snippet));
 }
 
-void ScrollPageTurnTest::epubArrowUpAtTopGoesToPreviousChapter()
+void ScrollPageTurnTest::epubHighlightSurvivesAcrossChapterWindow()
 {
+    // Figure out a real snippet of chapter 0's text to highlight, via a
+    // throwaway EpubDocument/QTextDocument pair (independent of the view).
+    QString error;
+    auto referenceDoc = EpubDocument::load(fixturePath("test.epub"), &error);
+    QVERIFY(referenceDoc);
+    QTextDocument chapter0Reference;
+    chapter0Reference.setHtml(referenceDoc->chapterHtml(0));
+    // QTextDocument::find() doesn't match text spanning a paragraph/block
+    // boundary (blocks are joined internally by U+2029, not '\n', even
+    // though toPlainText() renders both as '\n') -- skip past the first
+    // paragraph break so the snippet stays within a single block.
+    const QString chapter0Text = chapter0Reference.toPlainText();
+    const int afterFirstBreak = chapter0Text.indexOf(QLatin1Char('\n')) + 1;
+    const QString snippet = chapter0Text.mid(afterFirstBreak, 15).trimmed();
+    QVERIFY(!snippet.isEmpty());
+
+    // Persist a highlight for chapter 0 directly via HighlightStore (the
+    // same store EpubView::addHighlightForSelection writes to), keyed by
+    // this fixture's content hash, then have the view pick it up.
+    Highlight highlight;
+    highlight.targetIndex = 0;
+    highlight.text = snippet;
+    highlight.createdAt = QDateTime::currentDateTime();
+    const QString bookHash = FileIdentity::contentHash(fixturePath("test.epub"));
+    HighlightStore::addHighlight(bookHash, highlight);
+
     auto view = makeEpubView();
-    view->goToChapter(1);
+    view->refreshHighlights();
     auto *browser = view->findChild<QTextBrowser *>();
     QVERIFY(browser);
+    QVERIFY(!browser->extraSelections().isEmpty()); // applied while chapter 0 is still the only loaded chapter
 
-    sendKeyPress(browser, Qt::Key_Up);
+    // Grow the window into chapter 1 -- the chapter-0 highlight should still
+    // be applied as an extra selection, not dropped just because chapter 0
+    // is no longer the only loaded chapter.
+    sendWheelScroll(browser->viewport(), -120);
+    QTest::qWait(50); // let the deferred onScrolled() safety-net timer fire
 
-    QCOMPARE(view->currentPosition(), 0);
+    QVERIFY(!browser->extraSelections().isEmpty());
 }
 
 QTEST_MAIN(ScrollPageTurnTest)

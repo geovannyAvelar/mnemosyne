@@ -42,6 +42,9 @@ namespace {
 constexpr qreal kMinZoom = 0.25;
 constexpr qreal kMaxZoom = 4.0;
 constexpr qreal kZoomStep = 0.25;
+constexpr int kMaterializeRadius = 2; // pages rendered on either side of m_currentPage
+constexpr int kPageSpacing = 8; // px between stacked pages
+constexpr int kArrowKeyScrollStep = 60; // px per arrow key press
 
 // Mirrors selectWordRange()'s (see core/TextSelectionUtil.h) text reconstruction rules
 // (newline on a line break, space when hasSpaceAfter) so search matches
@@ -84,8 +87,21 @@ PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget 
 {
     setupUi();
     restoreProgressAndCheckSync(); // sets m_currentPage/m_zoom before the first render, so there's no visible jump
+    buildPageStack();
     updateNavigationState();
-    renderCurrentPage();
+    updateMaterializationWindow();
+
+    // The page stack's layout (and thus each canvas's y()) isn't realized
+    // until the widget is actually shown/processed by the event loop;
+    // defer the initial scroll-to-saved-page by one tick.
+    const int targetPage = m_currentPage;
+    QPointer<PdfView> self = this;
+    QTimer::singleShot(0, this, [self, targetPage] {
+        if (!self || targetPage < 0 || targetPage >= self->m_pageCanvases.size()) {
+            return;
+        }
+        self->m_scrollArea->verticalScrollBar()->setValue(self->m_pageCanvases[targetPage]->y());
+    });
 }
 
 QString PdfView::documentTitle() const
@@ -194,19 +210,14 @@ void PdfView::setupUi()
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
 
-    m_canvas = new PdfPageCanvas(this);
-    connect(m_canvas, &PdfPageCanvas::selectionChanged, this, &PdfView::updateSelectionFromDrag);
-    m_canvas->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_canvas, &PdfPageCanvas::customContextMenuRequested, this, &PdfView::showCanvasContextMenu);
-
-    auto *copyShortcut = new QShortcut(QKeySequence::Copy, m_canvas);
-    connect(copyShortcut, &QShortcut::activated, this, &PdfView::copySelection);
+    m_pageStack = new QWidget(this);
 
     m_scrollArea = new QScrollArea(this);
-    m_scrollArea->setWidget(m_canvas);
+    m_scrollArea->setWidget(m_pageStack);
     m_scrollArea->setWidgetResizable(false);
-    m_scrollArea->setAlignment(Qt::AlignCenter);
-    m_scrollArea->viewport()->installEventFilter(this); // scrolling past the top/bottom edge turns the page
+    m_scrollArea->setAlignment(Qt::AlignHCenter);
+    m_scrollArea->viewport()->installEventFilter(this); // Ctrl+wheel zoom
+    connect(m_scrollArea->verticalScrollBar(), &QScrollBar::valueChanged, this, &PdfView::onScrolled);
 
     m_syncPromptBar = new SyncPromptBar(this);
 
@@ -219,20 +230,66 @@ void PdfView::setupUi()
     connect(m_progressSaveTimer, &QTimer::timeout, this, &PdfView::saveProgressNow);
 }
 
-void PdfView::goToPage(int index)
+void PdfView::buildPageStack()
 {
     if (!m_document) {
         return;
     }
-    index = std::clamp(index, 0, m_document->pageCount() - 1);
-    if (index == m_currentPage) {
-        updateNavigationState();
+    const int count = m_document->pageCount();
+
+    auto *stackLayout = new QVBoxLayout(m_pageStack);
+    stackLayout->setContentsMargins(0, kPageSpacing, 0, kPageSpacing);
+    stackLayout->setSpacing(kPageSpacing);
+
+    m_pageSizePoints.reserve(count);
+    m_pageCanvases.reserve(count);
+
+    for (int i = 0; i < count; ++i) {
+        const std::unique_ptr<IPage> page = m_document->page(i);
+        const QSizeF points = page ? page->sizePoints() : QSizeF(612, 792); // US Letter fallback
+        m_pageSizePoints.append(points);
+
+        auto *canvas = new PdfPageCanvas(m_pageStack);
+        canvas->setFixedSize((points * m_zoom).toSize());
+        canvas->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(canvas, &PdfPageCanvas::selectionChanged, this, &PdfView::updateSelectionFromDrag);
+        connect(canvas, &PdfPageCanvas::customContextMenuRequested, this, &PdfView::showCanvasContextMenu);
+
+        auto *copyShortcut = new QShortcut(QKeySequence::Copy, canvas);
+        connect(copyShortcut, &QShortcut::activated, this, &PdfView::copySelection);
+
+        stackLayout->addWidget(canvas, 0, Qt::AlignHCenter);
+        m_pageCanvases.append(canvas);
+    }
+    stackLayout->addStretch();
+
+    // QScrollArea (widgetResizable == false) uses the content widget's own
+    // size() to compute the scroll range -- unlike PdfPageCanvas's old
+    // setFixedSize() self-sizing, a QWidget with a layout doesn't resize
+    // itself to its layout's size hint on its own until asked.
+    m_pageStack->adjustSize();
+}
+
+void PdfView::goToPage(int index)
+{
+    if (!m_document || m_pageCanvases.isEmpty()) {
         return;
     }
+    index = std::clamp(index, 0, static_cast<int>(m_pageCanvases.size()) - 1);
     m_currentPage = index;
-    renderCurrentPage();
+    updateMaterializationWindow();
     updateNavigationState();
     scheduleProgressSave();
+
+    // Deferred: a resize/re-layout (e.g. from a just-applied zoom change)
+    // may not have settled into accurate canvas y() positions yet.
+    QPointer<PdfView> self = this;
+    QTimer::singleShot(0, this, [self, index] {
+        if (!self || index >= self->m_pageCanvases.size()) {
+            return;
+        }
+        self->m_scrollArea->verticalScrollBar()->setValue(self->m_pageCanvases[index]->y());
+    });
 }
 
 void PdfView::nextPage()
@@ -247,15 +304,52 @@ void PdfView::previousPage()
 
 void PdfView::zoomIn()
 {
-    m_zoom = std::min(kMaxZoom, m_zoom + kZoomStep);
-    renderCurrentPage();
-    scheduleProgressSave();
+    setZoom(std::min(kMaxZoom, m_zoom + kZoomStep));
 }
 
 void PdfView::zoomOut()
 {
-    m_zoom = std::max(kMinZoom, m_zoom - kZoomStep);
-    renderCurrentPage();
+    setZoom(std::max(kMinZoom, m_zoom - kZoomStep));
+}
+
+void PdfView::setZoom(qreal newZoom)
+{
+    if (m_pageCanvases.isEmpty() || qFuzzyCompare(newZoom, m_zoom)) {
+        return;
+    }
+
+    // Preserve the reader's visual position: capture where the viewport top
+    // sits within m_currentPage's canvas, as a fraction of its (old) height,
+    // so the same spot stays under the viewport top once every page resizes.
+    PdfPageCanvas *currentCanvas = m_pageCanvases[m_currentPage];
+    const int oldTop = currentCanvas->y();
+    const int oldHeight = currentCanvas->height();
+    const qreal offsetFraction =
+        oldHeight > 0 ? qreal(m_scrollArea->verticalScrollBar()->value() - oldTop) / oldHeight : 0.0;
+
+    m_zoom = newZoom;
+
+    const QVector<int> materializedIndices = m_pageWords.keys();
+    for (int i = 0; i < m_pageCanvases.size(); ++i) {
+        m_pageCanvases[i]->setFixedSize((m_pageSizePoints[i] * m_zoom).toSize());
+    }
+    m_pageStack->adjustSize(); // resize the content widget to match the new total page-stack height
+    for (int i : materializedIndices) {
+        materializePage(i, /*forceRerender=*/true);
+    }
+    updateMaterializationWindow();
+
+    const int page = m_currentPage;
+    const qreal fraction = offsetFraction;
+    QPointer<PdfView> self = this;
+    QTimer::singleShot(0, this, [self, page, fraction] {
+        if (!self || page >= self->m_pageCanvases.size()) {
+            return;
+        }
+        PdfPageCanvas *canvas = self->m_pageCanvases[page];
+        self->m_scrollArea->verticalScrollBar()->setValue(canvas->y() + int(fraction * canvas->height()));
+    });
+
     scheduleProgressSave();
 }
 
@@ -266,24 +360,90 @@ void PdfView::copySelection()
     }
 }
 
-void PdfView::renderCurrentPage()
+void PdfView::materializePage(int index, bool forceRerender)
 {
-    if (!m_document || m_document->pageCount() == 0) {
+    if (!m_document || index < 0 || index >= m_pageCanvases.size()) {
+        return;
+    }
+    const bool alreadyMaterialized = m_pageWords.contains(index);
+    if (alreadyMaterialized && !forceRerender) {
         return;
     }
 
-    std::unique_ptr<IPage> page = m_document->page(m_currentPage);
+    std::unique_ptr<IPage> page = m_document->page(index);
     if (!page) {
         return;
     }
-
-    m_currentPageWords = page->words();
+    if (!alreadyMaterialized) {
+        m_pageWords.insert(index, page->words());
+    }
 
     const QImage image = page->renderToImage(m_zoom);
-    m_canvas->setPage(image, m_zoom); // also clears any stale selection from the previous page
-    m_selectedText.clear();
-    refreshHighlightOverlay();
-    refreshSearchOverlay();
+    m_pageCanvases[index]->setPage(image, m_zoom);
+    applyOverlaysToPage(index);
+}
+
+void PdfView::evictPage(int index)
+{
+    if (index < 0 || index >= m_pageCanvases.size() || !m_pageWords.contains(index)) {
+        return;
+    }
+    if (index == m_selectedPageIndex) {
+        m_selectedText.clear();
+        m_selectedBoundingPageRect = QRectF();
+        m_selectedPageIndex = -1;
+    }
+    m_pageWords.remove(index);
+    m_pageCanvases[index]->clearPage();
+}
+
+void PdfView::updateMaterializationWindow()
+{
+    if (m_pageCanvases.isEmpty()) {
+        return;
+    }
+    const int windowStart = std::max(0, m_currentPage - kMaterializeRadius);
+    const int windowEnd = std::min(static_cast<int>(m_pageCanvases.size()) - 1, m_currentPage + kMaterializeRadius);
+
+    for (int i = windowStart; i <= windowEnd; ++i) {
+        materializePage(i);
+    }
+
+    const QVector<int> materializedIndices = m_pageWords.keys();
+    for (int i : materializedIndices) {
+        if (i < windowStart || i > windowEnd) {
+            evictPage(i);
+        }
+    }
+}
+
+int PdfView::topmostVisiblePage() const
+{
+    if (m_pageCanvases.isEmpty()) {
+        return 0;
+    }
+    const int viewportTop = m_scrollArea->verticalScrollBar()->value();
+    const int viewportHeight = m_scrollArea->viewport()->height();
+    const int viewportMid = viewportTop + viewportHeight / 2;
+
+    for (int i = 0; i < m_pageCanvases.size(); ++i) {
+        PdfPageCanvas *canvas = m_pageCanvases[i];
+        if (canvas->y() + canvas->height() > viewportMid) {
+            return i;
+        }
+    }
+    return static_cast<int>(m_pageCanvases.size()) - 1;
+}
+
+void PdfView::onScrolled()
+{
+    const int page = topmostVisiblePage();
+    if (page != m_currentPage) {
+        m_currentPage = page;
+        updateNavigationState();
+        scheduleProgressSave();
+    }
+    updateMaterializationWindow();
 }
 
 void PdfView::updateNavigationState()
@@ -299,26 +459,43 @@ void PdfView::updateNavigationState()
 
 void PdfView::updateSelectionFromDrag()
 {
+    auto *canvas = qobject_cast<PdfPageCanvas *>(sender());
+    if (!canvas) {
+        return;
+    }
+    const int pageIndex = m_pageCanvases.indexOf(canvas);
+    if (pageIndex < 0) {
+        return;
+    }
+
+    // A drag starting on a different page than whatever was last selected
+    // supersedes it — clear that other canvas's stale overlay.
+    if (m_selectedPageIndex >= 0 && m_selectedPageIndex != pageIndex && m_selectedPageIndex < m_pageCanvases.size()) {
+        m_pageCanvases[m_selectedPageIndex]->setSelectionRects({});
+    }
+
     m_selectedText.clear();
     m_selectedBoundingPageRect = QRectF();
+    m_selectedPageIndex = -1;
 
-    if (!m_canvas->isDragging() && !m_canvas->hasSelection()) {
-        m_canvas->setSelectionRects({});
+    if (!canvas->isDragging() && !canvas->hasSelection()) {
+        canvas->setSelectionRects({});
         return;
     }
 
-    if (m_currentPageWords.isEmpty()) {
-        m_canvas->setSelectionRects({});
+    const QVector<TextWord> words = m_pageWords.value(pageIndex);
+    if (words.isEmpty()) {
+        canvas->setSelectionRects({});
         return;
     }
 
-    const qreal scale = m_canvas->scale();
-    const QPointF anchorPoint = QPointF(m_canvas->dragAnchorPixel()) / scale;
-    const QPointF focusPoint = QPointF(m_canvas->dragFocusPixel()) / scale;
+    const qreal scale = canvas->scale();
+    const QPointF anchorPoint = QPointF(canvas->dragAnchorPixel()) / scale;
+    const QPointF focusPoint = QPointF(canvas->dragFocusPixel()) / scale;
 
-    const TextSelectionResult selection = selectWordRange(m_currentPageWords, anchorPoint, focusPoint);
+    const TextSelectionResult selection = selectWordRange(words, anchorPoint, focusPoint);
     if (selection.text.isEmpty()) {
-        m_canvas->setSelectionRects({});
+        canvas->setSelectionRects({});
         return;
     }
 
@@ -330,54 +507,74 @@ void PdfView::updateSelectionFromDrag()
         boundingPageRect = boundingPageRect.isNull() ? pageRect : boundingPageRect.united(pageRect);
     }
 
-    m_canvas->setSelectionRects(pixelRects);
+    canvas->setSelectionRects(pixelRects);
     m_selectedText = selection.text;
     m_selectedBoundingPageRect = boundingPageRect;
+    m_selectedPageIndex = pageIndex;
+}
+
+void PdfView::applyOverlaysToPage(int index)
+{
+    if (index < 0 || index >= m_pageCanvases.size() || !m_pageWords.contains(index)) {
+        return;
+    }
+    PdfPageCanvas *canvas = m_pageCanvases[index];
+
+    QVector<PdfPageCanvas::HighlightMark> marks;
+    for (const Highlight &highlight : m_highlights) {
+        if (highlight.targetIndex == index) {
+            marks.append({pageRectToPixelRect(highlight.pageRect, m_zoom), highlight.color});
+        }
+    }
+    canvas->setHighlightRects(marks);
+
+    QVector<QRect> searchRects;
+    if (!m_searchTerm.isEmpty()) {
+        const QVector<TextWord> &words = m_pageWords[index];
+        if (!words.isEmpty()) {
+            QVector<QPair<int, int>> wordSpans;
+            const QString text = concatenatePageWords(words, wordSpans);
+
+            int searchFrom = 0;
+            while (true) {
+                const int matchStart = text.indexOf(m_searchTerm, searchFrom, Qt::CaseInsensitive);
+                if (matchStart < 0) {
+                    break;
+                }
+                const int matchEnd = matchStart + m_searchTerm.size();
+
+                for (int i = 0; i < wordSpans.size(); ++i) {
+                    if (wordSpans[i].first < matchEnd && wordSpans[i].second > matchStart) {
+                        searchRects.append(pageRectToPixelRect(words[i].boundingBox, m_zoom));
+                    }
+                }
+                searchFrom = matchStart + 1; // allow overlapping matches (e.g. query "aa" in "aaa")
+            }
+        }
+    }
+    canvas->setSearchRects(searchRects);
 }
 
 void PdfView::refreshHighlightOverlay()
 {
-    QVector<PdfPageCanvas::HighlightMark> marks;
-    for (const Highlight &highlight : m_highlights) {
-        if (highlight.targetIndex == m_currentPage) {
-            marks.append({pageRectToPixelRect(highlight.pageRect, m_zoom), highlight.color});
-        }
+    const QVector<int> materializedIndices = m_pageWords.keys();
+    for (int i : materializedIndices) {
+        applyOverlaysToPage(i);
     }
-    m_canvas->setHighlightRects(marks);
 }
 
 void PdfView::refreshSearchOverlay()
 {
-    QVector<QRect> pixelRects;
-
-    if (!m_searchTerm.isEmpty() && !m_currentPageWords.isEmpty()) {
-        QVector<QPair<int, int>> wordSpans;
-        const QString text = concatenatePageWords(m_currentPageWords, wordSpans);
-
-        int searchFrom = 0;
-        while (true) {
-            const int matchStart = text.indexOf(m_searchTerm, searchFrom, Qt::CaseInsensitive);
-            if (matchStart < 0) {
-                break;
-            }
-            const int matchEnd = matchStart + m_searchTerm.size();
-
-            for (int i = 0; i < wordSpans.size(); ++i) {
-                if (wordSpans[i].first < matchEnd && wordSpans[i].second > matchStart) {
-                    pixelRects.append(pageRectToPixelRect(m_currentPageWords[i].boundingBox, m_zoom));
-                }
-            }
-            searchFrom = matchStart + 1; // allow overlapping matches (e.g. query "aa" in "aaa")
-        }
+    const QVector<int> materializedIndices = m_pageWords.keys();
+    for (int i : materializedIndices) {
+        applyOverlaysToPage(i);
     }
-
-    m_canvas->setSearchRects(pixelRects);
 }
 
-int PdfView::highlightIndexAtPagePoint(const QPointF &pagePoint) const
+int PdfView::highlightIndexAtPagePoint(const QPointF &pagePoint, int pageIndex) const
 {
     for (int i = 0; i < m_highlights.size(); ++i) {
-        if (m_highlights[i].targetIndex == m_currentPage && m_highlights[i].pageRect.contains(pagePoint)) {
+        if (m_highlights[i].targetIndex == pageIndex && m_highlights[i].pageRect.contains(pagePoint)) {
             return i;
         }
     }
@@ -392,12 +589,16 @@ void PdfView::refreshHighlights()
 
 void PdfView::addHighlightForSelection()
 {
-    if (!m_canvas->hasSelection() || m_selectedText.isEmpty()) {
+    if (m_selectedPageIndex < 0 || m_selectedText.isEmpty()) {
+        return;
+    }
+    PdfPageCanvas *canvas = m_pageCanvases[m_selectedPageIndex];
+    if (!canvas->hasSelection()) {
         return;
     }
 
     Highlight highlight;
-    highlight.targetIndex = m_currentPage;
+    highlight.targetIndex = m_selectedPageIndex;
     highlight.pageRect = m_selectedBoundingPageRect;
     highlight.text = m_selectedText;
     highlight.createdAt = QDateTime::currentDateTime();
@@ -405,15 +606,21 @@ void PdfView::addHighlightForSelection()
     HighlightStore::addHighlight(m_bookHash, highlight);
     m_highlights = HighlightStore::highlightsFor(m_bookHash);
 
-    m_canvas->clearSelection();
+    const int changedPage = m_selectedPageIndex;
+    canvas->clearSelection();
     m_selectedText.clear();
-    refreshHighlightOverlay();
+    m_selectedPageIndex = -1;
+    applyOverlaysToPage(changedPage);
     emit highlightsChanged();
 }
 
 void PdfView::addNoteForSelection()
 {
-    if (!m_canvas->hasSelection() || m_selectedText.isEmpty()) {
+    if (m_selectedPageIndex < 0 || m_selectedText.isEmpty()) {
+        return;
+    }
+    PdfPageCanvas *canvas = m_pageCanvases[m_selectedPageIndex];
+    if (!canvas->hasSelection()) {
         return;
     }
 
@@ -423,7 +630,7 @@ void PdfView::addNoteForSelection()
     }
 
     Highlight highlight;
-    highlight.targetIndex = m_currentPage;
+    highlight.targetIndex = m_selectedPageIndex;
     highlight.pageRect = m_selectedBoundingPageRect;
     highlight.text = m_selectedText;
     highlight.createdAt = QDateTime::currentDateTime();
@@ -433,35 +640,48 @@ void PdfView::addNoteForSelection()
     HighlightStore::addHighlight(m_bookHash, highlight);
     m_highlights = HighlightStore::highlightsFor(m_bookHash);
 
-    m_canvas->clearSelection();
+    const int changedPage = m_selectedPageIndex;
+    canvas->clearSelection();
     m_selectedText.clear();
-    refreshHighlightOverlay();
+    m_selectedPageIndex = -1;
+    applyOverlaysToPage(changedPage);
     emit highlightsChanged();
 }
 
 void PdfView::showCanvasContextMenu(const QPoint &pos)
 {
-    QMenu menu(m_canvas);
+    auto *canvas = qobject_cast<PdfPageCanvas *>(sender());
+    if (!canvas) {
+        return;
+    }
+    const int pageIndex = m_pageCanvases.indexOf(canvas);
+    if (pageIndex < 0) {
+        return;
+    }
+
+    const bool hasSelectionHere = pageIndex == m_selectedPageIndex && !m_selectedText.isEmpty();
+
+    QMenu menu(canvas);
 
     QAction *copyAction = menu.addAction(tr("Copy"));
-    copyAction->setEnabled(!m_selectedText.isEmpty());
+    copyAction->setEnabled(hasSelectionHere);
     connect(copyAction, &QAction::triggered, this, &PdfView::copySelection);
 
     QAction *highlightAction = menu.addAction(tr("Highlight"));
-    highlightAction->setEnabled(!m_selectedText.isEmpty());
+    highlightAction->setEnabled(hasSelectionHere);
     connect(highlightAction, &QAction::triggered, this, &PdfView::addHighlightForSelection);
 
     QAction *addNoteAction = menu.addAction(tr("Add Note..."));
-    addNoteAction->setEnabled(!m_selectedText.isEmpty());
+    addNoteAction->setEnabled(hasSelectionHere);
     connect(addNoteAction, &QAction::triggered, this, &PdfView::addNoteForSelection);
 
-    const QPointF pagePoint(pos.x() / m_canvas->scale(), pos.y() / m_canvas->scale());
-    const int existingHighlightIndex = highlightIndexAtPagePoint(pagePoint);
+    const QPointF pagePoint(pos.x() / canvas->scale(), pos.y() / canvas->scale());
+    const int existingHighlightIndex = highlightIndexAtPagePoint(pagePoint, pageIndex);
     if (existingHighlightIndex >= 0) {
         menu.addSeparator();
         const bool hasNote = !m_highlights[existingHighlightIndex].note.isEmpty();
         QAction *noteAction = menu.addAction(hasNote ? tr("Edit Note...") : tr("Add Note..."));
-        connect(noteAction, &QAction::triggered, this, [this, existingHighlightIndex] {
+        connect(noteAction, &QAction::triggered, this, [this, existingHighlightIndex, pageIndex] {
             const std::optional<NoteDialog::Result> result = NoteDialog::show(
                 this, m_highlights[existingHighlightIndex].note, m_highlights[existingHighlightIndex].color);
             if (!result) {
@@ -470,19 +690,19 @@ void PdfView::showCanvasContextMenu(const QPoint &pos)
             HighlightStore::setNote(m_bookHash, existingHighlightIndex, result->note);
             HighlightStore::setColor(m_bookHash, existingHighlightIndex, result->color);
             m_highlights = HighlightStore::highlightsFor(m_bookHash);
-            refreshHighlightOverlay();
+            applyOverlaysToPage(pageIndex);
             emit highlightsChanged();
         });
         QAction *removeAction = menu.addAction(hasNote ? tr("Remove Note") : tr("Remove Highlight"));
-        connect(removeAction, &QAction::triggered, this, [this, existingHighlightIndex] {
+        connect(removeAction, &QAction::triggered, this, [this, existingHighlightIndex, pageIndex] {
             HighlightStore::removeHighlight(m_bookHash, existingHighlightIndex);
             m_highlights = HighlightStore::highlightsFor(m_bookHash);
-            refreshHighlightOverlay();
+            applyOverlaysToPage(pageIndex);
             emit highlightsChanged();
         });
     }
 
-    menu.exec(m_canvas->mapToGlobal(pos));
+    menu.exec(canvas->mapToGlobal(pos));
 }
 
 void PdfView::restoreProgressAndCheckSync()
@@ -530,7 +750,7 @@ void PdfView::offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote)
     const int remotePosition = remote.position;
     const qreal remoteZoom = remote.zoom;
     connect(m_syncPromptBar, &SyncPromptBar::jumpRequested, this, [this, remotePosition, remoteZoom] {
-        m_zoom = std::clamp(remoteZoom, kMinZoom, kMaxZoom);
+        setZoom(std::clamp(remoteZoom, kMinZoom, kMaxZoom));
         goToPage(remotePosition);
     });
 }
@@ -565,77 +785,38 @@ bool PdfView::eventFilter(QObject *watched, QEvent *event)
             }
             return true;
         }
-    }
 
-    if (watched == m_scrollArea->viewport() && event->type() == QEvent::Wheel && !m_pageTurnCooldown) {
-        auto *wheelEvent = static_cast<QWheelEvent *>(event);
-        QScrollBar *vbar = m_scrollArea->verticalScrollBar();
-        const int deltaY = wheelEvent->angleDelta().y();
-
-        // Qt convention: positive angleDelta().y() == scrolling up (toward
-        // smaller scrollbar values); negative == scrolling down. When the
-        // whole page already fits in the viewport, min == max == 0, so
-        // either direction's boundary check is satisfied immediately —
-        // exactly the desired "any scroll turns the page" behavior there.
-        const bool scrollingDownPastBottom = deltaY < 0 && vbar->value() >= vbar->maximum();
-        const bool scrollingUpPastTop = deltaY > 0 && vbar->value() <= vbar->minimum();
-
-        if (scrollingDownPastBottom && m_document && m_currentPage < m_document->pageCount() - 1) {
-            turnToNextPageAndResumeAtTop();
-            return true;
-        }
-        if (scrollingUpPastTop && m_currentPage > 0) {
-            turnToPreviousPageAndResumeAtBottom();
-            return true;
-        }
+        // Not consumed above -- native scrolling handles it. But if the
+        // scrollbar's range is degenerate (e.g. a page shorter than the
+        // viewport), its value won't actually change, so valueChanged won't
+        // fire and onScrolled() would never run. Call it directly, deferred
+        // past the native scroll this event triggers.
+        QPointer<PdfView> self = this;
+        QTimer::singleShot(0, this, [self] {
+            if (self) {
+                self->onScrolled();
+            }
+        });
     }
     return QWidget::eventFilter(watched, event);
-}
-
-void PdfView::turnToNextPageAndResumeAtTop()
-{
-    nextPage();
-    m_scrollArea->verticalScrollBar()->setValue(0); // resume at the top of the new page
-    m_pageTurnCooldown = true;
-    QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
-}
-
-void PdfView::turnToPreviousPageAndResumeAtBottom()
-{
-    previousPage();
-    // The new page's scroll range isn't known until layout catches up with
-    // the resize triggered by previousPage(); defer.
-    QPointer<QScrollArea> scrollArea = m_scrollArea;
-    QTimer::singleShot(0, this, [scrollArea] {
-        if (scrollArea) {
-            scrollArea->verticalScrollBar()->setValue(scrollArea->verticalScrollBar()->maximum());
-        }
-    });
-    m_pageTurnCooldown = true;
-    QTimer::singleShot(400, this, [this] { m_pageTurnCooldown = false; });
 }
 
 void PdfView::keyPressEvent(QKeyEvent *event)
 {
     // PdfPageCanvas doesn't handle key events, so Qt bubbles them up here
-    // regardless of whether the canvas or the scroll area has focus.
-    constexpr int kArrowKeyScrollStep = 60; // pixels per arrow key press
-
-    if ((event->key() == Qt::Key_Down || event->key() == Qt::Key_Up) && !m_pageTurnCooldown) {
-        QScrollBar *vbar = m_scrollArea->verticalScrollBar();
-        if (event->key() == Qt::Key_Down) {
-            if (vbar->value() >= vbar->maximum() && m_document && m_currentPage < m_document->pageCount() - 1) {
-                turnToNextPageAndResumeAtTop();
-            } else {
-                vbar->setValue(vbar->value() + kArrowKeyScrollStep);
-            }
-        } else {
-            if (vbar->value() <= vbar->minimum() && m_currentPage > 0) {
-                turnToPreviousPageAndResumeAtBottom();
-            } else {
-                vbar->setValue(vbar->value() - kArrowKeyScrollStep);
-            }
-        }
+    // regardless of whether the canvas or the scroll area has focus. Just a
+    // plain scroll nudge now — no page-turn/boundary logic, since scrolling
+    // past a page's edge naturally continues into the next page's content.
+    QScrollBar *vbar = m_scrollArea->verticalScrollBar();
+    if (event->key() == Qt::Key_Down) {
+        vbar->setValue(vbar->value() + kArrowKeyScrollStep);
+        onScrolled(); // see eventFilter()'s wheel handling for why this can't just rely on valueChanged
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Up) {
+        vbar->setValue(vbar->value() - kArrowKeyScrollStep);
+        onScrolled();
         event->accept();
         return;
     }

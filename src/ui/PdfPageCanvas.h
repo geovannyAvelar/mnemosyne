@@ -33,6 +33,13 @@ public:
 
     void clearSelection();
 
+    // Frees the rendered image and overlay state, reverting to an unrendered
+    // placeholder of the same fixed size. Used by PdfView to evict pages
+    // outside its continuous-scroll materialization window without changing
+    // the page's footprint in the scroll region.
+    void clearPage();
+    bool isMaterialized() const { return !m_image.isNull(); }
+
     // Word-shaped selection highlight (image pixels), recomputed by the
     // caller on every selectionChanged() while dragging.
     void setSelectionRects(const QVector<QRect> &rects);

@@ -30,6 +30,14 @@ void PdfPageCanvas::clearSelection()
     update();
 }
 
+void PdfPageCanvas::clearPage()
+{
+    m_image = QImage();
+    m_highlightRects.clear();
+    m_searchRects.clear();
+    clearSelection(); // also calls update()
+}
+
 void PdfPageCanvas::setSelectionRects(const QVector<QRect> &rects)
 {
     m_selectionRects = rects;
@@ -51,6 +59,15 @@ void PdfPageCanvas::setSearchRects(const QVector<QRect> &rects)
 void PdfPageCanvas::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
+
+    if (m_image.isNull()) {
+        // Not yet materialized (outside PdfView's render window) — a flat
+        // placeholder keeps the page's footprint in the scroll region
+        // without paying for a render that isn't visible yet.
+        painter.fillRect(rect(), palette().color(QPalette::Base));
+        return;
+    }
+
     painter.drawImage(0, 0, m_image);
 
     for (const HighlightMark &mark : m_highlightRects) {

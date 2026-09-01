@@ -4,12 +4,15 @@
 #include "core/ReaderView.h"
 #include "epub/EpubDocument.h"
 
+#include <QHash>
+#include <QPair>
 #include <QWidget>
 
 #include <memory>
 
 class QLabel;
 class QTextBrowser;
+class QTextCursor;
 class QTimer;
 class QUrl;
 class SyncPromptBar;
@@ -64,7 +67,31 @@ signals:
 
 private:
     void setupUi();
-    void renderCurrentChapter();
+
+    // Discards whatever chapter window is currently loaded and starts fresh
+    // at spineIndex: setHtml() with just that chapter, scrolled to its top.
+    // Used for TOC/search jumps, initial open, and dark-mode toggling.
+    void loadWindowStartingAt(int spineIndex);
+
+    // Grows the loaded window by one chapter, called from onScrolled() as
+    // the reader nears the bottom/top edge of what's currently loaded.
+    void appendNextChapter();
+    void prependPreviousChapter();
+    void onScrolled();
+
+    // spineIndex's chapter HTML (see EpubDocument::chapterHtml), with the
+    // dark-mode color override and a "mnemosyne-chapter-N" boundary anchor
+    // injected -- the fragment appendNextChapter()/prependPreviousChapter()/
+    // loadWindowStartingAt() all insert into m_browser's document.
+    QString chapterHtmlFragment(int spineIndex) const;
+
+    // Which loaded chapter a given document block number falls within, and
+    // that chapter's [startBlock, endBlock) range -- the block-number
+    // bookkeeping that replaces "only one chapter is ever loaded" as the way
+    // highlights/search/selection resolve which chapter they belong to.
+    int chapterAtBlockNumber(int blockNumber) const;
+    QPair<int, int> chapterBlockRange(int spineIndex) const;
+
     void updateNavigationState();
     void applyPageColors();
     void applyHighlightsToBrowser();
@@ -77,15 +104,16 @@ private:
     void offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote);
     void scheduleProgressSave();
     void saveProgressNow();
-    void turnToNextChapterAndResumeAtTop();
-    void turnToPreviousChapterAndResumeAtBottom();
 
     std::unique_ptr<EpubDocument> m_document;
     QString m_filePath;
     QString m_bookHash;
-    int m_currentChapter = 0;
+    int m_currentChapter = 0; // dominantly-visible chapter, tracked continuously while scrolling
+    int m_loadedChapterStart = 0; // spine index range currently present in m_browser's document
+    int m_loadedChapterEnd = 0;
+    QHash<int, int> m_chapterStartBlock; // spine index -> QTextCursor::blockNumber() where it begins
+    bool m_loadingAdjacentChapter = false; // re-entrancy guard: prepending adjusts the scrollbar itself
     bool m_darkMode = false;
-    bool m_pageTurnCooldown = false; // guards against one fast scroll gesture skipping multiple chapters
     int m_fontZoomSteps = 0; // clamps how far zoomIn()/zoomOut() can go; Qt's QTextDocument keeps the actual zoomed font size across setHtml() calls on its own
     QVector<Highlight> m_highlights; // all highlights for this document
     QString m_searchTerm; // active search-dock query; empty means no search overlay
