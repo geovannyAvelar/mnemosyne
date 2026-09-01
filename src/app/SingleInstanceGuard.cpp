@@ -1,22 +1,37 @@
 #include "SingleInstanceGuard.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QLoggingCategory>
 
 namespace {
+Q_LOGGING_CATEGORY(lcSingleInstance, "mnemosyne.singleinstance")
+
 // QLocalServer already scopes local sockets per-user on all three platforms
 // (a Unix domain socket under a user-private runtime directory on
 // Linux/macOS, a named pipe namespaced to the caller's session on Windows),
 // so this can't collide across different users on the same machine.
-// Mixing in QCoreApplication::applicationName() keeps it from colliding with
-// a real running Mnemosyne either -- SingleInstanceGuardTest sets a
-// different application name (same trick AppPersistenceTest uses for
-// QSettings) precisely so it never talks to, or steals files from, an
-// actual instance on the machine running the test.
+//
+// The name is hashed down to a short, fixed-length string rather than used
+// verbatim: on Unix this becomes a filesystem path under the OS temp
+// directory, whose sun_path field caps out at 104 bytes on macOS. A literal
+// "MnemosyneSingleInstance-<applicationName>" name blew past that once
+// combined with macOS's unusually deep per-app $TMPDIR (seen in CI as
+// SingleInstanceGuardTest's longer applicationName pushing bind() over the
+// limit) -- listen() failed silently there (see the check in
+// tryBecomePrimary() below) so the "primary" was never actually reachable.
+// Hashing keeps the total path short regardless of platform or app name,
+// while QCoreApplication::applicationName() still keeps this from colliding
+// with (or stealing file-open requests from) an actual Mnemosyne instance
+// when SingleInstanceGuardTest sets a different application name (same
+// trick AppPersistenceTest uses for QSettings).
 QString serverName()
 {
-    return QStringLiteral("MnemosyneSingleInstance-") + QCoreApplication::applicationName();
+    const QByteArray hash = QCryptographicHash::hash(QCoreApplication::applicationName().toUtf8(),
+                                                       QCryptographicHash::Sha1);
+    return QStringLiteral("mnemosyne-si-") + QString::fromLatin1(hash.toHex().left(16));
 }
 }
 
@@ -58,9 +73,14 @@ bool SingleInstanceGuard::tryBecomePrimary(const QStringList &filesToOpen)
     m_server = new QLocalServer(this);
     connect(m_server, &QLocalServer::newConnection, this, &SingleInstanceGuard::handleNewConnection);
     if (!m_server->listen(serverName())) {
-        // Extremely unlikely (e.g. a permissions issue on the runtime
-        // directory) -- fall back to running unguarded rather than refusing
-        // to open at all.
+        // E.g. a permissions issue on the runtime directory -- fall back to
+        // running unguarded rather than refusing to open at all. Logged
+        // rather than silently swallowed: a listen() failure here means
+        // this process never actually becomes reachable as a primary, which
+        // is otherwise indistinguishable from a working one until a second
+        // launch mysteriously opens its own window instead of forwarding to
+        // this one.
+        qCWarning(lcSingleInstance) << "failed to listen on" << serverName() << "-" << m_server->errorString();
         delete m_server;
         m_server = nullptr;
     }
