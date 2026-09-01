@@ -18,6 +18,8 @@ set(MNEMOSYNE_CORE_SOURCES
     core/HtmlAttrUtil.cpp
     app/RecentFiles.h
     app/RecentFiles.cpp
+    app/SingleInstanceGuard.h
+    app/SingleInstanceGuard.cpp
     app/BookMetadataClient.h
     app/BookMetadataClient.cpp
     app/HighlightStore.h

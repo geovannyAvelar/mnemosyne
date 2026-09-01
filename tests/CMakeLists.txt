@@ -37,6 +37,12 @@ target_link_libraries(app_persistence_test PRIVATE mnemosynecore Qt6::Test)
 
 add_test(NAME AppPersistenceTest COMMAND app_persistence_test)
 
+qt_add_executable(single_instance_guard_test SingleInstanceGuardTest.cpp)
+
+target_link_libraries(single_instance_guard_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME SingleInstanceGuardTest COMMAND single_instance_guard_test)
+
 qt_add_executable(search_util_test SearchUtilTest.cpp)
 
 target_link_libraries(search_util_test PRIVATE mnemosynecore Qt6::Test)

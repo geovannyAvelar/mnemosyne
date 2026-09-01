@@ -1,16 +1,68 @@
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QFileOpenEvent>
 #include <QIcon>
 #include <QStyleFactory>
 #ifdef Q_OS_MACOS
 #include <QTimer>
 #endif
 
+#include "app/SingleInstanceGuard.h"
 #include "platform/SystemAppearance.h"
 #include "ui/MainWindow.h"
 #ifdef Q_OS_MACOS
 #include "platform/MacWindowChrome.h"
 #endif
+
+namespace {
+
+// Brings an already-open window to the front, restoring it first if it was
+// minimized (see MainWindow::changeEvent() for why a plain showNormal() is
+// enough to also put a maximized window back the way it was).
+void bringToFront(MainWindow &window)
+{
+    if (window.isMinimized()) {
+        window.showNormal();
+    }
+    window.raise();
+    window.activateWindow();
+}
+
+} // namespace
+
+// QApplication subclass that catches QFileOpenEvent -- how macOS asks a
+// running app to open a file (Finder's "Open With", a Dock drop, a second
+// double-click of a document whose app is already running) instead of
+// spawning a new process with the path on argv. Harmless no-op on other
+// platforms, which never send this event.
+class Application : public QApplication
+{
+public:
+    using QApplication::QApplication;
+
+    // Null until main() finishes constructing MainWindow. A FileOpen event
+    // that arrives before then (macOS can deliver one for the file that
+    // launched the app in the first place, queued before the event loop
+    // even starts) is buffered here and drained once the window exists.
+    MainWindow *window = nullptr;
+    QStringList pendingFileOpenPaths;
+
+protected:
+    bool event(QEvent *event) override
+    {
+        if (event->type() == QEvent::FileOpen) {
+            const QString path = static_cast<QFileOpenEvent *>(event)->file();
+            if (window) {
+                window->openPath(path);
+                bringToFront(*window);
+            } else {
+                pendingFileOpenPaths << path;
+            }
+            return true;
+        }
+        return QApplication::event(event);
+    }
+};
 
 int main(int argc, char *argv[])
 {
@@ -39,7 +91,7 @@ int main(int argc, char *argv[])
     // QSS reskinning anyway.
     QApplication::setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
 
-    QApplication app(argc, argv);
+    Application app(argc, argv);
     QApplication::setApplicationName("Mnemosyne");
     QApplication::setOrganizationName("Mnemosyne");
 
@@ -74,9 +126,30 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.process(app);
 
+    // Only one Mnemosyne process runs at a time. If another one is already
+    // up, hand it our files (if any -- a plain re-launch with none just
+    // brings it to front) and exit without ever creating a window.
+    SingleInstanceGuard instanceGuard;
+    if (!instanceGuard.tryBecomePrimary(parser.positionalArguments())) {
+        return 0;
+    }
+
     MainWindow window;
     window.resize(1024, 768); // fallback size if the platform ever ignores showMaximized()
     window.showMaximized();
+
+    app.window = &window;
+    for (const QString &path : app.pendingFileOpenPaths) {
+        window.openPath(path);
+    }
+    app.pendingFileOpenPaths.clear();
+
+    QObject::connect(&instanceGuard, &SingleInstanceGuard::filesReceived, &window, [&window](const QStringList &paths) {
+        for (const QString &path : paths) {
+            window.openPath(path);
+        }
+        bringToFront(window);
+    });
 
 #ifdef Q_OS_MACOS
     // Deferred: Qt's Cocoa platform plugin finishes its own native window
