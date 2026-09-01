@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.9.0] - 2026-09-01
+
+### Changed
+
+- Desktop PDF and EPUB reading now scrolls continuously across page and chapter boundaries, loading the next one in as you scroll near it, instead of snapping the scrollbar to the top/bottom of the next page or chapter.
+
 ## [1.8.0] - 2026-08-31
 
 ### Added
