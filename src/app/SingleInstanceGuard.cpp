@@ -27,19 +27,23 @@ SingleInstanceGuard::SingleInstanceGuard(QObject *parent)
 
 bool SingleInstanceGuard::tryBecomePrimary(const QStringList &filesToOpen)
 {
-    // Probe for a live primary first -- a short timeout is plenty since this
-    // is a local socket with nothing but another process' event loop on the
-    // other end.
+    // Probe for a live primary first. When there's no primary, this returns
+    // almost immediately (the OS refuses the connection outright -- there's
+    // no socket/pipe to find), so a generous timeout here doesn't add any
+    // latency to the common case of being the first instance; it only
+    // matters for the much rarer case of a primary that's genuinely slow to
+    // accept (seen in CI on macOS/Windows, where connecting right after the
+    // primary's listen() call needs more than a couple hundred ms to land).
     QLocalSocket socket;
     socket.connectToServer(serverName());
-    if (socket.waitForConnected(250)) {
+    if (socket.waitForConnected(2000)) {
         QByteArray payload;
         for (const QString &path : filesToOpen) {
             payload += path.toUtf8();
             payload += '\n';
         }
         socket.write(payload);
-        socket.waitForBytesWritten(250);
+        socket.waitForBytesWritten(2000);
         socket.disconnectFromServer();
         return false;
     }

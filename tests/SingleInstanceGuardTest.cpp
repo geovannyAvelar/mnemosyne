@@ -42,7 +42,7 @@ void SingleInstanceGuardTest::secondGuardForwardsFilesToPrimaryAndDoesNotBecomeP
     const QStringList files = {"/tmp/one.pdf", "/tmp/two.epub"};
     QVERIFY(!secondary.tryBecomePrimary(files));
 
-    QVERIFY(filesReceivedSpy.wait(1000));
+    QVERIFY(filesReceivedSpy.wait(3000)); // generous: CI's macOS/Windows runners have been slow to land this
     QCOMPARE(filesReceivedSpy.count(), 1);
     QCOMPARE(filesReceivedSpy.at(0).at(0).toStringList(), files);
 }
@@ -57,7 +57,7 @@ void SingleInstanceGuardTest::secondGuardWithNoFilesStillNotifiesPrimary()
     SingleInstanceGuard secondary;
     QVERIFY(!secondary.tryBecomePrimary(QStringList()));
 
-    QVERIFY(filesReceivedSpy.wait(1000));
+    QVERIFY(filesReceivedSpy.wait(3000)); // generous: CI's macOS/Windows runners have been slow to land this
     QCOMPARE(filesReceivedSpy.count(), 1);
     QVERIFY(filesReceivedSpy.at(0).at(0).toStringList().isEmpty());
 }
