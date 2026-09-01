@@ -2,9 +2,11 @@
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QEventLoop>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QLoggingCategory>
+#include <QTimer>
 
 namespace {
 Q_LOGGING_CATEGORY(lcSingleInstance, "mnemosyne.singleinstance")
@@ -86,12 +88,17 @@ bool SingleInstanceGuard::tryBecomePrimary(const QStringList &filesToOpen)
     if (m_server->listen(serverName())) {
         // On Windows, arming the pipe to actually accept an incoming
         // connection finishes via the event loop rather than fully
-        // synchronously inside listen() -- without at least one iteration
-        // here, a client connecting right after this call returns (as
-        // SingleInstanceGuardTest does, and as two near-simultaneous
-        // real launches could) blocks for that client's entire
-        // waitForConnected() timeout instead of connecting immediately.
-        QCoreApplication::processEvents();
+        // synchronously inside listen() -- a client connecting right after
+        // this call returns (as SingleInstanceGuardTest does, and as two
+        // near-simultaneous real launches could) has been seen blocking for
+        // that client's entire waitForConnected() timeout instead of
+        // connecting immediately. A single non-blocking processEvents()
+        // call didn't help (nothing is queued yet at the instant it runs),
+        // so this actually waits briefly, giving that arming a real chance
+        // to complete before a client can be turned away.
+        QEventLoop loop;
+        QTimer::singleShot(100, &loop, &QEventLoop::quit);
+        loop.exec();
     } else {
         // E.g. a permissions issue on the runtime directory -- fall back to
         // running unguarded rather than refusing to open at all. Logged
