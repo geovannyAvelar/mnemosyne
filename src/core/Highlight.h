@@ -18,4 +18,10 @@ struct Highlight
     QDateTime createdAt;
     QString note; // optional user-written comment attached to the highlight; empty if none
     QColor color = kDefaultHighlightColor; // marker color, chosen from a palette when adding a note
+
+    // Fields below are appended (not interleaved above) so existing positional
+    // aggregate-init call sites, e.g. Highlight{page, rect, text, createdAt},
+    // keep compiling unchanged.
+    QString id; // stable UUID, used to identify this highlight across devices for sync; see HighlightSync
+    QDateTime updatedAt; // bumped on every local edit; falls back to createdAt when absent (pre-sync data)
 };

@@ -6,6 +6,7 @@
 #include "app/GoogleDriveSync.h"
 #endif
 #include "app/HighlightStore.h"
+#include "app/HighlightSync.h"
 #include "app/ProgressSyncLog.h"
 #include "app/ReadingProgressStore.h"
 #include "core/SearchUtil.h"
@@ -429,6 +430,13 @@ void MarkdownView::restoreProgressAndCheckSync()
             offerSyncedPosition(*googleRemote);
         });
 #endif
+
+    HighlightSync::pull(m_bookHash, [this](bool changed) {
+        if (changed) {
+            refreshHighlights();
+            emit highlightsChanged();
+        }
+    });
 }
 
 void MarkdownView::offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote)

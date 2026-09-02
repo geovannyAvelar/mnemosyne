@@ -27,4 +27,10 @@ void setNote(const QString &bookHash, int index, const QString &note);
 // recent highlightsFor() call for bookHash.
 void setColor(const QString &bookHash, int index, const QColor &color);
 
+// Overwrites the full highlight set for bookHash with a merged result (see
+// HighlightSync::pull). Unlike the mutators above, this does not push
+// anything to sync itself — the caller already derived merged from sync
+// data, so pushing it back would just echo it.
+void replaceMerged(const QString &bookHash, const QVector<Highlight> &merged);
+
 } // namespace HighlightStore

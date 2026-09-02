@@ -97,6 +97,18 @@ target_link_libraries(progress_sync_log_directory_test PRIVATE mnemosynecore Qt6
 
 add_test(NAME ProgressSyncLogDirectoryTest COMMAND progress_sync_log_directory_test)
 
+qt_add_executable(highlight_sync_log_test HighlightSyncLogTest.cpp)
+
+target_link_libraries(highlight_sync_log_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME HighlightSyncLogTest COMMAND highlight_sync_log_test)
+
+qt_add_executable(highlight_sync_test HighlightSyncTest.cpp)
+
+target_link_libraries(highlight_sync_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME HighlightSyncTest COMMAND highlight_sync_test)
+
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
     qt_add_executable(google_auth_test GoogleAuthTest.cpp)
 
@@ -109,6 +121,12 @@ if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
     target_link_libraries(google_drive_sync_test PRIVATE mnemosynecore Qt6::Test)
 
     add_test(NAME GoogleDriveSyncTest COMMAND google_drive_sync_test)
+
+    qt_add_executable(google_drive_highlight_sync_test GoogleDriveHighlightSyncTest.cpp)
+
+    target_link_libraries(google_drive_highlight_sync_test PRIVATE mnemosynecore Qt6::Test)
+
+    add_test(NAME GoogleDriveHighlightSyncTest COMMAND google_drive_highlight_sync_test)
 endif()
 
 qt_add_executable(progress_sync_integration_test ProgressSyncIntegrationTest.cpp)

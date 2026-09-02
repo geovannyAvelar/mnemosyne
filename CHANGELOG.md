@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.10.0] - 2026-09-02
+
+### Added
+
+- Highlights and notes now sync across devices, the same way reading position already does — over a locally-synced folder (Google Drive/iCloud Drive/Dropbox on disk) and, when signed in, Google Drive's hidden app-data folder. Each highlight, note edit, color change, and deletion is logged per device and merged on a per-highlight basis (last edit wins; a delete beats a stale edit from a device that hasn't seen it yet), so two devices editing highlights independently converge without a manual conflict prompt. Highlights created before this update are picked up automatically the next time their book is opened.
+
 ## [1.9.0] - 2026-09-01
 
 ### Changed

@@ -1,7 +1,10 @@
 #include "HighlightStore.h"
 
+#include "HighlightSync.h"
+
 #include <QCryptographicHash>
 #include <QSettings>
+#include <QUuid>
 
 #include <algorithm>
 
@@ -30,8 +33,17 @@ void writeHighlights(const QString &bookHash, const QVector<Highlight> &highligh
         settings.setValue("createdAt", highlights[i].createdAt);
         settings.setValue("note", highlights[i].note);
         settings.setValue("color", highlights[i].color.rgba());
+        settings.setValue("id", highlights[i].id);
+        settings.setValue("updatedAt", highlights[i].updatedAt);
     }
     settings.endArray();
+}
+
+void sortByTarget(QVector<Highlight> &highlights)
+{
+    std::sort(highlights.begin(), highlights.end(), [](const Highlight &a, const Highlight &b) {
+        return a.targetIndex < b.targetIndex;
+    });
 }
 
 } // namespace
@@ -42,6 +54,7 @@ QVector<Highlight> highlightsFor(const QString &bookHash)
 {
     QSettings settings;
     QVector<Highlight> result;
+    bool needsRewrite = false;
     const int size = settings.beginReadArray(groupKeyForHighlights(bookHash));
     for (int i = 0; i < size; ++i) {
         settings.setArrayIndex(i);
@@ -58,24 +71,46 @@ QVector<Highlight> highlightsFor(const QString &bookHash)
         h.createdAt = settings.value("createdAt").toDateTime();
         h.note = settings.value("note").toString();
         h.color = QColor::fromRgba(settings.value("color", kDefaultHighlightColor.rgba()).toUInt());
+        h.id = settings.value("id").toString();
+        h.updatedAt = settings.value("updatedAt").toDateTime();
+
+        // Data persisted before highlight sync existed has no id/updatedAt.
+        // Mint them now so this highlight becomes syncable going forward,
+        // instead of silently never reaching the user's other devices.
+        if (h.id.isEmpty()) {
+            h.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            h.updatedAt = h.createdAt;
+            needsRewrite = true;
+        }
+
         result.append(h);
     }
     settings.endArray();
 
-    std::sort(result.begin(), result.end(), [](const Highlight &a, const Highlight &b) {
-        return a.targetIndex < b.targetIndex;
-    });
+    sortByTarget(result);
+
+    if (needsRewrite) {
+        writeHighlights(bookHash, result);
+        for (const Highlight &h : result) {
+            HighlightSync::pushUpsert(bookHash, h);
+        }
+    }
+
     return result;
 }
 
-void addHighlight(const QString &bookHash, const Highlight &highlight)
+void addHighlight(const QString &bookHash, const Highlight &highlightIn)
 {
+    Highlight highlight = highlightIn;
+    highlight.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    highlight.updatedAt = QDateTime::currentDateTime();
+
     QVector<Highlight> highlights = highlightsFor(bookHash);
     highlights.append(highlight);
-    std::sort(highlights.begin(), highlights.end(), [](const Highlight &a, const Highlight &b) {
-        return a.targetIndex < b.targetIndex;
-    });
+    sortByTarget(highlights);
     writeHighlights(bookHash, highlights);
+
+    HighlightSync::pushUpsert(bookHash, highlight);
 }
 
 void removeHighlight(const QString &bookHash, int index)
@@ -84,8 +119,11 @@ void removeHighlight(const QString &bookHash, int index)
     if (index < 0 || index >= highlights.size()) {
         return;
     }
+    const QString id = highlights[index].id;
     highlights.removeAt(index);
     writeHighlights(bookHash, highlights);
+
+    HighlightSync::pushDelete(bookHash, id);
 }
 
 void setNote(const QString &bookHash, int index, const QString &note)
@@ -95,7 +133,10 @@ void setNote(const QString &bookHash, int index, const QString &note)
         return;
     }
     highlights[index].note = note;
+    highlights[index].updatedAt = QDateTime::currentDateTime();
     writeHighlights(bookHash, highlights);
+
+    HighlightSync::pushUpsert(bookHash, highlights[index]);
 }
 
 void setColor(const QString &bookHash, int index, const QColor &color)
@@ -105,7 +146,17 @@ void setColor(const QString &bookHash, int index, const QColor &color)
         return;
     }
     highlights[index].color = color;
+    highlights[index].updatedAt = QDateTime::currentDateTime();
     writeHighlights(bookHash, highlights);
+
+    HighlightSync::pushUpsert(bookHash, highlights[index]);
+}
+
+void replaceMerged(const QString &bookHash, const QVector<Highlight> &merged)
+{
+    QVector<Highlight> sorted = merged;
+    sortByTarget(sorted);
+    writeHighlights(bookHash, sorted);
 }
 
 } // namespace HighlightStore

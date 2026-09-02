@@ -34,6 +34,10 @@ set(MNEMOSYNE_CORE_SOURCES
     app/ReadingProgressStore.cpp
     app/ProgressSyncLog.h
     app/ProgressSyncLog.cpp
+    app/HighlightSyncLog.h
+    app/HighlightSyncLog.cpp
+    app/HighlightSync.h
+    app/HighlightSync.cpp
     platform/SystemAppearance.h
     platform/SystemAppearance.cpp
     pdf/PopplerPdfDocument.h
@@ -70,6 +74,8 @@ if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
         app/GoogleAuth.cpp
         app/GoogleDriveSync.h
         app/GoogleDriveSync.cpp
+        app/GoogleDriveHighlightSync.h
+        app/GoogleDriveHighlightSync.cpp
         platform/TokenStore.h
     )
 

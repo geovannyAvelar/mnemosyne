@@ -29,6 +29,8 @@ private slots:
 
     void highlightColorDefaultsToYellow();
     void highlightColorRoundTrips();
+
+    void addHighlightAssignsStableUniqueId();
 };
 
 void AppPersistenceTest::initTestCase()
@@ -193,6 +195,27 @@ void AppPersistenceTest::highlightColorRoundTrips()
     const Highlight &roundTripped = highlights[0];
     QCOMPARE(roundTripped.color, QColor(33, 150, 243, 140));
     QCOMPARE(roundTripped.note, QStringLiteral("why this passage matters"));
+}
+
+void AppPersistenceTest::addHighlightAssignsStableUniqueId()
+{
+    // Highlight sync (see HighlightSync.h) identifies a highlight by this id
+    // across devices, so it must be non-empty, distinct per highlight, and
+    // unaffected by no sync backend being configured (the default here).
+    const QString book = "/tmp/book.pdf";
+    HighlightStore::addHighlight(book, Highlight{1, QRectF(0, 0, 10, 10), "first", QDateTime::currentDateTime()});
+    HighlightStore::addHighlight(book, Highlight{2, QRectF(0, 0, 10, 10), "second", QDateTime::currentDateTime()});
+
+    const QVector<Highlight> highlights = HighlightStore::highlightsFor(book);
+    QCOMPARE(highlights.size(), 2);
+    QVERIFY(!highlights[0].id.isEmpty());
+    QVERIFY(!highlights[1].id.isEmpty());
+    QVERIFY(highlights[0].id != highlights[1].id);
+
+    // Re-reading must return the same ids, not mint fresh ones each time.
+    const QVector<Highlight> again = HighlightStore::highlightsFor(book);
+    QCOMPARE(again[0].id, highlights[0].id);
+    QCOMPARE(again[1].id, highlights[1].id);
 }
 
 QTEST_MAIN(AppPersistenceTest)
