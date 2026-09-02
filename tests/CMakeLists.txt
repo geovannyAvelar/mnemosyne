@@ -97,6 +97,12 @@ target_link_libraries(progress_sync_log_directory_test PRIVATE mnemosynecore Qt6
 
 add_test(NAME ProgressSyncLogDirectoryTest COMMAND progress_sync_log_directory_test)
 
+qt_add_executable(highlight_exporter_test HighlightExporterTest.cpp)
+
+target_link_libraries(highlight_exporter_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME HighlightExporterTest COMMAND highlight_exporter_test)
+
 qt_add_executable(highlight_sync_log_test HighlightSyncLogTest.cpp)
 
 target_link_libraries(highlight_sync_log_test PRIVATE mnemosynecore Qt6::Test)

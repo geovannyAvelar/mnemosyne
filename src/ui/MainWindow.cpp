@@ -2,6 +2,7 @@
 
 #include "app/BookMetadataClient.h"
 #include "app/FileIdentity.h"
+#include "app/HighlightExporter.h"
 #include "app/HighlightStore.h"
 #include "app/RecentFiles.h"
 #include "app/SyncFolder.h"
@@ -40,6 +41,7 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QEvent>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -48,6 +50,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QMouseEvent>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QSizePolicy>
 #include <QTabBar>
@@ -67,6 +70,16 @@ bool bookMetadataHasContent(const BookMetadata &info)
 {
     return !info.authors.isEmpty() || !info.publisher.isEmpty() || !info.publishDate.isEmpty()
         || !info.description.isEmpty() || !info.cover.isNull();
+}
+
+// A suggested export filename derived from the book's title -- strips
+// characters that are invalid (or awkward) in a filename on any of the
+// three desktop platforms.
+QString sanitizedForFilename(const QString &title)
+{
+    QString result = title;
+    result.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")), QStringLiteral("_"));
+    return result.trimmed().isEmpty() ? QStringLiteral("Untitled") : result.trimmed();
 }
 } // namespace
 
@@ -574,6 +587,12 @@ void MainWindow::setupMenus()
     closeTabAction->setShortcut(QKeySequence::Close);
     connect(closeTabAction, &QAction::triggered, this, &MainWindow::closeCurrentTab);
 
+    QMenu *exportNotesMenu = fileMenu->addMenu(tr("Export &Notes"));
+    QAction *exportMarkdownAction = exportNotesMenu->addAction(tr("as &Markdown..."));
+    connect(exportMarkdownAction, &QAction::triggered, this, &MainWindow::exportNotesAsMarkdown);
+    QAction *exportAnkiAction = exportNotesMenu->addAction(tr("as &Anki Cards (TSV)..."));
+    connect(exportAnkiAction, &QAction::triggered, this, &MainWindow::exportNotesAsAnki);
+
     fileMenu->addSeparator();
     QAction *quitAction = fileMenu->addAction(tr("&Quit"));
     quitAction->setShortcut(QKeySequence::Quit);
@@ -881,6 +900,80 @@ void MainWindow::setDarkModeEnabled(bool enabled)
         } else if (auto *txtView = dynamic_cast<TxtView *>(tab)) {
             txtView->setDarkMode(enabled);
         }
+    }
+}
+
+QVector<HighlightExporter::ExportEntry> MainWindow::buildExportEntries() const
+{
+    QVector<HighlightExporter::ExportEntry> entries;
+    if (m_currentFilePath.isEmpty()) {
+        return entries;
+    }
+
+    const QVector<Highlight> highlights = HighlightStore::highlightsFor(FileIdentity::contentHash(m_currentFilePath));
+
+    // Position labels mirror the wording each view already uses in its own
+    // sync-prompt text (see e.g. PdfView::offerSyncedPosition) -- Markdown/
+    // TXT show no position number anywhere else either, so they get none
+    // here.
+    for (const Highlight &highlight : highlights) {
+        QString label;
+        if (dynamic_cast<PdfView *>(m_currentView)) {
+            label = tr("Page %1").arg(highlight.targetIndex + 1);
+        } else if (dynamic_cast<EpubView *>(m_currentView)) {
+            label = tr("Chapter %1").arg(highlight.targetIndex + 1);
+        } else if (dynamic_cast<MobiView *>(m_currentView)) {
+            label = tr("Part %1").arg(highlight.targetIndex + 1);
+        }
+        entries.append({highlight, label});
+    }
+    return entries;
+}
+
+void MainWindow::exportNotesAsMarkdown()
+{
+    const QVector<HighlightExporter::ExportEntry> entries = buildExportEntries();
+    if (entries.isEmpty()) {
+        QMessageBox::information(this, tr("Export Notes"), tr("No highlights to export yet."));
+        return;
+    }
+
+    const QString title = m_currentView->documentTitle();
+    const QString filePath = QFileDialog::getSaveFileName(this, tr("Export Notes as Markdown"),
+                                                            sanitizedForFilename(title) + QStringLiteral(".md"),
+                                                            tr("Markdown Files (*.md)"));
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
+        || file.write(HighlightExporter::toMarkdown(title, entries).toUtf8()) < 0) {
+        QMessageBox::warning(this, tr("Could Not Export Notes"), file.errorString());
+    }
+}
+
+void MainWindow::exportNotesAsAnki()
+{
+    const QVector<HighlightExporter::ExportEntry> entries = buildExportEntries();
+    const QString tsv = HighlightExporter::toAnkiTsv(entries);
+    if (tsv.isEmpty()) {
+        QMessageBox::information(this, tr("Export Notes"),
+                                  tr("No notes to export yet -- only highlights with a note attached become Anki cards."));
+        return;
+    }
+
+    const QString title = m_currentView->documentTitle();
+    const QString filePath = QFileDialog::getSaveFileName(
+        this, tr("Export Notes as Anki Cards"), sanitizedForFilename(title) + QStringLiteral(".tsv"),
+        tr("Tab-Separated Values (*.tsv)"));
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text) || file.write(tsv.toUtf8()) < 0) {
+        QMessageBox::warning(this, tr("Could Not Export Notes"), file.errorString());
     }
 }
 

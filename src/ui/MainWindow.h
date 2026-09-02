@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/BookMetadataClient.h" // BookMetadata
+#include "app/HighlightExporter.h" // HighlightExporter::ExportEntry
 #include "core/Document.h"
 #include "core/ReaderView.h" // SearchResult
 
@@ -47,6 +48,8 @@ private slots:
     void setDarkModeEnabled(bool enabled);
     void chooseSyncFolder();
     void disableSync();
+    void exportNotesAsMarkdown();
+    void exportNotesAsAnki();
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
     void signInWithGoogle();
     void signOutOfGoogle();
@@ -65,6 +68,7 @@ private:
     void populateSyncMenu();
     void refreshNotesDock();
     void refreshBookInfoDock();
+    QVector<HighlightExporter::ExportEntry> buildExportEntries() const;
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
     int findTabForFilePath(const QString &filePath) const;

@@ -24,6 +24,8 @@ set(MNEMOSYNE_CORE_SOURCES
     app/BookMetadataClient.cpp
     app/HighlightStore.h
     app/HighlightStore.cpp
+    app/HighlightExporter.h
+    app/HighlightExporter.cpp
     app/DeviceIdentity.h
     app/DeviceIdentity.cpp
     app/FileIdentity.h
