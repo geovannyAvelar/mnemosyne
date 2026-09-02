@@ -35,4 +35,20 @@ QString toMarkdown(const QString &bookTitle, const QVector<ExportEntry> &entries
 // doesn't expect.
 QString toAnkiTsv(const QVector<ExportEntry> &entries);
 
+struct BookExport
+{
+    QString title;
+    QVector<ExportEntry> entries;
+};
+
+// The whole-library equivalents: one file covering every book passed in
+// (see MainWindow::buildLibraryExportBooks for how that list is built from
+// RecentFiles), rather than a single book. toMarkdownForLibrary is just
+// toMarkdown() per book joined together, one heading each. toAnkiTsvForLibrary
+// is toAnkiTsv() per book, with each card's front prefixed with "[Title] "
+// so a card is still identifiable once every book's cards are mixed into
+// one deck.
+QString toMarkdownForLibrary(const QVector<BookExport> &books);
+QString toAnkiTsvForLibrary(const QVector<BookExport> &books);
+
 } // namespace HighlightExporter

@@ -81,6 +81,24 @@ QString sanitizedForFilename(const QString &title)
     result.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")), QStringLiteral("_"));
     return result.trimmed().isEmpty() ? QStringLiteral("Untitled") : result.trimmed();
 }
+
+// Same wording as buildExportEntries()'s per-view dynamic_cast, keyed by
+// RecentFiles::Entry::format (a raw lowercased file suffix, see
+// MainWindow::openPath) instead of a live view instance -- library export
+// covers books that aren't necessarily open in a tab.
+QString positionLabelForFormat(const QString &format, int targetIndex)
+{
+    if (format == QLatin1String("pdf")) {
+        return MainWindow::tr("Page %1").arg(targetIndex + 1);
+    }
+    if (format == QLatin1String("epub")) {
+        return MainWindow::tr("Chapter %1").arg(targetIndex + 1);
+    }
+    if (format == QLatin1String("mobi") || format == QLatin1String("azw") || format == QLatin1String("azw3")) {
+        return MainWindow::tr("Part %1").arg(targetIndex + 1);
+    }
+    return QString(); // markdown/txt (no discrete unit), cbz/html (no highlights at all)
+}
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
@@ -592,6 +610,11 @@ void MainWindow::setupMenus()
     connect(exportMarkdownAction, &QAction::triggered, this, &MainWindow::exportNotesAsMarkdown);
     QAction *exportAnkiAction = exportNotesMenu->addAction(tr("as &Anki Cards (TSV)..."));
     connect(exportAnkiAction, &QAction::triggered, this, &MainWindow::exportNotesAsAnki);
+    exportNotesMenu->addSeparator();
+    QAction *exportLibraryMarkdownAction = exportNotesMenu->addAction(tr("Export &Library as Markdown..."));
+    connect(exportLibraryMarkdownAction, &QAction::triggered, this, &MainWindow::exportLibraryAsMarkdown);
+    QAction *exportLibraryAnkiAction = exportNotesMenu->addAction(tr("Export Library as Anki Cards (&TSV)..."));
+    connect(exportLibraryAnkiAction, &QAction::triggered, this, &MainWindow::exportLibraryAsAnki);
 
     fileMenu->addSeparator();
     QAction *quitAction = fileMenu->addAction(tr("&Quit"));
@@ -967,6 +990,77 @@ void MainWindow::exportNotesAsAnki()
     const QString filePath = QFileDialog::getSaveFileName(
         this, tr("Export Notes as Anki Cards"), sanitizedForFilename(title) + QStringLiteral(".tsv"),
         tr("Tab-Separated Values (*.tsv)"));
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text) || file.write(tsv.toUtf8()) < 0) {
+        QMessageBox::warning(this, tr("Could Not Export Notes"), file.errorString());
+    }
+}
+
+QVector<HighlightExporter::BookExport> MainWindow::buildLibraryExportBooks() const
+{
+    QVector<HighlightExporter::BookExport> books;
+    for (const RecentFiles::Entry &recent : RecentFiles::list()) {
+        // Prefer the hash RecentFiles already recorded (see
+        // RecentFiles::recordOpened) over recomputing it, so a book whose
+        // file has since moved or been deleted doesn't just drop out of the
+        // export -- only entries written before contentHash existed need
+        // the fallback.
+        const QString bookHash =
+            !recent.contentHash.isEmpty() ? recent.contentHash : FileIdentity::contentHash(recent.filePath);
+        const QVector<Highlight> highlights = HighlightStore::highlightsFor(bookHash);
+        if (highlights.isEmpty()) {
+            continue;
+        }
+
+        QVector<HighlightExporter::ExportEntry> entries;
+        entries.reserve(highlights.size());
+        for (const Highlight &highlight : highlights) {
+            entries.append({highlight, positionLabelForFormat(recent.format, highlight.targetIndex)});
+        }
+        books.append({recent.title, entries});
+    }
+    return books;
+}
+
+void MainWindow::exportLibraryAsMarkdown()
+{
+    const QVector<HighlightExporter::BookExport> books = buildLibraryExportBooks();
+    if (books.isEmpty()) {
+        QMessageBox::information(this, tr("Export Notes"), tr("No highlights to export yet across your library."));
+        return;
+    }
+
+    const QString filePath = QFileDialog::getSaveFileName(this, tr("Export Library Notes as Markdown"),
+                                                            tr("Mnemosyne Library.md"), tr("Markdown Files (*.md)"));
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
+        || file.write(HighlightExporter::toMarkdownForLibrary(books).toUtf8()) < 0) {
+        QMessageBox::warning(this, tr("Could Not Export Notes"), file.errorString());
+    }
+}
+
+void MainWindow::exportLibraryAsAnki()
+{
+    const QVector<HighlightExporter::BookExport> books = buildLibraryExportBooks();
+    const QString tsv = HighlightExporter::toAnkiTsvForLibrary(books);
+    if (tsv.isEmpty()) {
+        QMessageBox::information(
+            this, tr("Export Notes"),
+            tr("No notes to export yet -- only highlights with a note attached become Anki cards."));
+        return;
+    }
+
+    const QString filePath = QFileDialog::getSaveFileName(this, tr("Export Library Notes as Anki Cards"),
+                                                            tr("Mnemosyne Library.tsv"),
+                                                            tr("Tab-Separated Values (*.tsv)"));
     if (filePath.isEmpty()) {
         return;
     }

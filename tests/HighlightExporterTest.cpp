@@ -2,6 +2,7 @@
 
 #include <QTest>
 
+using HighlightExporter::BookExport;
 using HighlightExporter::ExportEntry;
 
 class HighlightExporterTest : public QObject
@@ -17,6 +18,10 @@ private slots:
     void ankiTsvIsFrontTabBackPerLine();
     void ankiTsvFlattensEmbeddedTabsAndNewlines();
     void ankiTsvEmptyInputIsEmptyString();
+
+    void libraryMarkdownHasOneHeadingPerBook();
+    void libraryAnkiTsvPrefixesFrontWithBookTitle();
+    void libraryExportersHandleEmptyLibrary();
 
 private:
     static Highlight makeHighlight(const QString &text, const QString &note = QString());
@@ -107,6 +112,39 @@ void HighlightExporterTest::ankiTsvFlattensEmbeddedTabsAndNewlines()
 void HighlightExporterTest::ankiTsvEmptyInputIsEmptyString()
 {
     QCOMPARE(HighlightExporter::toAnkiTsv({}), QString());
+}
+
+void HighlightExporterTest::libraryMarkdownHasOneHeadingPerBook()
+{
+    QVector<BookExport> books;
+    books.append({QStringLiteral("Book A"), {{makeHighlight(QStringLiteral("passage a")), QString()}}});
+    books.append({QStringLiteral("Book B"), {{makeHighlight(QStringLiteral("passage b")), QString()}}});
+
+    const QString markdown = HighlightExporter::toMarkdownForLibrary(books);
+
+    QVERIFY(markdown.contains(QStringLiteral("# Book A")));
+    QVERIFY(markdown.contains(QStringLiteral("# Book B")));
+    QVERIFY(markdown.contains(QStringLiteral("passage a")));
+    QVERIFY(markdown.contains(QStringLiteral("passage b")));
+    // Book A's heading comes before Book B's -- library order is preserved.
+    QVERIFY(markdown.indexOf(QStringLiteral("# Book A")) < markdown.indexOf(QStringLiteral("# Book B")));
+}
+
+void HighlightExporterTest::libraryAnkiTsvPrefixesFrontWithBookTitle()
+{
+    QVector<BookExport> books;
+    books.append({QStringLiteral("Title One"),
+                   {{makeHighlight(QStringLiteral("passage"), QStringLiteral("note")), QString()}}});
+
+    const QString tsv = HighlightExporter::toAnkiTsvForLibrary(books);
+
+    QCOMPARE(tsv, QStringLiteral("[Title One] passage\tnote\n"));
+}
+
+void HighlightExporterTest::libraryExportersHandleEmptyLibrary()
+{
+    QCOMPARE(HighlightExporter::toMarkdownForLibrary({}), QString());
+    QCOMPARE(HighlightExporter::toAnkiTsvForLibrary({}), QString());
 }
 
 QTEST_MAIN(HighlightExporterTest)

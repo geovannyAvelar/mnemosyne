@@ -50,6 +50,8 @@ private slots:
     void disableSync();
     void exportNotesAsMarkdown();
     void exportNotesAsAnki();
+    void exportLibraryAsMarkdown();
+    void exportLibraryAsAnki();
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
     void signInWithGoogle();
     void signOutOfGoogle();
@@ -69,6 +71,11 @@ private:
     void refreshNotesDock();
     void refreshBookInfoDock();
     QVector<HighlightExporter::ExportEntry> buildExportEntries() const;
+    // Every RecentFiles entry with at least one highlight, most-recently-
+    // opened first (same order RecentFiles::list() already returns) --
+    // "library" here means the recents list, same as the Library tab's own
+    // grid, not a filesystem scan for every book ever opened.
+    QVector<HighlightExporter::BookExport> buildLibraryExportBooks() const;
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
     int findTabForFilePath(const QString &filePath) const;

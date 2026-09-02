@@ -74,4 +74,31 @@ QString toAnkiTsv(const QVector<ExportEntry> &entries)
     return lines.join(QLatin1Char('\n')) + QLatin1Char('\n');
 }
 
+QString toMarkdownForLibrary(const QVector<BookExport> &books)
+{
+    QStringList parts;
+    for (const BookExport &book : books) {
+        parts << toMarkdown(book.title, book.entries);
+    }
+    return parts.join(QLatin1Char('\n'));
+}
+
+QString toAnkiTsvForLibrary(const QVector<BookExport> &books)
+{
+    QStringList parts;
+    for (const BookExport &book : books) {
+        QVector<ExportEntry> prefixed;
+        prefixed.reserve(book.entries.size());
+        for (ExportEntry entry : book.entries) {
+            entry.highlight.text = QLatin1Char('[') + book.title + QLatin1String("] ") + entry.highlight.text;
+            prefixed.append(entry);
+        }
+        const QString tsv = toAnkiTsv(prefixed);
+        if (!tsv.isEmpty()) {
+            parts << tsv;
+        }
+    }
+    return parts.join(QString());
+}
+
 } // namespace HighlightExporter
