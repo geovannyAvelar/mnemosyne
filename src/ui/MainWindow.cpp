@@ -658,6 +658,12 @@ void MainWindow::setupMenus()
 
     m_syncMenu = menuBar()->addMenu(tr("&Sync"));
     connect(m_syncMenu, &QMenu::aboutToShow, this, &MainWindow::populateSyncMenu);
+    // Populate synchronously too: macOS's native menu bar hides a top-level
+    // menu that has zero actions, so leaving this empty until aboutToShow
+    // fires would make it un-clickable there and hide Google Drive sync
+    // entirely. aboutToShow still re-runs this on every open to keep the
+    // status text (folder path, signed-in account) fresh.
+    populateSyncMenu();
 
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
     QAction *aboutAction = helpMenu->addAction(tr("&About Mnemosyne"));
