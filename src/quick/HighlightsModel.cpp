@@ -1,6 +1,7 @@
 #include "HighlightsModel.h"
 
 #include "app/HighlightStore.h"
+#include "app/HighlightSync.h"
 
 #include <QDateTime>
 #include <QVariantMap>
@@ -58,6 +59,16 @@ void HighlightsModel::setBookHash(const QString &bookHash)
     m_bookHash = bookHash;
     emit bookHashChanged();
     refresh();
+
+    // this is a context property owned for the app's whole lifetime (see
+    // main_android.cpp/main_ios.mm), so capturing it raw is safe — it
+    // outlives any pull, the same reasoning PdfDocumentModel::restoreProgress
+    // relies on for its own GoogleDriveSync callback.
+    HighlightSync::pull(bookHash, [this, bookHash](bool changed) {
+        if (changed && bookHash == m_bookHash) {
+            refresh();
+        }
+    });
 }
 
 QVariantList HighlightsModel::highlightsForTarget(int targetIndex) const

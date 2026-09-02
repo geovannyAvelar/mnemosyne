@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Highlights and notes now sync across devices, the same way reading position already does — over a locally-synced folder (Google Drive/iCloud Drive/Dropbox on disk) and, when signed in, Google Drive's hidden app-data folder. Each highlight, note edit, color change, and deletion is logged per device and merged on a per-highlight basis (last edit wins; a delete beats a stale edit from a device that hasn't seen it yet), so two devices editing highlights independently converge without a manual conflict prompt. Highlights created before this update are picked up automatically the next time their book is opened.
+- Highlights and notes now sync across devices, the same way reading position already does — over a locally-synced folder (Google Drive/iCloud Drive/Dropbox on disk) and, when signed in, Google Drive's hidden app-data folder. Each highlight, note edit, color change, and deletion is logged per device and merged on a per-highlight basis (last edit wins; a delete beats a stale edit from a device that hasn't seen it yet), so two devices editing highlights independently converge without a manual conflict prompt. Highlights created before this update are picked up automatically the next time their book is opened. Included on Android/iOS too (Google Drive leg only, same as reading-position sync there), wired through the same shared `HighlightsModel` both platforms already use for their PDF/EPUB highlight overlays.
 
 ## [1.9.0] - 2026-09-01
 

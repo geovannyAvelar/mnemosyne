@@ -10,6 +10,16 @@
 // document is currently open via the settable bookHash property (see
 // FileIdentity::contentHash for why a content hash is used as the key
 // instead of the file path).
+//
+// Unlike desktop, where each of the five text-capable views independently
+// calls HighlightSync::pull() (see e.g. PdfView::restoreProgressAndCheckSync),
+// there's a single shared HighlightsModel instance here (see
+// main_android.cpp/main_ios.mm), and setBookHash() is the one place a "book
+// just opened" signal already exists — so the pull happens right there
+// instead of being duplicated into PdfDocumentModel/EpubReaderModel. Local
+// folder sync has no Android/iOS analog (see PdfDocumentModel::restoreProgress),
+// but HighlightSync::pull() degrades to a no-op for that leg on its own, so
+// no platform branching is needed here either.
 class HighlightsModel : public QAbstractListModel
 {
     Q_OBJECT
