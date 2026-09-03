@@ -1,9 +1,9 @@
 # Writing a Mnemosyne plugin
 
 Mnemosyne can load small JavaScript plugins (via [QuickJS](https://github.com/quickjs-ng/quickjs))
-that add an export format, add an on-demand command, style how a book
-renders, or react to reading/highlighting activity. This document is the
-whole API — it's deliberately small.
+that add an export format, add an on-demand command with a simple input
+form, style how a book renders, or react to reading/highlighting activity.
+This document is the whole API — it's deliberately small.
 
 ## Installing a plugin
 
@@ -130,9 +130,38 @@ development; a user running the released app won't see it.
 
 ### `mnemosyne.showMessage(text)`
 
-Shows `text` to the user in a dialog. The only user-visible output a
-command has beyond whatever a registered exporter/listener does on its own
-— call it from a command's `run(context)` to report a result.
+Shows `text` to the user in a dialog. Call it from a command's
+`run(context)` to report a result.
+
+### `mnemosyne.showForm(schema)`
+
+Shows a simple input form and returns what the user entered, or `null` if
+they cancelled. Blocks until the user submits or cancels — call it from a
+command's `run(context)`, same as `showMessage`.
+
+```js
+const result = mnemosyne.showForm({
+  title: "Rename Tag",
+  fields: [
+    { id: "name", type: "text", label: "New name", default: "" },
+    { id: "note", type: "multiline", label: "Note", default: "" },
+    { id: "count", type: "number", label: "Count", default: 0 },
+    { id: "color", type: "choice", label: "Color", options: ["Red", "Green", "Blue"], default: "Red" },
+    { id: "confirmed", type: "checkbox", label: "I'm sure", default: false }
+  ]
+});
+if (result) {
+  mnemosyne.showMessage("You entered: " + result.name);
+}
+```
+
+`result` is an object keyed by each field's `id`, typed to match (`count`
+comes back as a number, `confirmed` as a boolean, etc.). `type` is one of
+`"text"` (single line), `"multiline"`, `"number"`, `"checkbox"`, or
+`"choice"` (a dropdown, populated from `options`); an unrecognized type
+falls back to `"text"`. This renders with Mnemosyne's own native widgets,
+not HTML — there's no way to draw a fully custom screen, only a form built
+from these five field types.
 
 ## Limits worth knowing
 
@@ -140,7 +169,10 @@ command has beyond whatever a registered exporter/listener does on its own
   interfere with each other.
 - Any single hook call (loading your script, an event listener, an
   exporter's `format`) that runs for more than about 250ms is stopped and
-  logged as a warning; write hooks that return quickly.
+  logged as a warning; write hooks that return quickly. The one exception is
+  `showMessage`/`showForm` — the clock pauses while the dialog is open
+  waiting on the user, so taking your time filling out a form doesn't count
+  against your plugin's budget.
 - A thrown exception anywhere is caught, logged, and otherwise ignored — it
   won't crash Mnemosyne or block other plugins' hooks for the same event.
 

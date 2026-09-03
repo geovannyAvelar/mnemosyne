@@ -28,6 +28,7 @@
 #include "ui/NoteDialog.h"
 #include "ui/NotesDock.h"
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
+#include "ui/PluginFormDialog.h"
 #include "ui/PluginsDialog.h"
 #endif
 #include "ui/PdfView.h"
@@ -49,6 +50,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -116,10 +118,12 @@ MainWindow::MainWindow(QWidget *parent)
     setAcceptDrops(true);
 
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
-    // Both before any document can be opened, so hooks/showMessage() are
-    // live for a plugin from the very first thing it can do.
+    // All before any document can be opened, so hooks/showMessage()/
+    // showForm() are live for a plugin from the very first thing it can do.
     PluginHost::setMessageHandler(
         [this](const QString &text) { QMessageBox::information(this, tr("Plugin"), text); });
+    PluginHost::setFormHandler(
+        [this](const QJsonValue &schema) { return PluginFormDialog::show(this, schema); });
     PluginHost::reload();
 #endif
 

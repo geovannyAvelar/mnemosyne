@@ -3,6 +3,7 @@
 #include "HighlightExporter.h" // HighlightExporter::ExportEntry, used by value in CommandContext
 
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 #include <QVector>
 
@@ -22,6 +23,7 @@
 //   mnemosyne.on(eventName, function(payload) {...})
 //   mnemosyne.log(...)
 //   mnemosyne.showMessage(text)
+//   mnemosyne.showForm({title, fields: [{id, type, label, ...}, ...]})
 //
 // That's the *entire* API surface in this pass -- no file, network, or
 // process access is bound, so a plugin can only do what these functions
@@ -108,6 +110,16 @@ void runCommand(const QString &commandId, const std::optional<CommandContext> &c
 // is called), showMessage() just logs via qWarning instead of doing
 // nothing silently.
 void setMessageHandler(std::function<void(const QString &)> handler);
+
+// Backs mnemosyne.showForm(schema): same rationale as setMessageHandler()
+// above. The handler renders schema (a form description -- see
+// ui/PluginFormDialog.h for the field types it supports) modally and
+// returns the entered values as a JSON object, or
+// QJsonValue(QJsonValue::Null) if the user cancelled (also what an unset
+// handler returns, so a build with no handler installed just always
+// cancels rather than crashing). showForm() blocks until the handler
+// returns, same as any other synchronous plugin call.
+void setFormHandler(std::function<QJsonValue(const QJsonValue &)> handler);
 
 // Fans out to every loaded plugin's mnemosyne.on(name, ...) listener(s), if
 // any. Never throws or otherwise propagates a plugin's error to the caller.

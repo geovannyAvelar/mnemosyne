@@ -276,6 +276,8 @@ if(MNEMOSYNE_ENABLE_PLUGINS)
     list(APPEND MNEMOSYNE_DESKTOP_UI_SOURCES
         ui/PluginsDialog.h
         ui/PluginsDialog.cpp
+        ui/PluginFormDialog.h
+        ui/PluginFormDialog.cpp
     )
 endif()
 

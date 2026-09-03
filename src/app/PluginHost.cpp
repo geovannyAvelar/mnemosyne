@@ -72,6 +72,16 @@ std::function<void(const QString &)> &messageHandler()
     return handler;
 }
 
+// Set via setFormHandler(); backs mnemosyne.showForm(). Same pattern as
+// messageHandler() -- returns QJsonValue(QJsonValue::Null) for "the user
+// cancelled" (unset counts as cancelled too, so a build without a form
+// handler installed just always cancels rather than crashing).
+std::function<QJsonValue(const QJsonValue &)> &formHandler()
+{
+    static std::function<QJsonValue(const QJsonValue &)> handler;
+    return handler;
+}
+
 // std::vector, not QVector/QList: QList<std::unique_ptr<T>> isn't fully
 // supported in Qt6 (non-const begin()/detach() instantiates a copy-append
 // path even when never taken, which fails to compile for a move-only
@@ -135,6 +145,62 @@ JSValue qJsonToJs(JSContext *ctx, const QJsonValue &value)
         break;
     }
     return JS_NULL;
+}
+
+// The other direction of qJsonToJs() -- reads an arbitrary JS value (e.g. a
+// form schema passed into showForm()) back into a QJsonValue. Nothing else
+// in PluginHost needed this before showForm(): every other native function
+// extracts a few known properties one at a time (see jsGetStringProp)
+// rather than converting a whole nested structure.
+QJsonValue jsToQJson(JSContext *ctx, JSValueConst v)
+{
+    if (JS_IsBool(v)) {
+        return QJsonValue(JS_ToBool(ctx, v) != 0);
+    }
+    if (JS_IsNumber(v)) {
+        double d = 0;
+        JS_ToFloat64(ctx, &d, v);
+        return QJsonValue(d);
+    }
+    if (JS_IsString(v)) {
+        return QJsonValue(jsValueToQString(ctx, v));
+    }
+    if (JS_IsArray(v)) {
+        QJsonArray array;
+        const JSValue lengthVal = JS_GetPropertyStr(ctx, v, "length");
+        uint32_t length = 0;
+        JS_ToUint32(ctx, &length, lengthVal);
+        JS_FreeValue(ctx, lengthVal);
+        for (uint32_t i = 0; i < length; ++i) {
+            const JSValue item = JS_GetPropertyUint32(ctx, v, i);
+            array.append(jsToQJson(ctx, item));
+            JS_FreeValue(ctx, item);
+        }
+        return array;
+    }
+    if (JS_IsObject(v)) {
+        QJsonObject object;
+        JSPropertyEnum *tab = nullptr;
+        uint32_t len = 0;
+        if (JS_GetOwnPropertyNames(ctx, &tab, &len, v, JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) == 0) {
+            for (uint32_t i = 0; i < len; ++i) {
+                if (const char *key = JS_AtomToCString(ctx, tab[i].atom)) {
+                    const JSValue propVal = JS_GetProperty(ctx, v, tab[i].atom);
+                    object.insert(QString::fromUtf8(key), jsToQJson(ctx, propVal));
+                    JS_FreeValue(ctx, propVal);
+                    JS_FreeCString(ctx, key);
+                }
+                // Not JS_FreeAtom() here -- JS_FreePropertyEnum() below frees
+                // every atom in tab itself; freeing them individually first
+                // as well double-frees each one (caught as heap corruption
+                // during a later, unrelated JS_FreeValue).
+            }
+            JS_FreePropertyEnum(ctx, tab, len);
+        }
+        return object;
+    }
+    // null, undefined, or anything else (function, symbol, ...): treat as null.
+    return QJsonValue();
 }
 
 QJsonArray exportEntriesToJson(const QVector<HighlightExporter::ExportEntry> &entries)
@@ -293,7 +359,33 @@ JSValue jsShowMessage(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv
     } else {
         qWarning().noquote() << QStringLiteral("[plugin] showMessage() with no handler installed: %1").arg(text);
     }
+    // The watchdog can't interrupt while control is inside this native call
+    // (QuickJS only checks between bytecode ops, not while a host function
+    // it called into hasn't returned), but LoadedPlugin::watchdogTimer keeps
+    // running wall-clock time regardless -- restart it so however long the
+    // user took to dismiss the dialog doesn't count against the plugin's
+    // execution budget for whatever JS runs next.
+    if (auto *plugin = static_cast<LoadedPlugin *>(JS_GetContextOpaque(ctx))) {
+        plugin->watchdogTimer.restart();
+    }
     return JS_UNDEFINED;
+}
+
+JSValue jsShowForm(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
+{
+    QJsonValue result;
+    if (formHandler()) {
+        const QJsonValue schema = argc > 0 ? jsToQJson(ctx, argv[0]) : QJsonValue();
+        result = formHandler()(schema);
+    } else {
+        qWarning().noquote() << QStringLiteral("[plugin] showForm() with no handler installed");
+    }
+    // See jsShowMessage() above -- same reasoning, more important here since
+    // a form is expected to take longer than 250ms by design.
+    if (auto *plugin = static_cast<LoadedPlugin *>(JS_GetContextOpaque(ctx))) {
+        plugin->watchdogTimer.restart();
+    }
+    return qJsonToJs(ctx, result);
 }
 
 JSValue jsOn(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
@@ -329,6 +421,7 @@ void bindGlobalApi(JSContext *ctx)
     JS_SetPropertyStr(ctx, mnemosyne, "on", JS_NewCFunction(ctx, jsOn, "on", 2));
     JS_SetPropertyStr(ctx, mnemosyne, "log", JS_NewCFunction(ctx, jsLog, "log", 1));
     JS_SetPropertyStr(ctx, mnemosyne, "showMessage", JS_NewCFunction(ctx, jsShowMessage, "showMessage", 1));
+    JS_SetPropertyStr(ctx, mnemosyne, "showForm", JS_NewCFunction(ctx, jsShowForm, "showForm", 1));
     JS_SetPropertyStr(ctx, global, "mnemosyne", mnemosyne); // consumes mnemosyne
     JS_FreeValue(ctx, global);
 }
@@ -532,6 +625,11 @@ void runCommand(const QString &commandId, const std::optional<CommandContext> &c
 void setMessageHandler(std::function<void(const QString &)> handler)
 {
     messageHandler() = std::move(handler);
+}
+
+void setFormHandler(std::function<QJsonValue(const QJsonValue &)> handler)
+{
+    formHandler() = std::move(handler);
 }
 
 void emitEvent(const QString &name, const QJsonObject &payload)

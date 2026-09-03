@@ -5,9 +5,11 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QSettings>
 #include <QTest>
+#include <QThread>
 
 #include <algorithm>
 
@@ -58,6 +60,11 @@ private slots:
     void cssForFormatCombinesMultipleInjectors();
     void cssForFormatWithNoMatchIsEmpty();
 
+    void showFormPassesSchemaAndReturnsHandlerResult();
+    void showFormReturnsNullWhenHandlerCancels();
+    void showFormWithNoHandlerReturnsNullAndLogs();
+    void showFormResetsWatchdogAfterSlowHandler();
+
 private:
     QtMessageHandler m_previousHandler = nullptr;
 
@@ -80,12 +87,14 @@ void PluginHostTest::init()
     capturedMessages().clear();
     m_previousHandler = qInstallMessageHandler(captureHandler);
     PluginHost::setMessageHandler(nullptr); // each test opts back in if it needs one
+    PluginHost::setFormHandler(nullptr);
 }
 
 void PluginHostTest::cleanupTestCase()
 {
     qInstallMessageHandler(m_previousHandler);
     PluginHost::setMessageHandler(nullptr);
+    PluginHost::setFormHandler(nullptr);
     QDir(PluginHost::pluginsDirectory()).removeRecursively();
     QSettings().clear();
 }
@@ -366,6 +375,112 @@ void PluginHostTest::cssForFormatWithNoMatchIsEmpty()
 {
     PluginHost::reload(); // nothing written this test
     QCOMPARE(PluginHost::cssForFormat(QStringLiteral("epub")), QString());
+}
+
+void PluginHostTest::showFormPassesSchemaAndReturnsHandlerResult()
+{
+    QJsonValue receivedSchema;
+    PluginHost::setFormHandler([&receivedSchema](const QJsonValue &schema) {
+        receivedSchema = schema;
+        QJsonObject result;
+        result["name"] = QStringLiteral("Alice");
+        result["count"] = 3;
+        return QJsonValue(result);
+    });
+
+    writePlugin(QStringLiteral("form-plugin"), QStringLiteral(R"js(
+        mnemosyne.registerCommand({
+            id: "ask",
+            label: "Ask",
+            run: function() {
+                const result = mnemosyne.showForm({
+                    title: "Test Form",
+                    fields: [{id: "name", type: "text", label: "Name", default: "x"}]
+                });
+                mnemosyne.log("got:" + result.name + ":" + result.count);
+            }
+        });
+    )js"));
+    PluginHost::reload();
+
+    PluginHost::runCommand(QStringLiteral("form-plugin.ask"), std::nullopt);
+
+    QVERIFY(receivedSchema.isObject());
+    QCOMPARE(receivedSchema.toObject().value(QStringLiteral("title")).toString(), QStringLiteral("Test Form"));
+    const QJsonArray fields = receivedSchema.toObject().value(QStringLiteral("fields")).toArray();
+    QCOMPARE(fields.size(), 1);
+    QCOMPARE(fields.first().toObject().value(QStringLiteral("id")).toString(), QStringLiteral("name"));
+
+    QVERIFY(capturedMessages().join(QLatin1Char('\n')).contains(QStringLiteral("got:Alice:3")));
+}
+
+void PluginHostTest::showFormReturnsNullWhenHandlerCancels()
+{
+    PluginHost::setFormHandler([](const QJsonValue &) { return QJsonValue(); }); // Null == cancelled
+
+    writePlugin(QStringLiteral("cancel-form-plugin"), QStringLiteral(R"js(
+        mnemosyne.registerCommand({
+            id: "ask",
+            label: "Ask",
+            run: function() {
+                const result = mnemosyne.showForm({title: "T", fields: []});
+                mnemosyne.log("isNull:" + (result === null));
+            }
+        });
+    )js"));
+    PluginHost::reload();
+
+    PluginHost::runCommand(QStringLiteral("cancel-form-plugin.ask"), std::nullopt);
+
+    QVERIFY(capturedMessages().join(QLatin1Char('\n')).contains(QStringLiteral("isNull:true")));
+}
+
+void PluginHostTest::showFormWithNoHandlerReturnsNullAndLogs()
+{
+    // init() already reset the handler to null for this test.
+    writePlugin(QStringLiteral("no-form-handler-plugin"), QStringLiteral(R"js(
+        mnemosyne.registerCommand({
+            id: "ask",
+            label: "Ask",
+            run: function() {
+                const result = mnemosyne.showForm({title: "T", fields: []});
+                mnemosyne.log("isNull:" + (result === null));
+            }
+        });
+    )js"));
+    PluginHost::reload();
+
+    PluginHost::runCommand(QStringLiteral("no-form-handler-plugin.ask"), std::nullopt);
+
+    const QString log = capturedMessages().join(QLatin1Char('\n'));
+    QVERIFY(log.contains(QStringLiteral("showForm() with no handler installed")));
+    QVERIFY(log.contains(QStringLiteral("isNull:true")));
+}
+
+void PluginHostTest::showFormResetsWatchdogAfterSlowHandler()
+{
+    PluginHost::setFormHandler([](const QJsonValue &) {
+        QThread::msleep(400); // longer than the ~250ms watchdog budget
+        QJsonObject result;
+        result["ok"] = true;
+        return QJsonValue(result);
+    });
+
+    writePlugin(QStringLiteral("slow-form-plugin"), QStringLiteral(R"js(
+        mnemosyne.registerCommand({
+            id: "ask",
+            label: "Ask",
+            run: function() {
+                mnemosyne.showForm({title: "T", fields: []});
+                mnemosyne.log("after form"); // must still run -- not aborted by the watchdog
+            }
+        });
+    )js"));
+    PluginHost::reload();
+
+    PluginHost::runCommand(QStringLiteral("slow-form-plugin.ask"), std::nullopt);
+
+    QVERIFY(capturedMessages().join(QLatin1Char('\n')).contains(QStringLiteral("after form")));
 }
 
 QTEST_MAIN(PluginHostTest)
