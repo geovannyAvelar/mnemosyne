@@ -34,6 +34,7 @@ public:
     QVector<SearchResult> search(const QString &query) const override;
     void setSearchTerm(const QString &term) override;
     void refreshHighlights() override;
+    void flushProgress() override;
 
     // Independent of any MobiView instance — see EpubView::searchFile() for
     // why this reopens the file rather than touching a live instance.

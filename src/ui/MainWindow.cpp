@@ -41,6 +41,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCloseEvent>
 #include <QDebug>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -248,6 +249,21 @@ void MainWindow::dropEvent(QDropEvent *event)
         }
     }
     event->acceptProposedAction();
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    // Each view debounces its own progress saves (see e.g. PdfView::
+    // scheduleProgressSave), so a page/scroll change made just before quit
+    // can still be sitting in that debounce window when the app exits.
+    // Flush every open tab now so "resume where I left off" always reflects
+    // the true last state, not whatever was saved 1.5s before it.
+    for (int i = 0; i < m_tabWidget->count(); ++i) {
+        if (auto *view = dynamic_cast<IReaderView *>(m_tabWidget->widget(i))) {
+            view->flushProgress();
+        }
+    }
+    QMainWindow::closeEvent(event);
 }
 
 void MainWindow::setupTabs()
@@ -932,6 +948,9 @@ void MainWindow::onTabCloseRequested(int index)
     QWidget *widget = m_tabWidget->widget(index);
     if (!widget || widget == m_libraryView) {
         return; // Library tab has no close button, but guard anyway
+    }
+    if (auto *view = dynamic_cast<IReaderView *>(widget)) {
+        view->flushProgress(); // see closeEvent() for why this can't wait for the debounce timer
     }
     m_tabWidget->removeTab(index);
     m_tabFilePaths.remove(widget);

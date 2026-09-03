@@ -493,6 +493,15 @@ void MobiView::scheduleProgressSave()
     m_progressSaveTimer->start(1500);
 }
 
+void MobiView::flushProgress()
+{
+    if (!m_progressSaveTimer->isActive()) {
+        return;
+    }
+    m_progressSaveTimer->stop();
+    saveProgressNow();
+}
+
 void MobiView::saveProgressNow()
 {
     if (m_bookHash.isEmpty()) {

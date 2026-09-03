@@ -50,4 +50,11 @@ public:
     // from under the currently open view. A no-op for formats with no
     // highlight support (ComicView, HtmlView).
     virtual void refreshHighlights() = 0;
+
+    // Writes the current reading position/zoom out immediately, bypassing
+    // the debounce timer views otherwise use to coalesce rapid page/scroll
+    // changes. Called before a view is torn down (tab close, app quit) so a
+    // position change made just before closing isn't lost to a debounce
+    // window that never got to fire.
+    virtual void flushProgress() = 0;
 };

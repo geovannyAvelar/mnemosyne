@@ -241,6 +241,15 @@ void ComicView::scheduleProgressSave()
     m_progressSaveTimer->start(1500);
 }
 
+void ComicView::flushProgress()
+{
+    if (!m_progressSaveTimer->isActive()) {
+        return;
+    }
+    m_progressSaveTimer->stop();
+    saveProgressNow();
+}
+
 void ComicView::saveProgressNow()
 {
     if (m_bookHash.isEmpty()) {

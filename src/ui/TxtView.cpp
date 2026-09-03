@@ -441,6 +441,15 @@ void TxtView::scheduleProgressSave()
     m_progressSaveTimer->start(1500);
 }
 
+void TxtView::flushProgress()
+{
+    if (!m_progressSaveTimer->isActive()) {
+        return;
+    }
+    m_progressSaveTimer->stop();
+    saveProgressNow();
+}
+
 void TxtView::saveProgressNow()
 {
     if (m_bookHash.isEmpty()) {

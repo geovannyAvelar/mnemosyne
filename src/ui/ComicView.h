@@ -35,6 +35,7 @@ public:
     QVector<SearchResult> search(const QString &query) const override { Q_UNUSED(query); return {}; } // no text layer
     void setSearchTerm(const QString &term) override { Q_UNUSED(term); }
     void refreshHighlights() override { } // no text layer, no highlights
+    void flushProgress() override;
 
     bool hasPendingSyncPrompt() const;
 

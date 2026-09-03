@@ -34,6 +34,7 @@ public:
     QVector<SearchResult> search(const QString &query) const override;
     void setSearchTerm(const QString &term) override;
     void refreshHighlights() override;
+    void flushProgress() override;
 
     // Same search as above, but independent of any PdfView instance: opens
     // its own Poppler document from filePath rather than touching a live

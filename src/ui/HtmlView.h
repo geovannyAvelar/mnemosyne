@@ -37,6 +37,7 @@ public:
     QVector<SearchResult> search(const QString &query) const override;
     void setSearchTerm(const QString &term) override; // no-op, see search() above
     void refreshHighlights() override { } // no highlight support, see class comment above
+    void flushProgress() override;
 
     qreal currentZoomFactor() const;
 

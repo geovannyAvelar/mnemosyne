@@ -21,6 +21,7 @@ class NotesDock;
 class SearchDock;
 class TocDock;
 class QAction;
+class QCloseEvent;
 class QDragEnterEvent;
 class QDropEvent;
 class QMenu;
@@ -42,6 +43,7 @@ protected:
     void changeEvent(QEvent *event) override;
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void openFile();

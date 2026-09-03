@@ -469,6 +469,15 @@ void MarkdownView::scheduleProgressSave()
     m_progressSaveTimer->start(1500);
 }
 
+void MarkdownView::flushProgress()
+{
+    if (!m_progressSaveTimer->isActive()) {
+        return;
+    }
+    m_progressSaveTimer->stop();
+    saveProgressNow();
+}
+
 void MarkdownView::saveProgressNow()
 {
     if (m_bookHash.isEmpty()) {

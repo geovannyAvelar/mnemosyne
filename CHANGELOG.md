@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - On macOS, Mnemosyne never showed up as an option to open PDF, EPUB, HTML, Markdown, MOBI, Kindle (AZW/AZW3), CBZ, or plain-text files — Finder's "Open With" menu and "Get Info" > "Open with" default-app picker didn't list it at all, and double-clicking a PDF never launched it. The app bundle now declares the document types it supports, so macOS registers it as an available viewer for all of them the next time it's launched.
+- Desktop: reading position could revert to an earlier page/scroll spot after closing a tab or quitting shortly after turning a page or scrolling — each view only wrote it out up to 1.5s after the last change, and closing didn't wait for that save to fire. Closing a tab or quitting the app now flushes any pending position immediately, so reopening a book always resumes exactly where you left off.
 
 ## [1.10.0] - 2026-09-02
 

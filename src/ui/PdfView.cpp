@@ -768,6 +768,15 @@ void PdfView::scheduleProgressSave()
     m_progressSaveTimer->start(1500);
 }
 
+void PdfView::flushProgress()
+{
+    if (!m_progressSaveTimer->isActive()) {
+        return;
+    }
+    m_progressSaveTimer->stop();
+    saveProgressNow();
+}
+
 void PdfView::saveProgressNow()
 {
     if (m_bookHash.isEmpty()) {
