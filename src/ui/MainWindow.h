@@ -85,6 +85,8 @@ private:
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
     void populatePluginExportActions();
     void runPluginExporter(const PluginHost::PluginExporter &exporter);
+    void populatePluginCommandActions();
+    void runPluginCommand(const PluginHost::PluginCommand &command);
 #endif
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
@@ -99,11 +101,14 @@ private:
     QMenu *m_syncMenu = nullptr;
     QMenu *m_exportNotesMenu = nullptr;
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
-    // Actions populatePluginExportActions() adds to m_exportNotesMenu (a
-    // leading separator plus one per registered exporter) -- tracked so
-    // they can be removed and rebuilt each time the menu opens, without
-    // touching the fixed built-in export actions also in that menu.
+    QMenu *m_pluginsMenu = nullptr;
+    // Actions populatePluginExportActions()/populatePluginCommandActions()
+    // add to m_exportNotesMenu/m_pluginsMenu (a leading separator plus one
+    // per registered exporter/command) -- tracked so they can be removed
+    // and rebuilt each time the menu opens, without touching the fixed
+    // built-in actions also in those menus.
     QVector<QAction *> m_pluginExportActions;
+    QVector<QAction *> m_pluginCommandActions;
 #endif
     QAction *m_darkModeAction = nullptr;
     QAction *m_sidebarToggleAction = nullptr;

@@ -1,12 +1,13 @@
 #pragma once
 
+#include "HighlightExporter.h" // HighlightExporter::ExportEntry, used by value in CommandContext
+
 #include <QJsonObject>
 #include <QString>
 #include <QVector>
 
-namespace HighlightExporter {
-struct ExportEntry;
-}
+#include <functional>
+#include <optional>
 
 // Loads and runs QuickJS plugins from pluginsDirectory(). A plugin is a
 // folder containing a manifest.json ({id, name, version, description,
@@ -16,8 +17,10 @@ struct ExportEntry;
 //
 //   mnemosyne.registerExporter({id, label, fileFilter, defaultExtension,
 //                                format: function(bookTitle, entries) {...}})
+//   mnemosyne.registerCommand({id, label, run: function(context) {...}})
 //   mnemosyne.on(eventName, function(payload) {...})
 //   mnemosyne.log(...)
+//   mnemosyne.showMessage(text)
 //
 // That's the *entire* API surface in this pass -- no file, network, or
 // process access is bound, so a plugin can only do what these functions
@@ -47,6 +50,22 @@ struct PluginExporter
     QString defaultExtension;
 };
 
+struct PluginCommand
+{
+    QString pluginId;
+    QString id; // globally unique: "<pluginId>.<the id the plugin gave>"
+    QString label;
+};
+
+// The currently-open book, passed to a command's run(context) -- absent
+// (JS receives null) when the Library tab is active rather than a book.
+struct CommandContext
+{
+    QString bookHash;
+    QString title;
+    QVector<HighlightExporter::ExportEntry> highlights;
+};
+
 // pluginsDirectory()/<some-dir>/manifest.json -- created on first use.
 QString pluginsDirectory();
 
@@ -72,6 +91,22 @@ QVector<PluginExporter> registeredExporters();
 // user-presentable reason in that case.
 QString runExporter(const QString &exporterId, const QString &bookTitle,
                      const QVector<HighlightExporter::ExportEntry> &entries, QString *errorMessage = nullptr);
+
+// Every command registered by a currently-loaded (enabled) plugin.
+QVector<PluginCommand> registeredCommands();
+
+// Runs commandId's run(context) -- context is JS null when std::nullopt.
+// Errors/timeouts are logged and swallowed, same as emitEvent(); a command
+// has no return value of its own, only whatever it does via
+// mnemosyne.showMessage() or a registered exporter/listener.
+void runCommand(const QString &commandId, const std::optional<CommandContext> &context);
+
+// Backs mnemosyne.showMessage(text): PluginHost has no UI of its own (it's
+// Widgets-free, see src/CMakeLists.txt's mnemosynecore), so the desktop UI
+// layer supplies how a message actually gets shown. Unset (or before this
+// is called), showMessage() just logs via qWarning instead of doing
+// nothing silently.
+void setMessageHandler(std::function<void(const QString &)> handler);
 
 // Fans out to every loaded plugin's mnemosyne.on(name, ...) listener(s), if
 // any. Never throws or otherwise propagates a plugin's error to the caller.

@@ -65,6 +65,8 @@
 #include <QWindowStateChangeEvent>
 #include <QtConcurrent/QtConcurrentRun>
 
+#include <optional>
+
 namespace {
 // Title alone doesn't count: it's virtually always present (falls back to
 // the filename) and already duplicates the tab/window title, so it's not
@@ -114,7 +116,11 @@ MainWindow::MainWindow(QWidget *parent)
     setAcceptDrops(true);
 
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
-    PluginHost::reload(); // before any document can be opened, so hooks are live from the start
+    // Both before any document can be opened, so hooks/showMessage() are
+    // live for a plugin from the very first thing it can do.
+    PluginHost::setMessageHandler(
+        [this](const QString &text) { QMessageBox::information(this, tr("Plugin"), text); });
+    PluginHost::reload();
 #endif
 
     setupDocks();
@@ -677,9 +683,10 @@ void MainWindow::setupMenus()
     populateSyncMenu();
 
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
-    QMenu *pluginsMenu = menuBar()->addMenu(tr("&Plugins"));
-    QAction *managePluginsAction = pluginsMenu->addAction(tr("&Manage Plugins..."));
+    m_pluginsMenu = menuBar()->addMenu(tr("&Plugins"));
+    QAction *managePluginsAction = m_pluginsMenu->addAction(tr("&Manage Plugins..."));
     connect(managePluginsAction, &QAction::triggered, this, &MainWindow::showPluginsDialog);
+    connect(m_pluginsMenu, &QMenu::aboutToShow, this, &MainWindow::populatePluginCommandActions);
 #endif
 
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
@@ -1156,6 +1163,40 @@ void MainWindow::runPluginExporter(const PluginHost::PluginExporter &exporter)
 void MainWindow::showPluginsDialog()
 {
     PluginsDialog::show(this);
+}
+
+void MainWindow::populatePluginCommandActions()
+{
+    for (QAction *action : std::as_const(m_pluginCommandActions)) {
+        m_pluginsMenu->removeAction(action);
+        action->deleteLater();
+    }
+    m_pluginCommandActions.clear();
+
+    const QVector<PluginHost::PluginCommand> commands = PluginHost::registeredCommands();
+    if (commands.isEmpty()) {
+        return;
+    }
+
+    m_pluginCommandActions.append(m_pluginsMenu->addSeparator());
+    for (const PluginHost::PluginCommand &command : commands) {
+        QAction *action = m_pluginsMenu->addAction(command.label.isEmpty() ? command.id : command.label);
+        connect(action, &QAction::triggered, this, [this, command] { runPluginCommand(command); });
+        m_pluginCommandActions.append(action);
+    }
+}
+
+void MainWindow::runPluginCommand(const PluginHost::PluginCommand &command)
+{
+    std::optional<PluginHost::CommandContext> context;
+    if (m_currentView && !m_currentFilePath.isEmpty()) {
+        PluginHost::CommandContext ctx;
+        ctx.bookHash = FileIdentity::contentHash(m_currentFilePath);
+        ctx.title = m_currentView->documentTitle();
+        ctx.highlights = buildExportEntries();
+        context = ctx;
+    }
+    PluginHost::runCommand(command.id, context);
 }
 #endif
 

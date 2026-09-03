@@ -19,7 +19,9 @@
 #include <QStandardPaths>
 #include <QStringList>
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace PluginHost {
@@ -47,9 +49,20 @@ struct LoadedPlugin
     QVector<EventListener> listeners;
     QVector<PluginExporter> exporters;
     QHash<QString, JSValue> exporterFormatFns; // keyed by PluginExporter::id (already qualified)
+    QVector<PluginCommand> commands;
+    QHash<QString, JSValue> commandRunFns; // keyed by PluginCommand::id (already qualified)
     QElapsedTimer watchdogTimer;
     bool watchdogTripped = false;
 };
+
+// Set via setMessageHandler(); backs mnemosyne.showMessage(). A function-
+// local static, same pattern as pluginRegistry() below -- there's exactly
+// one desktop UI, so one process-wide handler is enough.
+std::function<void(const QString &)> &messageHandler()
+{
+    static std::function<void(const QString &)> handler;
+    return handler;
+}
 
 // std::vector, not QVector/QList: QList<std::unique_ptr<T>> isn't fully
 // supported in Qt6 (non-const begin()/detach() instantiates a copy-append
@@ -202,6 +215,41 @@ JSValue jsRegisterExporter(JSContext *ctx, JSValueConst, int argc, JSValueConst 
     return JS_UNDEFINED;
 }
 
+JSValue jsRegisterCommand(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
+{
+    auto *plugin = static_cast<LoadedPlugin *>(JS_GetContextOpaque(ctx));
+    if (!plugin || argc < 1 || !JS_IsObject(argv[0])) {
+        return JS_ThrowTypeError(ctx, "registerCommand expects an object");
+    }
+
+    const QString id = jsGetStringProp(ctx, argv[0], "id");
+    const JSValue runFn = JS_GetPropertyStr(ctx, argv[0], "run");
+    if (id.isEmpty() || !JS_IsFunction(ctx, runFn)) {
+        JS_FreeValue(ctx, runFn);
+        return JS_ThrowTypeError(ctx, "registerCommand requires a non-empty id and a run function");
+    }
+
+    PluginCommand command;
+    command.pluginId = plugin->info.id;
+    command.id = plugin->info.id + QLatin1Char('.') + id;
+    command.label = jsGetStringProp(ctx, argv[0], "label");
+    plugin->commands.append(command);
+    plugin->commandRunFns.insert(command.id, runFn); // ownership: already a new reference from JS_GetPropertyStr
+
+    return JS_UNDEFINED;
+}
+
+JSValue jsShowMessage(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
+{
+    const QString text = argc > 0 ? jsValueToQString(ctx, argv[0]) : QString();
+    if (messageHandler()) {
+        messageHandler()(text);
+    } else {
+        qWarning().noquote() << QStringLiteral("[plugin] showMessage() with no handler installed: %1").arg(text);
+    }
+    return JS_UNDEFINED;
+}
+
 JSValue jsOn(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
 {
     auto *plugin = static_cast<LoadedPlugin *>(JS_GetContextOpaque(ctx));
@@ -230,8 +278,10 @@ void bindGlobalApi(JSContext *ctx)
     const JSValue global = JS_GetGlobalObject(ctx);
     const JSValue mnemosyne = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, mnemosyne, "registerExporter", JS_NewCFunction(ctx, jsRegisterExporter, "registerExporter", 1));
+    JS_SetPropertyStr(ctx, mnemosyne, "registerCommand", JS_NewCFunction(ctx, jsRegisterCommand, "registerCommand", 1));
     JS_SetPropertyStr(ctx, mnemosyne, "on", JS_NewCFunction(ctx, jsOn, "on", 2));
     JS_SetPropertyStr(ctx, mnemosyne, "log", JS_NewCFunction(ctx, jsLog, "log", 1));
+    JS_SetPropertyStr(ctx, mnemosyne, "showMessage", JS_NewCFunction(ctx, jsShowMessage, "showMessage", 1));
     JS_SetPropertyStr(ctx, global, "mnemosyne", mnemosyne); // consumes mnemosyne
     JS_FreeValue(ctx, global);
 }
@@ -246,6 +296,9 @@ void unloadAll()
             JS_FreeValue(plugin->context, listener.callback);
         }
         for (auto it = plugin->exporterFormatFns.begin(); it != plugin->exporterFormatFns.end(); ++it) {
+            JS_FreeValue(plugin->context, it.value());
+        }
+        for (auto it = plugin->commandRunFns.begin(); it != plugin->commandRunFns.end(); ++it) {
             JS_FreeValue(plugin->context, it.value());
         }
         JS_FreeContext(plugin->context);
@@ -387,6 +440,48 @@ QString runExporter(const QString &exporterId, const QString &bookTitle,
         *errorMessage = QObject::tr("This plugin exporter is no longer available.");
     }
     return QString();
+}
+
+QVector<PluginCommand> registeredCommands()
+{
+    QVector<PluginCommand> result;
+    for (const auto &plugin : pluginRegistry()) {
+        result += plugin->commands;
+    }
+    return result;
+}
+
+void runCommand(const QString &commandId, const std::optional<CommandContext> &context)
+{
+    for (auto &plugin : pluginRegistry()) {
+        const auto it = plugin->commandRunFns.find(commandId);
+        if (it == plugin->commandRunFns.end()) {
+            continue;
+        }
+
+        JSValue contextArg;
+        if (context) {
+            QJsonObject contextJson;
+            contextJson["bookHash"] = context->bookHash;
+            contextJson["title"] = context->title;
+            contextJson["highlights"] = exportEntriesToJson(context->highlights);
+            contextArg = qJsonToJs(plugin->context, contextJson);
+        } else {
+            contextArg = JS_NULL;
+        }
+        JSValueConst args[1] = {contextArg};
+
+        JSValue result = callWatched(*plugin, it.value(), QStringLiteral("command %1").arg(commandId), 1, args);
+        JS_FreeValue(plugin->context, contextArg);
+        JS_FreeValue(plugin->context, result);
+        return;
+    }
+    qWarning().noquote() << QStringLiteral("[plugin] command not found: %1").arg(commandId);
+}
+
+void setMessageHandler(std::function<void(const QString &)> handler)
+{
+    messageHandler() = std::move(handler);
 }
 
 void emitEvent(const QString &name, const QJsonObject &payload)
