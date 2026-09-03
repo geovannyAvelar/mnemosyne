@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Plugins can now add their own on-demand action under the **Plugins** menu (`mnemosyne.registerCommand`), receiving the open book's highlights (or `null`, when the Library tab is active) and able to report back via a new `mnemosyne.showMessage(text)`. See [docs/plugins.md](docs/plugins.md).
+- Plugins can now add extra CSS to how a book renders (`mnemosyne.registerCssInjector`), for EPUB, MOBI, and Markdown — applied after Mnemosyne's own dark-mode styling, so a plugin can override it too. Plain text has no markup for CSS to target, so it's not included.
 
 ## [1.10.0] - 2026-09-02
 

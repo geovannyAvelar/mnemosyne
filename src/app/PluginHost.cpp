@@ -41,6 +41,13 @@ struct EventListener
 // disabled plugin has info filled in (for the Plugins dialog) but a null
 // runtime/context and empty listeners/exporterFormatFns, since its JS never
 // runs.
+struct CssInjector
+{
+    QString id; // globally unique: "<pluginId>.<the id the plugin gave>"
+    QStringList formats; // lowercased, e.g. "epub", "mobi", "markdown"
+    JSValue cssFn; // owned; freed on unload
+};
+
 struct LoadedPlugin
 {
     PluginInfo info;
@@ -51,6 +58,7 @@ struct LoadedPlugin
     QHash<QString, JSValue> exporterFormatFns; // keyed by PluginExporter::id (already qualified)
     QVector<PluginCommand> commands;
     QHash<QString, JSValue> commandRunFns; // keyed by PluginCommand::id (already qualified)
+    QVector<CssInjector> cssInjectors;
     QElapsedTimer watchdogTimer;
     bool watchdogTripped = false;
 };
@@ -239,6 +247,44 @@ JSValue jsRegisterCommand(JSContext *ctx, JSValueConst, int argc, JSValueConst *
     return JS_UNDEFINED;
 }
 
+JSValue jsRegisterCssInjector(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
+{
+    auto *plugin = static_cast<LoadedPlugin *>(JS_GetContextOpaque(ctx));
+    if (!plugin || argc < 1 || !JS_IsObject(argv[0])) {
+        return JS_ThrowTypeError(ctx, "registerCssInjector expects an object");
+    }
+
+    const QString id = jsGetStringProp(ctx, argv[0], "id");
+    const JSValue cssFn = JS_GetPropertyStr(ctx, argv[0], "css");
+    if (id.isEmpty() || !JS_IsFunction(ctx, cssFn)) {
+        JS_FreeValue(ctx, cssFn);
+        return JS_ThrowTypeError(ctx, "registerCssInjector requires a non-empty id and a css function");
+    }
+
+    QStringList formats;
+    const JSValue formatsVal = JS_GetPropertyStr(ctx, argv[0], "formats");
+    if (JS_IsArray(formatsVal)) {
+        const JSValue lengthVal = JS_GetPropertyStr(ctx, formatsVal, "length");
+        uint32_t length = 0;
+        JS_ToUint32(ctx, &length, lengthVal);
+        JS_FreeValue(ctx, lengthVal);
+        for (uint32_t i = 0; i < length; ++i) {
+            const JSValue item = JS_GetPropertyUint32(ctx, formatsVal, i);
+            formats.append(jsValueToQString(ctx, item).toLower());
+            JS_FreeValue(ctx, item);
+        }
+    }
+    JS_FreeValue(ctx, formatsVal);
+
+    CssInjector injector;
+    injector.id = plugin->info.id + QLatin1Char('.') + id;
+    injector.formats = formats;
+    injector.cssFn = cssFn; // ownership: already a new reference from JS_GetPropertyStr
+    plugin->cssInjectors.append(injector);
+
+    return JS_UNDEFINED;
+}
+
 JSValue jsShowMessage(JSContext *ctx, JSValueConst, int argc, JSValueConst *argv)
 {
     const QString text = argc > 0 ? jsValueToQString(ctx, argv[0]) : QString();
@@ -279,6 +325,7 @@ void bindGlobalApi(JSContext *ctx)
     const JSValue mnemosyne = JS_NewObject(ctx);
     JS_SetPropertyStr(ctx, mnemosyne, "registerExporter", JS_NewCFunction(ctx, jsRegisterExporter, "registerExporter", 1));
     JS_SetPropertyStr(ctx, mnemosyne, "registerCommand", JS_NewCFunction(ctx, jsRegisterCommand, "registerCommand", 1));
+    JS_SetPropertyStr(ctx, mnemosyne, "registerCssInjector", JS_NewCFunction(ctx, jsRegisterCssInjector, "registerCssInjector", 1));
     JS_SetPropertyStr(ctx, mnemosyne, "on", JS_NewCFunction(ctx, jsOn, "on", 2));
     JS_SetPropertyStr(ctx, mnemosyne, "log", JS_NewCFunction(ctx, jsLog, "log", 1));
     JS_SetPropertyStr(ctx, mnemosyne, "showMessage", JS_NewCFunction(ctx, jsShowMessage, "showMessage", 1));
@@ -300,6 +347,9 @@ void unloadAll()
         }
         for (auto it = plugin->commandRunFns.begin(); it != plugin->commandRunFns.end(); ++it) {
             JS_FreeValue(plugin->context, it.value());
+        }
+        for (CssInjector &injector : plugin->cssInjectors) {
+            JS_FreeValue(plugin->context, injector.cssFn);
         }
         JS_FreeContext(plugin->context);
         JS_FreeRuntime(plugin->runtime);
@@ -501,6 +551,29 @@ void emitEvent(const QString &name, const QJsonObject &payload)
             JS_FreeValue(plugin->context, result);
         }
     }
+}
+
+QString cssForFormat(const QString &format)
+{
+    const QString normalized = format.toLower();
+    QStringList parts;
+    for (auto &plugin : pluginRegistry()) {
+        if (!plugin->context) {
+            continue;
+        }
+        for (const CssInjector &injector : plugin->cssInjectors) {
+            if (!injector.formats.contains(normalized)) {
+                continue;
+            }
+            JSValue result = callWatched(*plugin, injector.cssFn, QStringLiteral("css injector %1").arg(injector.id),
+                                          0, nullptr);
+            if (JS_IsString(result)) {
+                parts << jsValueToQString(plugin->context, result);
+            }
+            JS_FreeValue(plugin->context, result);
+        }
+    }
+    return parts.join(QLatin1Char('\n'));
 }
 
 } // namespace PluginHost

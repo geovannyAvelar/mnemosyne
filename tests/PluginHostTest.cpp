@@ -53,6 +53,11 @@ private slots:
     void showMessageWithNoHandlerLogsInstead();
     void runCommandForUnknownIdDoesNotCrash();
 
+    void cssForFormatReturnsOnlyMatchingInjector();
+    void cssForFormatMatchesCaseInsensitively();
+    void cssForFormatCombinesMultipleInjectors();
+    void cssForFormatWithNoMatchIsEmpty();
+
 private:
     QtMessageHandler m_previousHandler = nullptr;
 
@@ -311,6 +316,56 @@ void PluginHostTest::runCommandForUnknownIdDoesNotCrash()
 {
     PluginHost::reload();
     PluginHost::runCommand(QStringLiteral("nobody.nothing"), std::nullopt); // must not crash
+}
+
+void PluginHostTest::cssForFormatReturnsOnlyMatchingInjector()
+{
+    writePlugin(QStringLiteral("css-plugin"), QStringLiteral(R"js(
+        mnemosyne.registerCssInjector({
+            id: "sepia",
+            formats: ["epub"],
+            css: function() { return "body{background:#f4ecd8;}"; }
+        });
+    )js"));
+    PluginHost::reload();
+
+    QVERIFY(PluginHost::cssForFormat(QStringLiteral("epub")).contains(QStringLiteral("#f4ecd8")));
+    QVERIFY(PluginHost::cssForFormat(QStringLiteral("markdown")).isEmpty());
+}
+
+void PluginHostTest::cssForFormatMatchesCaseInsensitively()
+{
+    writePlugin(QStringLiteral("case-css-plugin"), QStringLiteral(R"js(
+        mnemosyne.registerCssInjector({
+            id: "sepia",
+            formats: ["EPUB"],
+            css: function() { return "body{background:#f4ecd8;}"; }
+        });
+    )js"));
+    PluginHost::reload();
+
+    QVERIFY(PluginHost::cssForFormat(QStringLiteral("epub")).contains(QStringLiteral("#f4ecd8")));
+}
+
+void PluginHostTest::cssForFormatCombinesMultipleInjectors()
+{
+    writePlugin(QStringLiteral("css-plugin-a"), QStringLiteral(R"js(
+        mnemosyne.registerCssInjector({id: "a", formats: ["epub"], css: function() { return "body{color:red;}"; }});
+    )js"));
+    writePlugin(QStringLiteral("css-plugin-b"), QStringLiteral(R"js(
+        mnemosyne.registerCssInjector({id: "b", formats: ["epub"], css: function() { return "h1{color:blue;}"; }});
+    )js"));
+    PluginHost::reload();
+
+    const QString css = PluginHost::cssForFormat(QStringLiteral("epub"));
+    QVERIFY(css.contains(QStringLiteral("color:red")));
+    QVERIFY(css.contains(QStringLiteral("color:blue")));
+}
+
+void PluginHostTest::cssForFormatWithNoMatchIsEmpty()
+{
+    PluginHost::reload(); // nothing written this test
+    QCOMPARE(PluginHost::cssForFormat(QStringLiteral("epub")), QString());
 }
 
 QTEST_MAIN(PluginHostTest)

@@ -7,6 +7,9 @@
 #endif
 #include "app/HighlightStore.h"
 #include "app/HighlightSync.h"
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+#include "app/PluginHost.h"
+#endif
 #include "app/ProgressSyncLog.h"
 #include "app/ReadingProgressStore.h"
 #include "core/SearchUtil.h"
@@ -253,20 +256,27 @@ void EpubView::applyPageColors()
 QString EpubView::chapterHtmlFragment(int spineIndex) const
 {
     QString html = m_document->chapterHtml(spineIndex);
-    if (m_darkMode) {
-        // The book's own CSS (e.g. "body { color: #222 }") would otherwise
-        // stay in force and become unreadable against a dark page. Since this
-        // has the same selector specificity as that rule, it must come after
-        // it in document order to win the cascade — appending to the end of
-        // the string isn't enough, as Qt's HTML parser may not honor a
-        // <style> block outside <head>. Elements with a *more specific* rule
-        // (a styled heading, say) still keep the author's intended color.
-        const QString override = QStringLiteral("<style>body,p,div,span{color:#ddd;}</style>");
+
+    // The book's own CSS (e.g. "body { color: #222 }") would otherwise stay
+    // in force and become unreadable against a dark page. Since this has
+    // the same selector specificity as that rule, it must come after it in
+    // document order to win the cascade — appending to the end of the
+    // string isn't enough, as Qt's HTML parser may not honor a <style>
+    // block outside <head>. Elements with a *more specific* rule (a styled
+    // heading, say) still keep the author's intended color. Plugin CSS (see
+    // PluginHost::cssForFormat) comes after dark mode's, in the same block,
+    // so a plugin can override it too.
+    QString styleOverride = m_darkMode ? QStringLiteral("body,p,div,span{color:#ddd;}") : QString();
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    styleOverride += PluginHost::cssForFormat(QStringLiteral("epub"));
+#endif
+    if (!styleOverride.isEmpty()) {
+        const QString styleBlock = QStringLiteral("<style>") + styleOverride + QStringLiteral("</style>");
         const int headEnd = html.indexOf(QStringLiteral("</head>"), 0, Qt::CaseInsensitive);
         if (headEnd >= 0) {
-            html.insert(headEnd, override);
+            html.insert(headEnd, styleBlock);
         } else {
-            html.prepend(override);
+            html.prepend(styleBlock);
         }
     }
 

@@ -7,6 +7,9 @@
 #endif
 #include "app/HighlightStore.h"
 #include "app/HighlightSync.h"
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+#include "app/PluginHost.h"
+#endif
 #include "app/ProgressSyncLog.h"
 #include "app/ReadingProgressStore.h"
 #include "core/SearchUtil.h"
@@ -187,6 +190,13 @@ void MarkdownView::render()
     if (!m_document) {
         return;
     }
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    // Unlike EPUB/MOBI's HTML <style> injection, Markdown goes through Qt's
+    // own Markdown-to-richtext conversion below, which honors a document-
+    // level CSS stylesheet -- but only if it's set before setMarkdown() is
+    // called, not after.
+    m_browser->document()->setDefaultStyleSheet(PluginHost::cssForFormat(QStringLiteral("markdown")));
+#endif
     m_browser->document()->setMarkdown(m_document->markdownText());
     applyHighlightsToBrowser();
 }

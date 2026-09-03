@@ -7,6 +7,9 @@
 #endif
 #include "app/HighlightStore.h"
 #include "app/HighlightSync.h"
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+#include "app/PluginHost.h"
+#endif
 #include "app/ProgressSyncLog.h"
 #include "app/ReadingProgressStore.h"
 #include "core/SearchUtil.h"
@@ -228,16 +231,21 @@ void MobiView::renderCurrentPart()
     }
 
     QString html = m_document->partHtml(m_currentPart);
-    if (m_darkMode) {
-        // See EpubView::renderCurrentChapter() for why this has to come
-        // after the document's own CSS in document order, rather than just
-        // being appended to the string.
-        const QString override = QStringLiteral("<style>body,p,div,span{color:#ddd;}</style>");
+
+    // See EpubView::chapterHtmlFragment() for why this has to come after
+    // the document's own CSS in document order, rather than just being
+    // appended to the string, and why plugin CSS shares the same block.
+    QString styleOverride = m_darkMode ? QStringLiteral("body,p,div,span{color:#ddd;}") : QString();
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    styleOverride += PluginHost::cssForFormat(QStringLiteral("mobi"));
+#endif
+    if (!styleOverride.isEmpty()) {
+        const QString styleBlock = QStringLiteral("<style>") + styleOverride + QStringLiteral("</style>");
         const int headEnd = html.indexOf(QStringLiteral("</head>"), 0, Qt::CaseInsensitive);
         if (headEnd >= 0) {
-            html.insert(headEnd, override);
+            html.insert(headEnd, styleBlock);
         } else {
-            html.prepend(override);
+            html.prepend(styleBlock);
         }
     }
     m_browser->setHtml(html);

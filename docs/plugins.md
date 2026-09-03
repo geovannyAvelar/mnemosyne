@@ -1,9 +1,9 @@
 # Writing a Mnemosyne plugin
 
 Mnemosyne can load small JavaScript plugins (via [QuickJS](https://github.com/quickjs-ng/quickjs))
-that add an export format, add an on-demand command, or react to
-reading/highlighting activity. This document is the whole API — it's
-deliberately small.
+that add an export format, add an on-demand command, style how a book
+renders, or react to reading/highlighting activity. This document is the
+whole API — it's deliberately small.
 
 ## Installing a plugin
 
@@ -81,6 +81,30 @@ mnemosyne.registerCommand({
 `showMessage` (or a side effect like `registerExporter`/`on`, if your
 command's real job is to change what those do) to report something back.
 
+### `mnemosyne.registerCssInjector(options)`
+
+Adds extra CSS to how a book renders. Call this at the top level of your
+entry file, same as `registerExporter`/`registerCommand`.
+
+```js
+mnemosyne.registerCssInjector({
+  id: "sepia",                       // combined with your plugin id, same as registerExporter
+  formats: ["epub", "mobi", "markdown"],
+  css: function () {
+    return "body { background: #f4ecd8; color: #3b2f2f; }";
+  }
+});
+```
+
+`formats` is which renderers this applies to (matched case-insensitively):
+`"epub"`, `"mobi"`, or `"markdown"`. Plain text (`.txt`) isn't included —
+it's rendered with no markup or document structure at all, so there's
+nothing for a CSS selector to target. `css()` is called fresh every time
+the relevant view re-renders (not cached, so keep it cheap) and applied
+*after* Mnemosyne's own dark-mode CSS, so a plugin can override dark mode
+if it wants to. Multiple injectors targeting the same format are
+concatenated in registration order.
+
 ### `mnemosyne.on(eventName, callback)`
 
 Reacts to something happening in the app. `callback` receives one payload
@@ -122,7 +146,5 @@ command has beyond whatever a registered exporter/listener does on its own
 
 ## Not yet available
 
-Reader CSS customization (a plugin supplying extra stylesheet rules for
-EPUB/Markdown rendering) is designed but not built yet. Network and
-file-system access for plugins would need a permission model first and
-aren't planned for the near term.
+Network and file-system access for plugins would need a permission model
+first and aren't planned for the near term.

@@ -18,6 +18,7 @@
 //   mnemosyne.registerExporter({id, label, fileFilter, defaultExtension,
 //                                format: function(bookTitle, entries) {...}})
 //   mnemosyne.registerCommand({id, label, run: function(context) {...}})
+//   mnemosyne.registerCssInjector({id, formats, css: function() {...}})
 //   mnemosyne.on(eventName, function(payload) {...})
 //   mnemosyne.log(...)
 //   mnemosyne.showMessage(text)
@@ -111,5 +112,13 @@ void setMessageHandler(std::function<void(const QString &)> handler);
 // Fans out to every loaded plugin's mnemosyne.on(name, ...) listener(s), if
 // any. Never throws or otherwise propagates a plugin's error to the caller.
 void emitEvent(const QString &name, const QJsonObject &payload);
+
+// Concatenated CSS (one rule block per matching injector, in registration
+// order) from every enabled plugin's mnemosyne.registerCssInjector() whose
+// `formats` list contains format (matched case-insensitively, e.g. "epub",
+// "mobi", "markdown") -- empty if none apply. Each injector's css() is
+// called fresh on every call (not cached), under the same watchdog/
+// exception handling as any other hook, so keep it cheap.
+QString cssForFormat(const QString &format);
 
 } // namespace PluginHost
