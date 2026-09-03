@@ -17,6 +17,59 @@ Item {
 
     required property var documentModel
 
+    signal backRequested()
+
+    // Zoom row + page indicator auto-hide after a few seconds so they don't
+    // sit over the page while reading, and reappear on a double-tap
+    // anywhere on screen (the back button stays visible either way — see
+    // topBar below). hideHintVisible briefly explains that gesture right
+    // as the controls disappear, since there's otherwise no other affordance
+    // hinting a double-tap does anything.
+    property bool controlsVisible: true
+    property bool hideHintVisible: false
+
+    function showControls() {
+        root.controlsVisible = true
+        hideControlsTimer.restart()
+    }
+
+    Timer {
+        id: hideControlsTimer
+        interval: 3000
+        running: true
+        onTriggered: {
+            // Don't yank the page-jump field away mid-edit.
+            if (root._editingPage) {
+                restart()
+                return
+            }
+            root.controlsVisible = false
+        }
+    }
+
+    onControlsVisibleChanged: {
+        if (!controlsVisible) {
+            hideHintVisible = true
+            hideHintTimer.restart()
+        } else {
+            hideHintVisible = false
+        }
+    }
+
+    Timer {
+        id: hideHintTimer
+        interval: 2000
+        onTriggered: root.hideHintVisible = false
+    }
+
+    TapHandler {
+        // Not a MouseArea, same reasoning as PdfContinuousPageItem's own
+        // TapHandler (see there) — doesn't take an exclusive grab, so it
+        // coexists with pageList's Flickable drag and the per-page
+        // long-press selection handler instead of starving them.
+        onDoubleTapped: root.showControls()
+    }
+
     // Every document opens at its natural 100% size (1 PDF point = 1 QML
     // pixel) — no fit-to-width shrinking, regardless of whatever zoom
     // ReadingProgressStore restored from a past session (a user decision,
@@ -136,34 +189,51 @@ Item {
             anchors.margins: 4
             spacing: 2
 
+            // Always visible, unlike the zoom controls below — it's the
+            // only way back to the library, so auto-hiding it along with
+            // the rest would strand the user.
             Button {
-                text: "−" // minus sign
+                text: "‹"
                 flat: true
-                onClicked: {
-                    root.setZoom(root.documentModel.zoom - 0.25)
-                    pageList.committedZoom = root.documentModel.zoom
-                }
+                onClicked: root.backRequested()
             }
 
             Item { Layout.fillWidth: true }
 
-            Text {
-                text: Math.round(root.documentModel.zoom * 100) + "%"
-                color: Theme.mutedText
-                font.pixelSize: 13
+            RowLayout {
+                spacing: 2
+                opacity: root.controlsVisible ? 1 : 0
+                visible: opacity > 0
                 Layout.alignment: Qt.AlignVCenter
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                Button {
+                    text: "−" // minus sign
+                    flat: true
+                    onClicked: {
+                        root.setZoom(root.documentModel.zoom - 0.25)
+                        pageList.committedZoom = root.documentModel.zoom
+                    }
+                }
+
+                Text {
+                    text: Math.round(root.documentModel.zoom * 100) + "%"
+                    color: Theme.mutedText
+                    font.pixelSize: 13
+                    Layout.alignment: Qt.AlignVCenter
+                }
+
+                Button {
+                    text: "+"
+                    flat: true
+                    onClicked: {
+                        root.setZoom(root.documentModel.zoom + 0.25)
+                        pageList.committedZoom = root.documentModel.zoom
+                    }
+                }
             }
 
             Item { Layout.fillWidth: true }
-
-            Button {
-                text: "+"
-                flat: true
-                onClicked: {
-                    root.setZoom(root.documentModel.zoom + 0.25)
-                    pageList.committedZoom = root.documentModel.zoom
-                }
-            }
         }
     }
 
@@ -254,6 +324,9 @@ Item {
         RowLayout {
             anchors.fill: parent
             anchors.margins: 8
+            opacity: root.controlsVisible ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity { NumberAnimation { duration: 150 } }
 
             Item { Layout.fillWidth: true }
 
@@ -265,6 +338,34 @@ Item {
             }
 
             Item { Layout.fillWidth: true }
+        }
+    }
+
+    // Brief explanation of the reappear gesture, shown for a couple of
+    // seconds right as the controls above fade out — otherwise a
+    // double-tap to bring them back isn't discoverable at all.
+    Rectangle {
+        id: hideHint
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: navBar.top
+        anchors.bottomMargin: 16
+        width: hintText.implicitWidth + 24
+        height: hintText.implicitHeight + 16
+        radius: 8
+        color: Theme.panel
+        border.color: Theme.border
+        border.width: 1
+        opacity: root.hideHintVisible ? 0.9 : 0
+        visible: opacity > 0
+        z: 10
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+
+        Text {
+            id: hintText
+            anchors.centerIn: parent
+            text: qsTr("Double-tap to show controls")
+            color: Theme.mutedText
+            font.pixelSize: 13
         }
     }
 

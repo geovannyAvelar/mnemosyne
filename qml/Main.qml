@@ -66,6 +66,7 @@ ApplicationWindow {
         id: pdfReaderScreenComponent
         PdfReaderScreen {
             documentModel: pdfDocumentModel
+            onBackRequested: stackView.pop()
         }
     }
 
