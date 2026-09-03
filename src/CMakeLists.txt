@@ -314,6 +314,13 @@ if(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.geovannyavelar.Mnemosyne"
         MACOSX_BUNDLE_BUNDLE_NAME "Mnemosyne"
         MACOSX_BUNDLE_ICON_FILE "mnemosyne.icns"
+        # Without this, Qt falls back to its own bare-bones Info.plist
+        # template, which declares no document types at all -- macOS then has
+        # no idea Mnemosyne can open PDF/EPUB/etc., so it never shows up in
+        # Finder's "Open With" menu or as a candidate default reader. Our
+        # template (a copy of Qt's, plus CFBundleDocumentTypes/UTType
+        # declarations) fixes that; see resources/macos/Info.plist.in.
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/resources/macos/Info.plist.in"
         # Homebrew's Qt/Poppler/libzip aren't on end-user machines, so the
         # installed (packaged) copy needs to look for its dependencies next
         # to itself instead of in Homebrew's prefix. macdeployqt/dylibbundler

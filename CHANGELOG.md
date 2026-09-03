@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Plugins can now add extra CSS to how a book renders (`mnemosyne.registerCssInjector`), for EPUB, MOBI, and Markdown — applied after Mnemosyne's own dark-mode styling, so a plugin can override it too. Plain text has no markup for CSS to target, so it's not included.
 - Plugins can now show a simple input form (`mnemosyne.showForm`) — text, multi-line text, number, checkbox, and dropdown fields, rendered with Mnemosyne's own widgets rather than HTML, so there's no markup/script injection surface. Blocks until the user submits or cancels; the ~250ms per-hook time budget pauses while the dialog is open, so taking your time doesn't count against it.
 
+### Fixed
+
+- On macOS, Mnemosyne never showed up as an option to open PDF, EPUB, HTML, Markdown, MOBI, Kindle (AZW/AZW3), CBZ, or plain-text files — Finder's "Open With" menu and "Get Info" > "Open with" default-app picker didn't list it at all, and double-clicking a PDF never launched it. The app bundle now declares the document types it supports, so macOS registers it as an available viewer for all of them the next time it's launched.
+
 ## [1.10.0] - 2026-09-02
 
 ### Added
