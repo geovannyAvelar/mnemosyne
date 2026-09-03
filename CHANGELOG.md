@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Highlights and notes now sync across devices, the same way reading position already does — over a locally-synced folder (Google Drive/iCloud Drive/Dropbox on disk) and, when signed in, Google Drive's hidden app-data folder. Each highlight, note edit, color change, and deletion is logged per device and merged on a per-highlight basis (last edit wins; a delete beats a stale edit from a device that hasn't seen it yet), so two devices editing highlights independently converge without a manual conflict prompt. Highlights created before this update are picked up automatically the next time their book is opened. Included on Android/iOS too (Google Drive leg only, same as reading-position sync there), wired through the same shared `HighlightsModel` both platforms already use for their PDF/EPUB highlight overlays.
 - Desktop: File > Export Notes exports the current book's highlights, either as a Markdown document (every highlight, with its note and page/chapter number where applicable) or as tab-separated Anki flashcards (highlighted passage as the front, note as the back — only highlights with a note become a card, ready for Anki's Notes > Import with the Basic note type). The same menu also has an "Export Library" pair covering every book in Recents with at least one highlight, in one combined file (Anki cards get their book title prefixed onto the front, so a mixed deck still shows what each card came from).
+- Mnemosyne now restricts itself to a single running instance. Opening a file while it's already running (a second launch, a double-click, macOS's "open with") hands the file to the existing window and brings it to front instead of opening a duplicate.
+
+### Fixed
+
+- On macOS, the Sync menu could end up permanently empty and never appear in the menu bar at all, hiding Google Drive sign-in along with the rest of the sync options. It's now populated as soon as the app starts instead of waiting for the menu to be opened first.
 
 ## [1.9.0] - 2026-09-01
 
