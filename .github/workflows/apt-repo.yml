@@ -87,15 +87,22 @@ jobs:
         run: |
           echo "$GPG_PASSPHRASE" > /tmp/passphrase
 
+          # -architectures is passed explicitly (rather than left for aptly to
+          # infer from the repo's contents) because the unstable repo can be
+          # legitimately empty -- see the "no unstable release exists yet"
+          # case above -- and aptly refuses to publish an empty repo without
+          # an explicit architecture list ("unable to figure out list of
+          # architectures"). Both distributions only ever carry amd64/arm64
+          # .debs (see build.yml), so the list is the same for both.
           aptly repo create -distribution=stable -component=main mnemosyne-stable
           aptly repo add mnemosyne-stable debs-stable
           aptly snapshot create mnemosyne-stable-snapshot from repo mnemosyne-stable
-          aptly publish snapshot -batch -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-stable-snapshot
+          aptly publish snapshot -batch -architectures=amd64,arm64 -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-stable-snapshot
 
           aptly repo create -distribution=unstable -component=main mnemosyne-unstable
           aptly repo add mnemosyne-unstable debs-unstable
           aptly snapshot create mnemosyne-unstable-snapshot from repo mnemosyne-unstable
-          aptly publish snapshot -batch -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-unstable-snapshot
+          aptly publish snapshot -batch -architectures=amd64,arm64 -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-unstable-snapshot
 
           rm -f /tmp/passphrase
 
