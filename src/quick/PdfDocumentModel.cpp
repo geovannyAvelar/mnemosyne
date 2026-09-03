@@ -10,6 +10,8 @@
 #include "app/GoogleDriveSync.h"
 #endif
 
+#include <QMutexLocker>
+
 #include <algorithm>
 
 namespace {
@@ -118,6 +120,11 @@ QSizeF PdfDocumentModel::pageSizePoints(int index) const
     if (!m_document) {
         return {};
     }
+    // PdfPageImageProvider's worker threads render from this same document
+    // (see PdfPageImageProvider::documentMutex()) — this call happens on
+    // the UI thread, so it needs the same lock to avoid racing an in-flight
+    // render inside Poppler, which isn't safe under concurrent access.
+    QMutexLocker locker(&m_imageProvider->documentMutex());
     std::unique_ptr<IPage> page = m_document->page(index);
     return page ? page->sizePoints() : QSizeF();
 }
@@ -127,6 +134,9 @@ QVector<TextWord> PdfDocumentModel::wordsForPage(int index) const
     if (!m_document) {
         return {};
     }
+    // See pageSizePoints() above — same race, this time triggered by a
+    // long-press starting a text selection while a page is still rendering.
+    QMutexLocker locker(&m_imageProvider->documentMutex());
     std::unique_ptr<IPage> page = m_document->page(index);
     return page ? page->words() : QVector<TextWord>();
 }

@@ -27,6 +27,15 @@ public:
 
     QQuickImageResponse *requestImageResponse(const QString &id, const QSize &requestedSize) override;
 
+    // The lock worker-thread renders take around every access to the
+    // shared document (see PdfPageImageResponse::run()). PdfDocumentModel
+    // holds the same IDocument this provider renders from and calls
+    // IDocument::page() straight from the UI thread for sizing/word-lookup
+    // (pageSizePoints(), wordsForPage()) — Poppler's Document/Page types
+    // aren't safe under concurrent access, so those calls must take this
+    // same lock or they can race an in-flight render and crash.
+    QMutex &documentMutex() { return m_mutex; }
+
 private:
     friend class PdfPageImageResponse;
     QMutex m_mutex;
