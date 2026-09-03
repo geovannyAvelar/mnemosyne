@@ -46,6 +46,58 @@ option(MNEMOSYNE_ENABLE_HTML "Enable Qt WebEngine-based HTML/HTM support" ${MNEM
 set(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC_DEFAULT ON)
 option(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC "Enable signing in with Google Drive as a sync backend" ${MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC_DEFAULT})
 
+# QuickJS-based plugins (see src/app/PluginHost.*). Desktop-only for now --
+# mobile discovery/UI is a separate task, tracked in the plugin system plan,
+# even though quickjs-ng itself cross-compiles fine for Android/iOS.
+if(ANDROID OR IOS)
+  set(MNEMOSYNE_ENABLE_PLUGINS_DEFAULT OFF)
+else()
+  set(MNEMOSYNE_ENABLE_PLUGINS_DEFAULT ON)
+endif()
+option(MNEMOSYNE_ENABLE_PLUGINS "Enable the QuickJS-based plugin system" ${MNEMOSYNE_ENABLE_PLUGINS_DEFAULT})
+
+if(MNEMOSYNE_ENABLE_PLUGINS)
+  # quickjs-ng has no reliable system package on Windows and none at all for
+  # a future Android/iOS port, unlike this project's other dependencies
+  # (Poppler/libzip/libmobi) -- FetchContent, pinned to a tagged release,
+  # builds uniformly across desktop platforms with no per-platform packaging
+  # work. This is the only FetchContent dependency in this project; it's not
+  # a precedent to reach for by default -- a system package is still
+  # preferred whenever one reliably exists.
+  include(FetchContent)
+  set(QJS_ENABLE_INSTALL OFF CACHE BOOL "" FORCE) # embedded only, never installed as its own package
+  FetchContent_Declare(
+    quickjs-ng
+    GIT_REPOSITORY https://github.com/quickjs-ng/quickjs.git
+    GIT_TAG v0.16.2
+    GIT_SHALLOW TRUE
+  )
+  # Deliberately not FetchContent_MakeAvailable(): quickjs-ng's CMakeLists.txt
+  # unconditionally adds its CLI (qjs_exe), test262 runner, api-test,
+  # lre-test, and unicode_gen targets alongside the qjs library -- none of
+  # which mnemosynecore needs, and qjs_exe/run-test262 pull in
+  # quickjs-libc.c's OS bindings (file/process access) that have no business
+  # being built into this app at all, let alone by default on every
+  # platform. EXCLUDE_FROM_ALL keeps them out of the default build; nothing
+  # here depends on them, so they're simply never built. (CMake >= 3.28 could
+  # spell this as FetchContent_Declare(... EXCLUDE_FROM_ALL); this project's
+  # floor is 3.20, so it's done the older way.)
+  FetchContent_GetProperties(quickjs-ng)
+  if(NOT quickjs-ng_POPULATED)
+    FetchContent_Populate(quickjs-ng)
+    # quickjs-ng is plain C with no UI of its own; this project's global
+    # AUTOMOC/AUTOUIC/AUTORCC=ON would otherwise make CMake run (and warn
+    # about) moc/uic/rcc against every one of its targets for nothing.
+    set(CMAKE_AUTOMOC OFF)
+    set(CMAKE_AUTOUIC OFF)
+    set(CMAKE_AUTORCC OFF)
+    add_subdirectory(${quickjs-ng_SOURCE_DIR} ${quickjs-ng_BINARY_DIR} EXCLUDE_FROM_ALL)
+    set(CMAKE_AUTOMOC ON)
+    set(CMAKE_AUTOUIC ON)
+    set(CMAKE_AUTORCC ON)
+  endif()
+endif()
+
 if(ANDROID OR IOS)
   find_package(Qt6 REQUIRED COMPONENTS Core Gui Network Concurrent Quick QuickControls2 WebView)
 elseif(MNEMOSYNE_ENABLE_HTML)

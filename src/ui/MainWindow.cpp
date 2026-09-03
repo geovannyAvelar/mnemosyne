@@ -27,6 +27,9 @@
 #include "ui/MobiView.h"
 #include "ui/NoteDialog.h"
 #include "ui/NotesDock.h"
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+#include "ui/PluginsDialog.h"
+#endif
 #include "ui/PdfView.h"
 #include "ui/SearchDock.h"
 #include "ui/Theme.h"
@@ -45,6 +48,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QJsonObject>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -108,6 +112,10 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle(tr("Mnemosyne"));
     setAcceptDrops(true);
+
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    PluginHost::reload(); // before any document can be opened, so hooks are live from the start
+#endif
 
     setupDocks();
     setupTabs();
@@ -605,16 +613,19 @@ void MainWindow::setupMenus()
     closeTabAction->setShortcut(QKeySequence::Close);
     connect(closeTabAction, &QAction::triggered, this, &MainWindow::closeCurrentTab);
 
-    QMenu *exportNotesMenu = fileMenu->addMenu(tr("Export &Notes"));
-    QAction *exportMarkdownAction = exportNotesMenu->addAction(tr("as &Markdown..."));
+    m_exportNotesMenu = fileMenu->addMenu(tr("Export &Notes"));
+    QAction *exportMarkdownAction = m_exportNotesMenu->addAction(tr("as &Markdown..."));
     connect(exportMarkdownAction, &QAction::triggered, this, &MainWindow::exportNotesAsMarkdown);
-    QAction *exportAnkiAction = exportNotesMenu->addAction(tr("as &Anki Cards (TSV)..."));
+    QAction *exportAnkiAction = m_exportNotesMenu->addAction(tr("as &Anki Cards (TSV)..."));
     connect(exportAnkiAction, &QAction::triggered, this, &MainWindow::exportNotesAsAnki);
-    exportNotesMenu->addSeparator();
-    QAction *exportLibraryMarkdownAction = exportNotesMenu->addAction(tr("Export &Library as Markdown..."));
+    m_exportNotesMenu->addSeparator();
+    QAction *exportLibraryMarkdownAction = m_exportNotesMenu->addAction(tr("Export &Library as Markdown..."));
     connect(exportLibraryMarkdownAction, &QAction::triggered, this, &MainWindow::exportLibraryAsMarkdown);
-    QAction *exportLibraryAnkiAction = exportNotesMenu->addAction(tr("Export Library as Anki Cards (&TSV)..."));
+    QAction *exportLibraryAnkiAction = m_exportNotesMenu->addAction(tr("Export Library as Anki Cards (&TSV)..."));
     connect(exportLibraryAnkiAction, &QAction::triggered, this, &MainWindow::exportLibraryAsAnki);
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    connect(m_exportNotesMenu, &QMenu::aboutToShow, this, &MainWindow::populatePluginExportActions);
+#endif
 
     fileMenu->addSeparator();
     QAction *quitAction = fileMenu->addAction(tr("&Quit"));
@@ -664,6 +675,12 @@ void MainWindow::setupMenus()
     // entirely. aboutToShow still re-runs this on every open to keep the
     // status text (folder path, signed-in account) fresh.
     populateSyncMenu();
+
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    QMenu *pluginsMenu = menuBar()->addMenu(tr("&Plugins"));
+    QAction *managePluginsAction = pluginsMenu->addAction(tr("&Manage Plugins..."));
+    connect(managePluginsAction, &QAction::triggered, this, &MainWindow::showPluginsDialog);
+#endif
 
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
     QAction *aboutAction = helpMenu->addAction(tr("&About Mnemosyne"));
@@ -817,6 +834,13 @@ void MainWindow::openPath(const QString &filePath)
     }
 
     RecentFiles::recordOpened(filePath, view->documentTitle(), suffix);
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    QJsonObject documentOpenedPayload;
+    documentOpenedPayload["bookHash"] = FileIdentity::contentHash(filePath);
+    documentOpenedPayload["title"] = view->documentTitle();
+    documentOpenedPayload["format"] = suffix;
+    PluginHost::emitEvent(QStringLiteral("documentOpened"), documentOpenedPayload);
+#endif
 
     m_tabFilePaths.insert(widget, filePath);
     m_tabIsbn.insert(widget, isbn);
@@ -1076,6 +1100,64 @@ void MainWindow::exportLibraryAsAnki()
         QMessageBox::warning(this, tr("Could Not Export Notes"), file.errorString());
     }
 }
+
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+void MainWindow::populatePluginExportActions()
+{
+    for (QAction *action : std::as_const(m_pluginExportActions)) {
+        m_exportNotesMenu->removeAction(action);
+        action->deleteLater();
+    }
+    m_pluginExportActions.clear();
+
+    const QVector<PluginHost::PluginExporter> exporters = PluginHost::registeredExporters();
+    if (exporters.isEmpty()) {
+        return;
+    }
+
+    m_pluginExportActions.append(m_exportNotesMenu->addSeparator());
+    for (const PluginHost::PluginExporter &exporter : exporters) {
+        QAction *action = m_exportNotesMenu->addAction(exporter.label.isEmpty() ? exporter.id : exporter.label);
+        connect(action, &QAction::triggered, this, [this, exporter] { runPluginExporter(exporter); });
+        m_pluginExportActions.append(action);
+    }
+}
+
+void MainWindow::runPluginExporter(const PluginHost::PluginExporter &exporter)
+{
+    const QVector<HighlightExporter::ExportEntry> entries = buildExportEntries();
+    if (entries.isEmpty()) {
+        QMessageBox::information(this, tr("Export Notes"), tr("No highlights to export yet."));
+        return;
+    }
+
+    const QString title = m_currentView->documentTitle();
+    QString errorMessage;
+    const QString output = PluginHost::runExporter(exporter.id, title, entries, &errorMessage);
+    if (output.isNull()) {
+        QMessageBox::warning(this, tr("Could Not Export Notes"), errorMessage);
+        return;
+    }
+
+    const QString extension = exporter.defaultExtension.isEmpty() ? QStringLiteral("txt") : exporter.defaultExtension;
+    const QString filter = exporter.fileFilter.isEmpty() ? tr("All Files (*)") : exporter.fileFilter;
+    const QString filePath = QFileDialog::getSaveFileName(
+        this, tr("Export Notes"), sanitizedForFilename(title) + QLatin1Char('.') + extension, filter);
+    if (filePath.isEmpty()) {
+        return;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text) || file.write(output.toUtf8()) < 0) {
+        QMessageBox::warning(this, tr("Could Not Export Notes"), file.errorString());
+    }
+}
+
+void MainWindow::showPluginsDialog()
+{
+    PluginsDialog::show(this);
+}
+#endif
 
 void MainWindow::refreshNotesDock()
 {

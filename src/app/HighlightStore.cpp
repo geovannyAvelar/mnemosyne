@@ -2,6 +2,11 @@
 
 #include "HighlightSync.h"
 
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+#include "PluginHost.h"
+#include <QJsonObject>
+#endif
+
 #include <QCryptographicHash>
 #include <QSettings>
 #include <QUuid>
@@ -9,6 +14,20 @@
 #include <algorithm>
 
 namespace {
+
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+QJsonObject highlightEventPayload(const QString &bookHash, const Highlight &highlight)
+{
+    QJsonObject payload;
+    payload["bookHash"] = bookHash;
+    payload["id"] = highlight.id;
+    payload["text"] = highlight.text;
+    payload["note"] = highlight.note;
+    payload["targetIndex"] = highlight.targetIndex;
+    payload["color"] = highlight.color.name(QColor::HexArgb);
+    return payload;
+}
+#endif
 
 QString groupKeyForHighlights(const QString &bookHash)
 {
@@ -111,6 +130,9 @@ void addHighlight(const QString &bookHash, const Highlight &highlightIn)
     writeHighlights(bookHash, highlights);
 
     HighlightSync::pushUpsert(bookHash, highlight);
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    PluginHost::emitEvent(QStringLiteral("highlightAdded"), highlightEventPayload(bookHash, highlight));
+#endif
 }
 
 void removeHighlight(const QString &bookHash, int index)
@@ -124,6 +146,12 @@ void removeHighlight(const QString &bookHash, int index)
     writeHighlights(bookHash, highlights);
 
     HighlightSync::pushDelete(bookHash, id);
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    QJsonObject payload;
+    payload["bookHash"] = bookHash;
+    payload["id"] = id;
+    PluginHost::emitEvent(QStringLiteral("highlightRemoved"), payload);
+#endif
 }
 
 void setNote(const QString &bookHash, int index, const QString &note)
@@ -137,6 +165,9 @@ void setNote(const QString &bookHash, int index, const QString &note)
     writeHighlights(bookHash, highlights);
 
     HighlightSync::pushUpsert(bookHash, highlights[index]);
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    PluginHost::emitEvent(QStringLiteral("highlightChanged"), highlightEventPayload(bookHash, highlights[index]));
+#endif
 }
 
 void setColor(const QString &bookHash, int index, const QColor &color)
@@ -150,6 +181,9 @@ void setColor(const QString &bookHash, int index, const QColor &color)
     writeHighlights(bookHash, highlights);
 
     HighlightSync::pushUpsert(bookHash, highlights[index]);
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    PluginHost::emitEvent(QStringLiteral("highlightChanged"), highlightEventPayload(bookHash, highlights[index]));
+#endif
 }
 
 void replaceMerged(const QString &bookHash, const QVector<Highlight> &merged)

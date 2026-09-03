@@ -2,6 +2,9 @@
 
 #include "app/BookMetadataClient.h" // BookMetadata
 #include "app/HighlightExporter.h" // HighlightExporter::ExportEntry
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+#include "app/PluginHost.h" // PluginHost::PluginExporter
+#endif
 #include "core/Document.h"
 #include "core/ReaderView.h" // SearchResult
 
@@ -52,6 +55,9 @@ private slots:
     void exportNotesAsAnki();
     void exportLibraryAsMarkdown();
     void exportLibraryAsAnki();
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    void showPluginsDialog();
+#endif
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
     void signInWithGoogle();
     void signOutOfGoogle();
@@ -76,6 +82,10 @@ private:
     // "library" here means the recents list, same as the Library tab's own
     // grid, not a filesystem scan for every book ever opened.
     QVector<HighlightExporter::BookExport> buildLibraryExportBooks() const;
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    void populatePluginExportActions();
+    void runPluginExporter(const PluginHost::PluginExporter &exporter);
+#endif
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
     int findTabForFilePath(const QString &filePath) const;
@@ -87,6 +97,14 @@ private:
     BookMetadataClient *m_bookMetadataClient = nullptr;
     QMenu *m_openRecentMenu = nullptr;
     QMenu *m_syncMenu = nullptr;
+    QMenu *m_exportNotesMenu = nullptr;
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    // Actions populatePluginExportActions() adds to m_exportNotesMenu (a
+    // leading separator plus one per registered exporter) -- tracked so
+    // they can be removed and rebuilt each time the menu opens, without
+    // touching the fixed built-in export actions also in that menu.
+    QVector<QAction *> m_pluginExportActions;
+#endif
     QAction *m_darkModeAction = nullptr;
     QAction *m_sidebarToggleAction = nullptr;
     QAction *m_fullScreenAction = nullptr;

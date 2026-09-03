@@ -103,6 +103,14 @@ target_link_libraries(highlight_exporter_test PRIVATE mnemosynecore Qt6::Test)
 
 add_test(NAME HighlightExporterTest COMMAND highlight_exporter_test)
 
+if(MNEMOSYNE_ENABLE_PLUGINS)
+    qt_add_executable(plugin_host_test PluginHostTest.cpp)
+
+    target_link_libraries(plugin_host_test PRIVATE mnemosynecore Qt6::Test)
+
+    add_test(NAME PluginHostTest COMMAND plugin_host_test)
+endif()
+
 qt_add_executable(highlight_sync_log_test HighlightSyncLogTest.cpp)
 
 target_link_libraries(highlight_sync_log_test PRIVATE mnemosynecore Qt6::Test)

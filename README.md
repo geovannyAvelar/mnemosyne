@@ -15,10 +15,11 @@ A native desktop reader for PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and 
 - **CBZ comics** — a zip of page images, reusing the same archive-reading code EPUB uses (no new dependency). Page navigation and zoom like PDF; no table of contents, search, or highlights, since there's no text layer to drive them.
 - **Plain text (.txt)** — search, zoom, dark mode, highlights, and reading-progress sync, same as EPUB/Markdown, just addressed by raw character offset instead of a chapter/heading since plain text has no structure to derive one from.
 - **Library / tabs** — open multiple books at once in tabs, with a persistent Library tab and recent-files list.
-- **Highlights and notes**, stored locally per book — highlight a passage in a color of your choosing, optionally attach a note to it, and browse every note in the sidebar's Notes tab.
+- **Highlights and notes**, synced across devices — highlight a passage in a color of your choosing, optionally attach a note to it, and browse every note in the sidebar's Notes tab. Exportable via File > Export Notes, as a Markdown document or as Anki flashcards, for the open book or your whole library at once.
 - **Scroll-to-turn-page** — scrolling past the top/bottom edge of a page or chapter advances to the next/previous one.
 - **Collapsible sidebar** — hide the table of contents / notes / search dock with a single chevron toggle.
-- **Cross-device reading progress sync** — point Mnemosyne at a cloud-synced folder (Google Drive, iCloud Drive, Dropbox, etc.) and it writes an append-only per-device log of page/zoom changes. Other devices reading the same folder detect newer progress and prompt before jumping to it. Books are matched across devices by content hash, not file path.
+- **Cross-device sync** — point Mnemosyne at a cloud-synced folder (Google Drive, iCloud Drive, Dropbox, etc.) and/or sign in with Google Drive, and it syncs reading position (page/zoom) and highlights/notes across every device reading the same book. Books are matched by content hash, not file path; a same-highlight edit made on two devices resolves last-edit-wins.
+- **Plugins** (desktop) — drop a folder (`manifest.json` + a JS entry file) into the Plugins folder and enable it from Plugins > Manage Plugins... to add your own export format or react to reading/highlighting activity, via a small QuickJS-based JavaScript API with no file/network/process access unless explicitly granted. See [docs/plugins.md](docs/plugins.md).
 
 ## Requirements
 
@@ -49,6 +50,14 @@ cmake --build build
 ```
 
 This produces the `Mnemosyne` app bundle inside `build/src/`.
+
+The plugin system (`MNEMOSYNE_ENABLE_PLUGINS`, on by default on
+Windows/macOS/Linux — see [docs/plugins.md](docs/plugins.md)) fetches
+[quickjs-ng](https://github.com/quickjs-ng/quickjs) via CMake's
+`FetchContent` on first configure, so that first `cmake -S . -B build` needs
+network access. It's the only dependency handled this way; everything else
+is a system package. Pass `-DMNEMOSYNE_ENABLE_PLUGINS=OFF` to skip it
+entirely.
 
 ## Running
 

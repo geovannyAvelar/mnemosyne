@@ -68,6 +68,13 @@ if(NOT ANDROID AND NOT IOS)
     )
 endif()
 
+if(MNEMOSYNE_ENABLE_PLUGINS)
+    list(APPEND MNEMOSYNE_CORE_SOURCES
+        app/PluginHost.h
+        app/PluginHost.cpp
+    )
+endif()
+
 if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
     list(APPEND MNEMOSYNE_CORE_SOURCES
         app/IHttpClient.h
@@ -149,6 +156,15 @@ if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
     else()
         target_link_libraries(mnemosynecore PUBLIC PkgConfig::LIBSECRET)
     endif()
+endif()
+
+if(MNEMOSYNE_ENABLE_PLUGINS)
+    target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_ENABLE_PLUGINS)
+    # qjs is quickjs-ng's static library target, brought in via FetchContent
+    # in the top-level CMakeLists.txt; PRIVATE since it's an implementation
+    # detail of PluginHost.cpp, not something callers of mnemosynecore need
+    # on their own include path.
+    target_link_libraries(mnemosynecore PRIVATE qjs)
 endif()
 
 target_compile_definitions(mnemosynecore PUBLIC MNEMOSYNE_VERSION="${PROJECT_VERSION}")
@@ -253,6 +269,13 @@ if(APPLE)
     list(APPEND MNEMOSYNE_DESKTOP_UI_SOURCES
         platform/MacWindowChrome.h
         platform/MacWindowChrome.mm
+    )
+endif()
+
+if(MNEMOSYNE_ENABLE_PLUGINS)
+    list(APPEND MNEMOSYNE_DESKTOP_UI_SOURCES
+        ui/PluginsDialog.h
+        ui/PluginsDialog.cpp
     )
 endif()
 
