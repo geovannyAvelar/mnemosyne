@@ -13,6 +13,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
@@ -32,6 +34,23 @@ constexpr qreal kMinZoom = 0.25;
 constexpr qreal kMaxZoom = 4.0;
 constexpr qreal kZoomStep = 0.25;
 constexpr int kArrowKeyScrollStep = 60; // px per arrow key press
+
+// Per-page extracted text, keyed by file path, so repeated searches against
+// the same document (e.g. "network", then "networking", then "kernel")
+// don't reopen the PDF and re-extract every page's text each time --
+// searchFile() below extracts once, on the first search, and every
+// subsequent call just string-matches against this. Never evicted: plain
+// extracted text is small relative to rendered page images, and this is
+// only an in-memory session cache, not something that needs to survive an
+// app restart the way HighlightStore/ReadingProgressStore do (hence keyed
+// by path here, not FileIdentity::contentHash()). Guarded by a mutex since
+// MainWindow dispatches searchFile() via QtConcurrent::run with nothing
+// that cancels an earlier in-flight search when a new one is submitted, so
+// two searches for the same not-yet-cached file can race here -- benign
+// (both extract and insert the same result) but still needs real
+// synchronization, not plain unsynchronized memoization.
+QMutex g_searchCacheMutex;
+QHash<QString, QVector<QString>> g_searchTextCache;
 }
 
 PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget *parent)
@@ -148,23 +167,39 @@ QVector<SearchResult> PdfView::searchFile(const QString &filePath, const QString
         return results;
     }
 
-    QString error;
-    const std::unique_ptr<PopplerPdfDocument> document = PopplerPdfDocument::load(filePath, &error);
-    if (!document) {
-        return results;
+    QVector<QString> pageTexts;
+    bool cached = false;
+    {
+        QMutexLocker locker(&g_searchCacheMutex);
+        const auto it = g_searchTextCache.constFind(filePath);
+        if (it != g_searchTextCache.constEnd()) {
+            pageTexts = it.value();
+            cached = true;
+        }
     }
 
-    for (int i = 0; i < document->pageCount(); ++i) {
-        std::unique_ptr<IPage> page = document->page(i);
-        if (!page) {
-            continue;
+    if (!cached) {
+        QString error;
+        const std::unique_ptr<PopplerPdfDocument> document = PopplerPdfDocument::load(filePath, &error);
+        if (!document) {
+            return results;
         }
-        const QString text = page->text();
-        if (text.contains(query, Qt::CaseInsensitive)) {
+        pageTexts.reserve(document->pageCount());
+        for (int i = 0; i < document->pageCount(); ++i) {
+            const std::unique_ptr<IPage> page = document->page(i);
+            pageTexts.append(page ? page->text() : QString());
+        }
+
+        QMutexLocker locker(&g_searchCacheMutex);
+        g_searchTextCache.insert(filePath, pageTexts);
+    }
+
+    for (int i = 0; i < pageTexts.size(); ++i) {
+        if (pageTexts[i].contains(query, Qt::CaseInsensitive)) {
             SearchResult result;
             result.targetIndex = i;
             result.label = tr("Page %1").arg(i + 1);
-            result.snippet = makeSearchSnippet(text, query);
+            result.snippet = makeSearchSnippet(pageTexts[i], query);
             results.append(result);
         }
     }
