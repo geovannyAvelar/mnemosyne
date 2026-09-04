@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.13.0] - 2026-09-04
+
+### Added
+
+- Desktop: Touch Bar controls (previous/next page, zoom out/in) for the PDF reader on Touch Bar-equipped MacBook Pros.
+
+### Changed
+
+- Desktop: PDF pages now render off the UI thread, so scrolling into new page ranges no longer briefly blocks the interface on large or image-heavy documents.
+- Desktop: rendering a PDF page now reuses the page object already parsed for it instead of re-parsing on every render, speeding up zooming and repeated redraws.
+- Repeated searches within the same PDF now reuse previously extracted page text instead of re-scanning the whole document each time.
+
+### Fixed
+
+- Cross-device highlight and reading-position sync now orders changes with a per-device logical clock instead of wall-clock time, so clock skew between devices can no longer cause an older change to be treated as newer.
+
 ## [1.12.0] - 2026-09-04
 
 ### Changed
