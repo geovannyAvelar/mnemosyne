@@ -24,7 +24,21 @@ if(APPLE AND NOT IOS)
     list(APPEND CMAKE_PREFIX_PATH ${_brew_prefix}/qt)
     list(APPEND CMAKE_PREFIX_PATH ${_brew_prefix}/poppler-qt6)
     list(APPEND CMAKE_PREFIX_PATH ${_brew_prefix}/libzip)
+
+    # CMAKE_PREFIX_PATH above only helps Qt's CMake-config find_package()
+    # lookup below -- pkg_check_modules() (poppler-qt6/libzip) goes through
+    # the actual pkg-config/pkgconf binary instead, which only ever
+    # consults the PKG_CONFIG_PATH environment variable, never
+    # CMAKE_PREFIX_PATH. A keg-only formula's .pc directory (not
+    # symlinked into the Homebrew prefix, to avoid clashing with a
+    # same-named non-Qt package -- e.g. poppler-qt6 vs. plain poppler)
+    # has to be added to PKG_CONFIG_PATH explicitly too, or pkg-config
+    # can't find it no matter what CMAKE_PREFIX_PATH says.
+    list(APPEND _mnemosyne_pkgconfig_path ${_brew_prefix}/poppler-qt6/lib/pkgconfig)
+    list(APPEND _mnemosyne_pkgconfig_path ${_brew_prefix}/libzip/lib/pkgconfig)
   endforeach()
+  list(JOIN _mnemosyne_pkgconfig_path ":" _mnemosyne_pkgconfig_path_joined)
+  set(ENV{PKG_CONFIG_PATH} "${_mnemosyne_pkgconfig_path_joined}:$ENV{PKG_CONFIG_PATH}")
 endif()
 
 # QtWebEngine (Chromium) only ships prebuilt binaries for macOS/Linux; on
