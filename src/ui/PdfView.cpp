@@ -1,23 +1,15 @@
 #include "PdfView.h"
 
-#include "app/DeviceIdentity.h"
-#include "app/FileIdentity.h"
-#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
-#include "app/GoogleDriveSync.h"
-#endif
-#include "app/HighlightStore.h"
 #include "app/HighlightSync.h"
-#include "app/ProgressSyncLog.h"
-#include "app/ReadingProgressStore.h"
 #include "core/SearchUtil.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/NoteDialog.h"
 #include "ui/PdfPageStackView.h"
+#include "ui/ReadingProgressController.h"
 #include "ui/SyncPromptBar.h"
 
 #include <QApplication>
 #include <QClipboard>
-#include <QDateTime>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
@@ -46,17 +38,48 @@ PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget 
     : QWidget(parent)
     , m_document(std::move(document))
     , m_filePath(std::move(filePath))
-    // m_bookHash isn't set until restoreProgressAndCheckSync() runs in the
-    // constructor body below, so the initial load recomputes the hash here
-    // directly (cheap — FileIdentity caches by path+size+mtime).
-    , m_highlights(HighlightStore::highlightsFor(FileIdentity::contentHash(m_filePath)))
+    , m_progressController(new ReadingProgressController(this))
 {
     setupUi();
-    restoreProgressAndCheckSync(); // sets m_currentPage/m_zoom before the first render, so there's no visible jump
+
+    connect(m_progressController, &ReadingProgressController::remoteProgressAvailable, this,
+            [this](int position, qreal zoom, const QString &deviceName) {
+                if (position == m_currentPage) {
+                    return;
+                }
+                m_syncPromptBar->showPrompt(tr("Synced position available: page %1 (from %2) — jump?")
+                                                 .arg(position + 1)
+                                                 .arg(deviceName));
+                connect(m_syncPromptBar, &SyncPromptBar::jumpRequested, this, [this, position, zoom] {
+                    setZoom(std::clamp(zoom, kMinZoom, kMaxZoom));
+                    goToPage(position);
+                });
+            });
+
+    // Restores m_currentPage/m_zoom before the first render, so there's no
+    // visible jump, and computes the book hash the highlight controller and
+    // HighlightSync also key off of below.
+    if (const auto restored = m_progressController->restore(m_filePath, m_document.get(), kMinZoom, kMaxZoom)) {
+        m_currentPage = restored->page;
+        m_zoom = restored->zoom;
+    }
+
+    m_highlightController.setBookHash(m_progressController->bookHash());
+    m_highlightController.reload();
+    // Highlight sync is a separate mechanism from the position sync above
+    // (HighlightSync, not ProgressSyncLog/GoogleDriveSync) -- they used to
+    // be sequenced inside one function purely because they historically
+    // lived together, not because either depends on the other.
+    HighlightSync::pull(m_progressController->bookHash(), [this](bool changed) {
+        if (changed) {
+            refreshHighlights();
+            emit highlightsChanged();
+        }
+    });
 
     m_pageStackView->setDocument(m_document.get());
     m_pageStackView->setZoom(m_zoom);
-    m_pageStackView->setHighlights(m_highlights);
+    m_pageStackView->setHighlights(m_highlightController.highlights());
     updateNavigationState();
     m_pageStackView->setCurrentPageHint(m_currentPage);
 
@@ -138,8 +161,8 @@ QVector<SearchResult> PdfView::searchFile(const QString &filePath, const QString
 
 void PdfView::setSearchTerm(const QString &term)
 {
-    m_searchTerm = term.trimmed();
-    m_pageStackView->setSearchTerm(m_searchTerm);
+    m_searchController.setTerm(term);
+    m_pageStackView->setSearchTerm(m_searchController.term());
 }
 
 void PdfView::setupUi()
@@ -195,10 +218,6 @@ void PdfView::setupUi()
     layout->addWidget(m_syncPromptBar);
     layout->addWidget(m_scrollArea, 1);
 
-    m_progressSaveTimer = new QTimer(this);
-    m_progressSaveTimer->setSingleShot(true);
-    connect(m_progressSaveTimer, &QTimer::timeout, this, &PdfView::saveProgressNow);
-
     // One shortcut for the whole view. PdfPageStackView has no per-page
     // widgets to duplicate this across; the old per-canvas QShortcut
     // pattern registered up to one identical Ctrl+C per document page,
@@ -218,7 +237,7 @@ void PdfView::goToPage(int index)
     m_currentPage = index;
     m_pageStackView->setCurrentPageHint(m_currentPage);
     updateNavigationState();
-    scheduleProgressSave();
+    m_progressController->scheduleSave(m_currentPage, m_zoom);
 
     m_scrollArea->verticalScrollBar()->setValue(int(m_pageStackView->pageOffsetY(index)));
 }
@@ -268,7 +287,7 @@ void PdfView::setZoom(qreal newZoom)
     const qreal newHeight = m_pageStackView->pageHeightPx(m_currentPage);
     m_scrollArea->verticalScrollBar()->setValue(int(newTop + offsetFraction * newHeight));
 
-    scheduleProgressSave();
+    m_progressController->scheduleSave(m_currentPage, m_zoom);
 }
 
 void PdfView::copySelection()
@@ -295,7 +314,7 @@ void PdfView::onScrolled()
     if (page != m_currentPage) {
         m_currentPage = page;
         updateNavigationState();
-        scheduleProgressSave();
+        m_progressController->scheduleSave(m_currentPage, m_zoom);
     }
     m_pageStackView->setCurrentPageHint(m_currentPage);
 }
@@ -311,20 +330,10 @@ void PdfView::updateNavigationState()
     m_pageCountLabel->setText(tr("of %1").arg(m_document->pageCount()));
 }
 
-int PdfView::highlightIndexAtPagePoint(const QPointF &pagePoint, int pageIndex) const
-{
-    for (int i = 0; i < m_highlights.size(); ++i) {
-        if (m_highlights[i].targetIndex == pageIndex && m_highlights[i].pageRect.contains(pagePoint)) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 void PdfView::refreshHighlights()
 {
-    m_highlights = HighlightStore::highlightsFor(m_bookHash);
-    m_pageStackView->setHighlights(m_highlights);
+    m_highlightController.reload();
+    m_pageStackView->setHighlights(m_highlightController.highlights());
 }
 
 void PdfView::addHighlightForSelection()
@@ -335,17 +344,9 @@ void PdfView::addHighlightForSelection()
         return;
     }
 
-    Highlight highlight;
-    highlight.targetIndex = pageIndex;
-    highlight.pageRect = m_pageStackView->selectedBoundingPageRect();
-    highlight.text = text;
-    highlight.createdAt = QDateTime::currentDateTime();
-
-    HighlightStore::addHighlight(m_bookHash, highlight);
-    m_highlights = HighlightStore::highlightsFor(m_bookHash);
-
+    m_highlightController.addHighlight(pageIndex, m_pageStackView->selectedBoundingPageRect(), text);
     m_pageStackView->clearSelection();
-    m_pageStackView->setHighlights(m_highlights);
+    m_pageStackView->setHighlights(m_highlightController.highlights());
     emit highlightsChanged();
 }
 
@@ -362,19 +363,10 @@ void PdfView::addNoteForSelection()
         return;
     }
 
-    Highlight highlight;
-    highlight.targetIndex = pageIndex;
-    highlight.pageRect = m_pageStackView->selectedBoundingPageRect();
-    highlight.text = text;
-    highlight.createdAt = QDateTime::currentDateTime();
-    highlight.note = result->note;
-    highlight.color = result->color;
-
-    HighlightStore::addHighlight(m_bookHash, highlight);
-    m_highlights = HighlightStore::highlightsFor(m_bookHash);
-
+    m_highlightController.addNote(pageIndex, m_pageStackView->selectedBoundingPageRect(), text, result->note,
+                                   result->color);
     m_pageStackView->clearSelection();
-    m_pageStackView->setHighlights(m_highlights);
+    m_pageStackView->setHighlights(m_highlightController.highlights());
     emit highlightsChanged();
 }
 
@@ -397,28 +389,26 @@ void PdfView::showCanvasContextMenu(const QPoint &globalPos, int pageIndex, cons
     addNoteAction->setEnabled(hasSelectionHere);
     connect(addNoteAction, &QAction::triggered, this, &PdfView::addNoteForSelection);
 
-    const int existingHighlightIndex = highlightIndexAtPagePoint(pagePoint, pageIndex);
+    const int existingHighlightIndex = m_highlightController.indexAtPagePoint(pagePoint, pageIndex);
     if (existingHighlightIndex >= 0) {
         menu.addSeparator();
-        const bool hasNote = !m_highlights[existingHighlightIndex].note.isEmpty();
+        const bool hasNote = !m_highlightController.highlights()[existingHighlightIndex].note.isEmpty();
         QAction *noteAction = menu.addAction(hasNote ? tr("Edit Note...") : tr("Add Note..."));
         connect(noteAction, &QAction::triggered, this, [this, existingHighlightIndex] {
-            const std::optional<NoteDialog::Result> result = NoteDialog::show(
-                this, m_highlights[existingHighlightIndex].note, m_highlights[existingHighlightIndex].color);
+            const std::optional<NoteDialog::Result> result =
+                NoteDialog::show(this, m_highlightController.highlights()[existingHighlightIndex].note,
+                                  m_highlightController.highlights()[existingHighlightIndex].color);
             if (!result) {
                 return;
             }
-            HighlightStore::setNote(m_bookHash, existingHighlightIndex, result->note);
-            HighlightStore::setColor(m_bookHash, existingHighlightIndex, result->color);
-            m_highlights = HighlightStore::highlightsFor(m_bookHash);
-            m_pageStackView->setHighlights(m_highlights);
+            m_highlightController.setNote(existingHighlightIndex, result->note, result->color);
+            m_pageStackView->setHighlights(m_highlightController.highlights());
             emit highlightsChanged();
         });
         QAction *removeAction = menu.addAction(hasNote ? tr("Remove Note") : tr("Remove Highlight"));
         connect(removeAction, &QAction::triggered, this, [this, existingHighlightIndex] {
-            HighlightStore::removeHighlight(m_bookHash, existingHighlightIndex);
-            m_highlights = HighlightStore::highlightsFor(m_bookHash);
-            m_pageStackView->setHighlights(m_highlights);
+            m_highlightController.removeHighlight(existingHighlightIndex);
+            m_pageStackView->setHighlights(m_highlightController.highlights());
             emit highlightsChanged();
         });
     }
@@ -426,87 +416,9 @@ void PdfView::showCanvasContextMenu(const QPoint &globalPos, int pageIndex, cons
     menu.exec(globalPos);
 }
 
-void PdfView::restoreProgressAndCheckSync()
-{
-    m_bookHash = FileIdentity::contentHash(m_filePath);
-    if (m_bookHash.isEmpty() || !m_document) {
-        return;
-    }
-
-    if (const auto local = ReadingProgressStore::get(m_bookHash)) {
-        m_currentPage = std::clamp(local->position, 0, std::max(0, m_document->pageCount() - 1));
-        m_zoom = std::clamp(local->zoom, kMinZoom, kMaxZoom);
-    }
-
-    std::optional<ProgressSyncLog::RemoteEntry> localFolderRemote =
-        ProgressSyncLog::latestFromOtherDevices(m_bookHash, DeviceIdentity::id());
-    if (localFolderRemote) {
-        offerSyncedPosition(*localFolderRemote);
-    }
-
-#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
-    const QString bookHash = m_bookHash;
-    const QDateTime localFolderTimestamp = localFolderRemote ? localFolderRemote->timestamp : QDateTime();
-    GoogleDriveSync::latestFromOtherDevices(
-        bookHash, DeviceIdentity::id(),
-        [this, bookHash, localFolderTimestamp](std::optional<ProgressSyncLog::RemoteEntry> googleRemote) {
-            if (!googleRemote || bookHash != m_bookHash) {
-                return; // no result, or this view has since moved on to a different book
-            }
-            if (localFolderTimestamp.isValid() && googleRemote->timestamp <= localFolderTimestamp) {
-                return; // the local-folder sync already offered something at least as new
-            }
-            offerSyncedPosition(*googleRemote);
-        });
-#endif
-
-    HighlightSync::pull(m_bookHash, [this](bool changed) {
-        if (changed) {
-            refreshHighlights();
-            emit highlightsChanged();
-        }
-    });
-}
-
-void PdfView::offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote)
-{
-    if (remote.position == m_currentPage) {
-        return;
-    }
-    m_syncPromptBar->showPrompt(
-        tr("Synced position available: page %1 (from %2) — jump?").arg(remote.position + 1).arg(remote.deviceName));
-    const int remotePosition = remote.position;
-    const qreal remoteZoom = remote.zoom;
-    connect(m_syncPromptBar, &SyncPromptBar::jumpRequested, this, [this, remotePosition, remoteZoom] {
-        setZoom(std::clamp(remoteZoom, kMinZoom, kMaxZoom));
-        goToPage(remotePosition);
-    });
-}
-
-void PdfView::scheduleProgressSave()
-{
-    m_progressSaveTimer->start(1500);
-}
-
 void PdfView::flushProgress()
 {
-    if (!m_progressSaveTimer->isActive()) {
-        return;
-    }
-    m_progressSaveTimer->stop();
-    saveProgressNow();
-}
-
-void PdfView::saveProgressNow()
-{
-    if (m_bookHash.isEmpty()) {
-        return;
-    }
-    ReadingProgressStore::set(m_bookHash, m_currentPage, m_zoom);
-    ProgressSyncLog::appendEntry(m_bookHash, documentTitle(), m_currentPage, m_zoom);
-#ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
-    GoogleDriveSync::appendEntry(m_bookHash, documentTitle(), m_currentPage, m_zoom);
-#endif
+    m_progressController->flush();
 }
 
 bool PdfView::eventFilter(QObject *watched, QEvent *event)

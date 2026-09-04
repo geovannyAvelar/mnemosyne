@@ -1,10 +1,10 @@
 #pragma once
 
+#include "PdfHighlightController.h"
+#include "PdfSearchController.h"
 #include "core/Document.h"
-#include "core/Highlight.h"
 #include "core/ReaderView.h"
 
-#include <QHash>
 #include <QWidget>
 
 #include <memory>
@@ -15,10 +15,8 @@ class QScrollArea;
 class QSpinBox;
 class QTimer;
 class PdfPageStackView;
+class ReadingProgressController;
 class SyncPromptBar;
-namespace ProgressSyncLog {
-struct RemoteEntry;
-}
 
 class PdfView : public QWidget, public IReaderView
 {
@@ -77,24 +75,19 @@ private:
     void setZoom(qreal newZoom);
     void updateNavigationState();
     void showCanvasContextMenu(const QPoint &globalPos, int pageIndex, const QPointF &pagePoint);
-    int highlightIndexAtPagePoint(const QPointF &pagePoint, int pageIndex) const;
-    void restoreProgressAndCheckSync();
-    void offerSyncedPosition(const ProgressSyncLog::RemoteEntry &remote);
-    void scheduleProgressSave();
-    void saveProgressNow();
 
     std::unique_ptr<IDocument> m_document;
     QString m_filePath;
-    QString m_bookHash;
     int m_currentPage = 0; // topmost substantially-visible page
     qreal m_zoom = 1.5;
-    QVector<Highlight> m_highlights; // all highlights for this document
-    QString m_searchTerm; // active search-dock query; empty means no search overlay
+
+    PdfHighlightController m_highlightController;
+    PdfSearchController m_searchController;
+    ReadingProgressController *m_progressController = nullptr;
 
     PdfPageStackView *m_pageStackView = nullptr; // the scroll area's content widget
     QScrollArea *m_scrollArea = nullptr;
     QSpinBox *m_pageSpinBox = nullptr;
     QLabel *m_pageCountLabel = nullptr;
     SyncPromptBar *m_syncPromptBar = nullptr;
-    QTimer *m_progressSaveTimer = nullptr;
 };

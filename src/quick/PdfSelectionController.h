@@ -1,12 +1,10 @@
 #pragma once
 
-#include "core/Document.h" // TextWord
+#include "core/PdfSelectionModel.h"
 
 #include <QObject>
-#include <QRectF>
 #include <QString>
 #include <QVariantList>
-#include <QVector>
 
 class PdfDocumentModel;
 
@@ -35,11 +33,11 @@ class PdfSelectionController : public QObject
 public:
     explicit PdfSelectionController(PdfDocumentModel *documentModel, QObject *parent = nullptr);
 
-    QString selectedText() const { return m_selectedText; }
+    QString selectedText() const { return m_model.selectedText(); }
     // page-space QRectF entries (QML's "rect" type), in reading order.
     QVariantList selectionRects() const;
     // The page a selection is currently active on, or -1 when there is none.
-    int selectionPageIndex() const { return m_activePageIndex; }
+    int selectionPageIndex() const { return m_model.selectionPageIndex(); }
 
     // pageX/pageY: a touch point in page-space (points) — QML divides
     // through by the render scale before calling these.
@@ -51,12 +49,6 @@ signals:
     void selectionChanged();
 
 private:
-    void applySelection(const QPointF &focusPoint);
-
     PdfDocumentModel *m_documentModel; // non-owning
-    int m_activePageIndex = -1;
-    QVector<TextWord> m_words; // active page's words, cached for the current gesture
-    QPointF m_anchorPoint;
-    QString m_selectedText;
-    QVector<QRectF> m_selectionRects;
+    PdfSelectionModel m_model;
 };

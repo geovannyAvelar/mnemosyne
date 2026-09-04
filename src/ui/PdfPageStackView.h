@@ -2,6 +2,7 @@
 
 #include "core/Document.h"
 #include "core/Highlight.h"
+#include "core/PdfSelectionModel.h"
 
 #include <QColor>
 #include <QHash>
@@ -82,13 +83,18 @@ public:
     void setHighlights(const QVector<Highlight> &highlights);
     void setSearchTerm(const QString &term);
 
-    // Live text selection, resolved from mouse drags via
-    // core/TextSelectionUtil.h's selectWordRange() -- the same algorithm the
-    // old per-canvas PdfView::updateSelectionFromDrag() used.
-    QString selectedText() const { return m_selectedText; }
-    int selectedPageIndex() const { return m_selectedPageIndex; }
-    QRectF selectedBoundingPageRect() const { return m_selectedBoundingPageRect; }
-    bool hasSelection() const { return m_hasSelection; }
+    // Live text selection, resolved from mouse drags via the shared
+    // core/PdfSelectionModel -- the same state machine Qt Quick's
+    // PdfSelectionController uses for touch long-press-drag selection.
+    QString selectedText() const { return m_selectionModel.selectedText(); }
+    int selectedPageIndex() const { return m_selectionModel.selectionPageIndex(); }
+    QRectF selectedBoundingPageRect() const { return m_selectionModel.selectionBoundingRect(); }
+    // Whether the *last completed* drag was big enough to count as a
+    // deliberate selection (kMinSelectionPixels) -- distinct from
+    // selectedText() being non-empty, which is also true mid-drag before
+    // release decides whether it commits. Used only to gate the
+    // Highlight/Note actions.
+    bool hasSelection() const { return m_committedSelection; }
     void clearSelection();
 
     // Test-visibility accessor, mirroring why PdfPageCanvas::searchRects()
@@ -120,7 +126,10 @@ private:
     void evictPage(int index);
     void applyOverlaysToPage(int index);
     void recomputeOffsets();
-    void updateLiveSelection();
+    // Re-derives m_liveSelectionRects (pixel space) from m_selectionModel's
+    // current page-space rects, emits selectionChanged(), and repaints.
+    // Called after every mouse-handler touch of the model.
+    void refreshLiveSelectionRects();
     // Converts a viewport-local pixel point to a page-space point (points,
     // zoom-independent) within the given page.
     QPointF toPagePoint(const QPoint &viewportPos, int pageIndex) const;
@@ -149,10 +158,8 @@ private:
     QPoint m_dragAnchorPixel;
     QPoint m_dragFocusPixel;
     bool m_dragging = false;
-    bool m_hasSelection = false;
+    bool m_committedSelection = false;
     QVector<QRect> m_liveSelectionRects; // pixel space, for m_dragPageIndex only
 
-    QString m_selectedText;
-    QRectF m_selectedBoundingPageRect;
-    int m_selectedPageIndex = -1;
+    PdfSelectionModel m_selectionModel;
 };

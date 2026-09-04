@@ -14,6 +14,8 @@ set(MNEMOSYNE_CORE_SOURCES
     core/CoordinateUtil.cpp
     core/TextSelectionUtil.h
     core/TextSelectionUtil.cpp
+    core/PdfSelectionModel.h
+    core/PdfSelectionModel.cpp
     core/HtmlAttrUtil.h
     core/HtmlAttrUtil.cpp
     app/RecentFiles.h
@@ -226,6 +228,11 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/PdfPageCanvas.cpp
     ui/PdfPageStackView.h
     ui/PdfPageStackView.cpp
+    ui/PdfHighlightController.h
+    ui/PdfHighlightController.cpp
+    ui/PdfSearchController.h
+    ui/ReadingProgressController.h
+    ui/ReadingProgressController.cpp
     ui/EpubView.h
     ui/EpubView.cpp
     ui/ComicView.h

@@ -1,7 +1,6 @@
 #include "PdfPageStackView.h"
 
 #include "core/CoordinateUtil.h"
-#include "core/TextSelectionUtil.h"
 
 #include <QContextMenuEvent>
 #include <QMouseEvent>
@@ -192,10 +191,10 @@ void PdfPageStackView::evictPage(int index)
     if (index < 0 || !m_pageWords.contains(index)) {
         return;
     }
-    if (index == m_selectedPageIndex) {
-        m_selectedText.clear();
-        m_selectedBoundingPageRect = QRectF();
-        m_selectedPageIndex = -1;
+    if (index == m_selectionModel.selectionPageIndex()) {
+        m_selectionModel.clearSelection();
+        m_committedSelection = false;
+        m_liveSelectionRects.clear();
     }
     if (index == m_dragPageIndex) {
         // The page holding an in-progress drag just scrolled far enough
@@ -280,12 +279,10 @@ void PdfPageStackView::applyOverlaysToPage(int index)
 void PdfPageStackView::clearSelection()
 {
     m_dragging = false;
-    m_hasSelection = false;
+    m_committedSelection = false;
     m_dragPageIndex = -1;
     m_liveSelectionRects.clear();
-    m_selectedText.clear();
-    m_selectedBoundingPageRect = QRectF();
-    m_selectedPageIndex = -1;
+    m_selectionModel.clearSelection();
     update();
 }
 
@@ -298,63 +295,18 @@ QPointF PdfPageStackView::toPagePoint(const QPoint &viewportPos, int pageIndex) 
                     (viewportPos.y() - pageOffsetY(pageIndex)) / m_zoom);
 }
 
-void PdfPageStackView::updateLiveSelection()
+void PdfPageStackView::refreshLiveSelectionRects()
 {
-    // Reset "committed" state first -- repopulated below only if this
-    // drag/click actually resolves to a real selection, mirroring the old
-    // PdfView::updateSelectionFromDrag()'s unconditional clear-then-maybe-
-    // repopulate structure.
-    m_selectedText.clear();
-    m_selectedBoundingPageRect = QRectF();
-    m_selectedPageIndex = -1;
-
-    // Not dragging and no committed selection either -- e.g. a released
-    // click too small to count. Same OR-not-AND reasoning as the old
-    // PdfPageCanvas::mouseReleaseEvent: a purely horizontal or vertical
-    // drag has ~0 extent on the other axis.
-    const bool nothingToShow = m_dragPageIndex < 0 || (!m_dragging && !m_hasSelection);
-    if (nothingToShow) {
-        m_liveSelectionRects.clear();
-        emit selectionChanged();
-        update();
-        return;
+    m_liveSelectionRects.clear();
+    if (m_dragPageIndex >= 0 && m_selectionModel.selectionPageIndex() == m_dragPageIndex) {
+        const int offsetX = int(pageXOffset(m_dragPageIndex));
+        const int offsetY = int(pageOffsetY(m_dragPageIndex));
+        for (const QRectF &pageRect : m_selectionModel.selectionRects()) {
+            QRect pixelRect = pageRectToPixelRect(pageRect, m_zoom);
+            pixelRect.translate(offsetX, offsetY);
+            m_liveSelectionRects.append(pixelRect);
+        }
     }
-
-    const QVector<TextWord> words = m_pageWords.value(m_dragPageIndex);
-    if (words.isEmpty()) {
-        m_liveSelectionRects.clear();
-        emit selectionChanged();
-        update();
-        return;
-    }
-
-    const QPointF anchorPoint = toPagePoint(m_dragAnchorPixel, m_dragPageIndex);
-    const QPointF focusPoint = toPagePoint(m_dragFocusPixel, m_dragPageIndex);
-    const TextSelectionResult selection = selectWordRange(words, anchorPoint, focusPoint);
-    if (selection.text.isEmpty()) {
-        m_liveSelectionRects.clear();
-        emit selectionChanged();
-        update();
-        return;
-    }
-
-    const int offsetX = int(pageXOffset(m_dragPageIndex));
-    const int offsetY = int(pageOffsetY(m_dragPageIndex));
-    QVector<QRect> pixelRects;
-    pixelRects.reserve(selection.wordRects.size());
-    QRectF boundingPageRect;
-    for (const QRectF &pageRect : selection.wordRects) {
-        QRect pixelRect = pageRectToPixelRect(pageRect, m_zoom);
-        pixelRect.translate(offsetX, offsetY);
-        pixelRects.append(pixelRect);
-        boundingPageRect = boundingPageRect.isNull() ? pageRect : boundingPageRect.united(pageRect);
-    }
-
-    m_liveSelectionRects = pixelRects;
-    m_selectedText = selection.text;
-    m_selectedBoundingPageRect = boundingPageRect;
-    m_selectedPageIndex = m_dragPageIndex;
-
     emit selectionChanged();
     update();
 }
@@ -406,10 +358,12 @@ void PdfPageStackView::mousePressEvent(QMouseEvent *event)
     setFocus();
     m_dragPageIndex = pageIndexAtOffsetY(event->pos().y());
     m_dragging = true;
-    m_hasSelection = false;
+    m_committedSelection = false;
     m_dragAnchorPixel = event->pos();
     m_dragFocusPixel = event->pos();
-    updateLiveSelection();
+    m_selectionModel.beginSelection(m_dragPageIndex, toPagePoint(m_dragAnchorPixel, m_dragPageIndex),
+                                     m_pageWords.value(m_dragPageIndex));
+    refreshLiveSelectionRects();
 }
 
 void PdfPageStackView::mouseMoveEvent(QMouseEvent *event)
@@ -418,7 +372,8 @@ void PdfPageStackView::mouseMoveEvent(QMouseEvent *event)
         return;
     }
     m_dragFocusPixel = event->pos();
-    updateLiveSelection();
+    m_selectionModel.updateSelection(toPagePoint(m_dragFocusPixel, m_dragPageIndex));
+    refreshLiveSelectionRects();
 }
 
 void PdfPageStackView::mouseReleaseEvent(QMouseEvent *event)
@@ -429,9 +384,18 @@ void PdfPageStackView::mouseReleaseEvent(QMouseEvent *event)
     m_dragging = false;
     m_dragFocusPixel = event->pos();
 
+    // OR, not AND: a plain drag across one line of text has ~0 height
+    // (every word on a line shares nearly the same vertical extent), so
+    // requiring both dimensions to clear the threshold meant a purely
+    // horizontal selection could fail to commit at all.
     const QRect rect = QRect(m_dragAnchorPixel, m_dragFocusPixel).normalized();
-    m_hasSelection = rect.width() >= kMinSelectionPixels || rect.height() >= kMinSelectionPixels;
-    updateLiveSelection();
+    m_committedSelection = rect.width() >= kMinSelectionPixels || rect.height() >= kMinSelectionPixels;
+    if (m_committedSelection) {
+        m_selectionModel.updateSelection(toPagePoint(m_dragFocusPixel, m_dragPageIndex));
+    } else {
+        m_selectionModel.clearSelection();
+    }
+    refreshLiveSelectionRects();
 }
 
 void PdfPageStackView::contextMenuEvent(QContextMenuEvent *event)

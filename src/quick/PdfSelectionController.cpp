@@ -2,8 +2,6 @@
 
 #include "PdfDocumentModel.h"
 
-#include "core/TextSelectionUtil.h"
-
 PdfSelectionController::PdfSelectionController(PdfDocumentModel *documentModel, QObject *parent)
     : QObject(parent)
     , m_documentModel(documentModel)
@@ -13,8 +11,9 @@ PdfSelectionController::PdfSelectionController(PdfDocumentModel *documentModel, 
 QVariantList PdfSelectionController::selectionRects() const
 {
     QVariantList rects;
-    rects.reserve(m_selectionRects.size());
-    for (const QRectF &rect : m_selectionRects) {
+    const QVector<QRectF> modelRects = m_model.selectionRects();
+    rects.reserve(modelRects.size());
+    for (const QRectF &rect : modelRects) {
         rects.append(rect);
     }
     return rects;
@@ -22,36 +21,19 @@ QVariantList PdfSelectionController::selectionRects() const
 
 void PdfSelectionController::beginSelection(int pageIndex, qreal pageX, qreal pageY)
 {
-    m_activePageIndex = pageIndex;
-    m_words = m_documentModel->wordsForPage(pageIndex);
-    m_anchorPoint = QPointF(pageX, pageY);
-    applySelection(m_anchorPoint);
+    m_model.beginSelection(pageIndex, QPointF(pageX, pageY), m_documentModel->wordsForPage(pageIndex));
+    emit selectionChanged();
 }
 
 void PdfSelectionController::updateSelection(qreal pageX, qreal pageY)
 {
-    if (m_words.isEmpty()) {
-        return;
-    }
-    applySelection(QPointF(pageX, pageY));
+    m_model.updateSelection(QPointF(pageX, pageY));
+    emit selectionChanged();
 }
 
 void PdfSelectionController::clearSelection()
 {
-    m_words.clear();
-    m_activePageIndex = -1;
-    if (m_selectedText.isEmpty() && m_selectionRects.isEmpty()) {
-        return;
+    if (m_model.clearSelection()) {
+        emit selectionChanged();
     }
-    m_selectedText.clear();
-    m_selectionRects.clear();
-    emit selectionChanged();
-}
-
-void PdfSelectionController::applySelection(const QPointF &focusPoint)
-{
-    const TextSelectionResult selection = selectWordRange(m_words, m_anchorPoint, focusPoint);
-    m_selectedText = selection.text;
-    m_selectionRects = selection.wordRects;
-    emit selectionChanged();
 }
