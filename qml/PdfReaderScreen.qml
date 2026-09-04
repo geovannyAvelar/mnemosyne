@@ -91,11 +91,25 @@ Item {
     readonly property real maxZoom: 4.0
 
     // Applies newZoom (clamped to [minZoom, maxZoom]), keeping whichever
-    // page is at the viewport's vertical center — and how far scrolled
-    // into that specific page — the same afterward. This does NOT touch
-    // pageList.committedZoom (see its own doc comment) — callers decide
-    // separately whether this zoom level is "live" (still gesturing) or
-    // should also commit a fresh render.
+    // point sits at (anchorX, anchorY) fixed under that same screen point
+    // afterward — both vertically (which page, and how far scrolled into
+    // it) and horizontally (how far panned into an over-wide zoomed page,
+    // for every page currently visible, not just the one exactly under the
+    // anchor — see the loop below). anchorX is in pageList's own
+    // coordinates (viewport-relative — pageList itself never scrolls
+    // horizontally, so that's also content-absolute); anchorY is content-
+    // absolute (i.e. already includes contentY), matching what
+    // PinchHandler's centroid.position reports for a handler declared
+    // directly inside a Flickable/ListView (its parentItem for positioning
+    // purposes turns out to be the Flickable's contentItem, not the outer
+    // viewport Item — confirmed by on-device logging). Both default to the
+    // viewport's center for the toolbar's +/- buttons. A live pinch passes
+    // its current centroid every frame, so the anchor tracks the fingers
+    // as they move rather than staying fixed at wherever the gesture
+    // started.
+    // This does NOT touch pageList.committedZoom (see its own doc
+    // comment) — callers decide separately whether this zoom level is
+    // "live" (still gesturing) or should also commit a fresh render.
     //
     // Earlier this rescaled contentY by the raw newZoom/oldZoom ratio
     // against the document's total height, assuming every page (not just
@@ -108,25 +122,75 @@ Item {
     // right now sidesteps that: whatever ListView currently reports for
     // this real, already-measured item's position is authoritative,
     // rather than trusting an estimate spanning the whole document.
-    function setZoom(newZoomRaw) {
+    function setZoom(newZoomRaw, anchorX, anchorY) {
         const newZoom = Math.min(Math.max(newZoomRaw, root.minZoom), root.maxZoom)
         const oldZoom = root.documentModel.zoom
         if (oldZoom <= 0 || newZoom === oldZoom) {
             return
         }
 
-        const anchorY = pageList.contentY + pageList.height / 2
-        const anchorItem = pageList.itemAt(pageList.width / 2, anchorY)
-        const fraction = anchorItem ? (anchorY - anchorItem.y) / anchorItem.height : 0
+        const ax = anchorX !== undefined ? anchorX : pageList.width / 2
+        const anchorAbsY = anchorY !== undefined ? anchorY : (pageList.contentY + pageList.height / 2)
+        // The anchor's on-screen (viewport-relative) Y, captured before
+        // zoom changes contentY below — this is what has to still be
+        // under the same finger position afterward.
+        const viewportY = anchorAbsY - pageList.contentY
+        const anchorItem = pageList.itemAt(ax, anchorAbsY)
+        const verticalFraction = anchorItem ? (anchorAbsY - anchorItem.y) / anchorItem.height : 0
+
+        // Horizontal panning is per-delegate (each page is its own
+        // Flickable), so with several pages visible at once (common once
+        // zoomed out enough that a page's height is less than the
+        // viewport's), only compensating the one page the pinch happens to
+        // be exactly over left every other visible page's content just
+        // growing from its own untouched left edge instead of zooming in
+        // place along with the rest. Capturing every visible delegate's
+        // own horizontal fraction up front, before the zoom changes
+        // anything, and reapplying it to each afterward makes the whole
+        // visible stack zoom together as one continuous view, the way
+        // Acrobat does.
+        const firstVisibleIndex = pageList.indexAt(ax, pageList.contentY)
+        const lastVisibleIndex = pageList.indexAt(ax, pageList.contentY + pageList.height - 1)
+        const visiblePans = []
+        if (firstVisibleIndex >= 0 && lastVisibleIndex >= firstVisibleIndex) {
+            for (let i = firstVisibleIndex; i <= lastVisibleIndex; i++) {
+                const item = pageList.itemAtIndex(i)
+                if (item) {
+                    visiblePans.push({
+                        item: item,
+                        fraction: item.contentWidth > 0 ? (item.contentX + ax) / item.contentWidth : 0
+                    })
+                }
+            }
+        }
+
+        const anchorIndex = anchorItem ? anchorItem.index : -1
 
         root.documentModel.zoom = newZoom
 
         if (anchorItem) {
-            // anchorItem.y/height already reflect the new zoom -- their
-            // bindings recompute synchronously off documentModel.zoom
-            // above -- so this puts the same fractional point on this
-            // exact page back under the viewport's center.
-            pageList.contentY = anchorItem.y + fraction * anchorItem.height - pageList.height / 2
+            // anchorItem.height already reflects the new zoom -- its
+            // binding recomputes synchronously off documentModel.zoom
+            // above. anchorItem.y, though, is the cumulative height of
+            // every PRECEDING page — for a page deep into a long document,
+            // most of those precede the cache buffer and are estimated
+            // rather than individually measured, so trusting a raw read of
+            // anchorItem.y here could drift by roughly a page's worth once
+            // that estimate hasn't caught up to the new zoom yet (this is
+            // what made a pinch appear to anchor on the previous page).
+            // positionViewAtIndex is the one operation Qt Quick guarantees
+            // to resolve correctly for any index regardless of estimates —
+            // it's what page-jump and cross-device sync already rely on
+            // elsewhere in this file — so snap this page's top to the
+            // viewport's top first, then nudge from there.
+            pageList.positionViewAtIndex(anchorIndex, ListView.Beginning)
+            pageList.contentY = pageList.contentY + verticalFraction * anchorItem.height - viewportY
+        }
+        for (const pan of visiblePans) {
+            const item = pan.item
+            const maxContentX = Math.max(0, item.contentWidth - item.width)
+            item.contentX = Math.max(0, Math.min(pan.fraction * item.contentWidth - ax, maxContentX))
+            item.returnToBounds()
         }
         pageList.returnToBounds()
     }
@@ -266,12 +330,13 @@ Item {
 
         onContentYChanged: {
             // During a live pinch, setZoom() rewrites contentY on every
-            // frame to keep scroll position proportional (see its own
-            // comment) -- that's an incidental side effect of the zoom
-            // math, not the user navigating, so it shouldn't be treated as
-            // a page change (the toolbar's "N / total" indicator would
-            // otherwise flicker through page numbers while the user is
-            // just trying to zoom, which reads as "pages are changing").
+            // frame to keep the pinch's anchor point fixed on screen (see
+            // its own comment) -- that's an incidental side effect of the
+            // zoom math, not the user navigating, so it shouldn't be
+            // treated as a page change (the toolbar's "N / total"
+            // indicator would otherwise flicker through page numbers while
+            // the user is just trying to zoom, which reads as "pages are
+            // changing").
             if (pinchHandler.active) {
                 return
             }
@@ -284,6 +349,7 @@ Item {
         delegate: PdfContinuousPageItem {
             documentModel: root.documentModel
             renderScale: Math.max(2.0, pageList.committedZoom)
+            zoomGestureActive: pinchHandler.active
             onTapped: root.toggleControls()
         }
 
@@ -302,7 +368,8 @@ Item {
                 }
             }
             onScaleChanged: {
-                root.setZoom(baseZoom * pinchHandler.scale)
+                root.setZoom(baseZoom * pinchHandler.scale,
+                             pinchHandler.centroid.position.x, pinchHandler.centroid.position.y)
             }
         }
     }

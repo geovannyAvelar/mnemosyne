@@ -47,6 +47,12 @@ Flickable {
     // string it parses is "<index>-<scale>".
     property real renderScale: 2.0
 
+    // Set by PdfReaderScreen while its outer PinchHandler is active, so a
+    // two-finger touch drives zoom only — without this, incidental hand
+    // movement mid-pinch could also register as a single-finger drag here,
+    // panning this page horizontally at the same time as it zooms.
+    property bool zoomGestureActive: false
+
     width: ListView.view ? ListView.view.width : 0
     height: pointSize.height * documentModel.zoom
     flickableDirection: Flickable.HorizontalFlick
@@ -59,7 +65,7 @@ Flickable {
     // otherwise still eat the first bit of every touch even though it can
     // never actually move) whenever a page happens to sit right at that
     // floor.
-    interactive: contentWidth > width
+    interactive: contentWidth > width && !zoomGestureActive
     boundsBehavior: Flickable.StopAtBounds
     clip: true
 
