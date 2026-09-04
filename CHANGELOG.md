@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.12.0] - 2026-09-04
+
+### Changed
+
+- The mobile PDF reader's zoom and page-navigation bars now hide immersively on a single tap — sliding fully off-screen, back button included — instead of auto-hiding on a timer; tap the document again to bring them back.
+- Desktop: PDF pages are no longer all materialized as separate widgets up front, so very long documents (thousands of pages) open just as fast as short ones and use far less memory while reading.
+
+### Fixed
+
+- Pinch-to-zoom in the mobile PDF reader now zooms from under your fingers instead of drifting toward a corner of the screen.
+- The mobile PDF reader could crash if you started selecting text (long-press) while a page was still rendering.
+- Desktop: copying selected PDF text with Ctrl+C could silently stop working on documents longer than a couple of pages.
+
 ## [1.11.0] - 2026-09-03
 
 ### Added
