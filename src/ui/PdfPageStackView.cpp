@@ -27,10 +27,11 @@
 // PdfPageStackView*, so it stays safe to run even if the widget that
 // requested it has since been destroyed (e.g. its tab was closed while this
 // task was still queued): the context struct outlives the widget for as
-// long as any task still references it, and re-reads `document` fresh
-// through it at render time rather than capturing a pointer up front, so it
-// always reflects whatever setDocument() was most recently told -- even if
-// that happened after this task was queued.
+// long as any task still references it, and looks the page up fresh
+// through it at render time (see PdfPageRenderContext::pageCache) rather
+// than capturing a page handle up front, so it always reflects whatever
+// setDocument()/evictPage() most recently did -- even if that happened
+// after this task was queued.
 class PdfPageRenderTask : public QObject, public QRunnable
 {
     Q_OBJECT
@@ -45,14 +46,21 @@ public:
 
     void run() override
     {
+        // Looks the page up by index instead of calling IDocument::page()
+        // itself -- materializePage() already fetched and cached it once
+        // (see PdfPageRenderContext::pageCache), so this avoids reparsing
+        // the page's content stream on every render, including every
+        // zoom-triggered re-render of an already-materialized page. Still
+        // fully inside the mutex: Poppler documents aren't safe for
+        // concurrent access even across different Page objects from the
+        // same Document, so this doesn't enable true parallel rendering
+        // across pages -- it only removes the redundant reparse.
         QImage image;
         {
             QMutexLocker locker(&m_context->mutex);
-            if (m_context->document) {
-                const std::unique_ptr<IPage> page = m_context->document->page(m_pageIndex);
-                if (page) {
-                    image = page->renderToImage(m_zoom);
-                }
+            const auto it = m_context->pageCache.constFind(m_pageIndex);
+            if (it != m_context->pageCache.constEnd()) {
+                image = it.value()->renderToImage(m_zoom);
             }
         }
         emit finished(m_pageIndex, m_zoom, image);
@@ -112,7 +120,7 @@ void PdfPageStackView::setDocument(IDocument *document)
 {
     {
         QMutexLocker locker(&m_renderContext->mutex);
-        m_renderContext->document = document;
+        m_renderContext->pageCache.clear();
     }
 
     m_document = document;
@@ -239,11 +247,12 @@ void PdfPageStackView::materializePage(int index, bool forceRerender)
 
     if (!alreadyMaterialized) {
         QMutexLocker locker(&m_renderContext->mutex);
-        std::unique_ptr<IPage> page = m_document->page(index);
+        std::shared_ptr<IPage> page = m_document->page(index);
         if (!page) {
             return;
         }
         m_pageWords.insert(index, page->words());
+        m_renderContext->pageCache.insert(index, std::move(page));
     }
 
     // Overlays only depend on words (already up to date above) plus the
@@ -310,6 +319,9 @@ void PdfPageStackView::evictPage(int index)
     m_pageImages.remove(index);
     m_pageHighlightRects.remove(index);
     m_pageSearchRects.remove(index);
+
+    QMutexLocker locker(&m_renderContext->mutex);
+    m_renderContext->pageCache.remove(index);
 }
 
 void PdfPageStackView::setHighlights(const QVector<Highlight> &highlights)

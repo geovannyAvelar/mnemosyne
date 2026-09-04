@@ -15,22 +15,39 @@
 #include <QVector>
 #include <QWidget>
 
+#include <memory>
+
 class QContextMenuEvent;
 class QMouseEvent;
 
 // Shared with background page-render tasks (see PdfPageStackView.cpp) so
-// they can safely check the live document without racing its destruction --
+// they can safely reach cached pages without racing their destruction --
 // mirrors PdfPageImageProvider::documentMutex() on the Qt Quick side. Held
 // via QSharedPointer rather than accessed through a raw PdfPageStackView*
 // from those tasks, so a render already queued or running on QThreadPool
 // stays safe even if this widget is destroyed first (e.g. a tab closing
-// mid-render): the task keeps its own reference to this struct, and by the
-// time the widget goes away PdfView's destructor has already used it to
-// null out `document` before the real IDocument is freed.
+// mid-render): the task keeps its own reference to this struct.
 struct PdfPageRenderContext
 {
     QMutex mutex;
-    IDocument *document = nullptr; // non-owning; guarded by mutex
+
+    // Keyed by page index; populated once per page's first materialization
+    // (see PdfPageStackView::materializePage()) instead of re-fetching via
+    // IDocument::page() on every render -- Poppler reparses a page's
+    // content stream each time page() is called, and before this cache
+    // existed a page paid that cost once for its words and again on every
+    // single render, including every re-render from a zoom change. Reused
+    // across all of those; cleared per index by evictPage(), or entirely by
+    // setDocument(nullptr), in lockstep with m_pageWords, whose keys remain
+    // the single source of truth for "is this page materialized". Guarded
+    // by `mutex` since a background render task reads it from a worker
+    // thread -- and a cached IPage is only ever touched by a task while
+    // still holding that lock, never copied out for later unlocked use, so
+    // clearing this map under the lock (setDocument(nullptr), called from
+    // PdfView's destructor before the real IDocument is freed) is enough to
+    // guarantee no cached page outlives its document, matching Poppler-Qt's
+    // own contract that a Page must not outlive its Document.
+    QHash<int, std::shared_ptr<IPage>> pageCache;
 };
 
 // Paints the whole PDF page stack as a single continuous, virtualized
@@ -70,10 +87,11 @@ public:
     // initial layout.
     //
     // Also called with nullptr from PdfView's destructor before m_document
-    // is freed: this takes the render-context mutex to clear the pointer
-    // background render tasks see, blocking until any task currently mid-
-    // render (i.e. already holding that same lock) finishes, so no task can
-    // still be touching the real IDocument once this call returns.
+    // is freed: this takes the render-context mutex to clear every cached
+    // IPage background render tasks might reach (see PdfPageRenderContext),
+    // blocking until any task currently mid-render (i.e. already holding
+    // that same lock) finishes, so no cached page can still be touched --
+    // or exist at all -- once this call returns.
     void setDocument(IDocument *document);
 
     void setZoom(qreal zoom);
