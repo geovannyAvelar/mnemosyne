@@ -1,7 +1,9 @@
 #include "app/ProgressSyncLog.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QThread>
@@ -15,6 +17,7 @@ class ProgressSyncLogDirectoryTest : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
     void init();
 
     void findsLatestEntryAcrossDevices();
@@ -23,13 +26,28 @@ private slots:
     void filtersByBookHash();
     void returnsNulloptForEmptyDirOrHash();
     void tolerateMalformedLine();
+    void lamportClockWinsOverMisleadingTimestamp();
+    void googleDriveNewerWithNoLocalFolderAnswer();
+    void googleDriveNewerByLamportDespiteOlderTimestamp();
+    void googleDriveNotNewerWhenLocalFolderHasHigherLamport();
+    void googleDriveNewerByTimestampWhenNeitherHasLamport();
 
 private:
     std::unique_ptr<QTemporaryDir> m_dir;
 };
 
+void ProgressSyncLogDirectoryTest::initTestCase()
+{
+    // appendEntryToDirectory() now ticks LamportClock internally, which is
+    // QSettings-backed (see LamportClock.cpp) -- isolate from the real
+    // app's settings the same way every other sync test does.
+    QCoreApplication::setOrganizationName(QStringLiteral("MnemosyneTest"));
+    QCoreApplication::setApplicationName(QStringLiteral("MnemosyneTest"));
+}
+
 void ProgressSyncLogDirectoryTest::init()
 {
+    QSettings().clear();
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
 }
@@ -118,6 +136,88 @@ void ProgressSyncLogDirectoryTest::tolerateMalformedLine()
         ProgressSyncLog::latestFromDirectory(m_dir->path(), QStringLiteral("book-c"), QStringLiteral("nobody"));
     QVERIFY(latest.has_value());
     QCOMPARE(latest->position, 9);
+}
+
+void ProgressSyncLogDirectoryTest::lamportClockWinsOverMisleadingTimestamp()
+{
+    // Hand-written lines (appendEntryToDirectory() always ticks a fresh
+    // Lamport value internally, so it can't be used to inject a specific
+    // one) simulating two devices whose wall clocks disagree with the true
+    // order of events: device-a's line has the later timestamp but the
+    // lower lamportClock; device-b's has an earlier timestamp but the
+    // higher lamportClock. If Lamport ordering (not wall-clock) decides,
+    // device-b's entry wins despite its "older" timestamp.
+    QFile file(QDir(m_dir->path()).filePath(QStringLiteral("device-a.jsonl")));
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write("{\"bookHash\":\"book-skew\",\"position\":1,\"zoom\":1.0,"
+               "\"timestamp\":\"2026-01-01T00:00:10.000Z\",\"lamportClock\":5,"
+               "\"deviceId\":\"device-a\",\"deviceName\":\"Device A\"}\n");
+    file.close();
+
+    QFile file2(QDir(m_dir->path()).filePath(QStringLiteral("device-b.jsonl")));
+    QVERIFY(file2.open(QIODevice::WriteOnly));
+    file2.write("{\"bookHash\":\"book-skew\",\"position\":9,\"zoom\":1.5,"
+                "\"timestamp\":\"2026-01-01T00:00:05.000Z\",\"lamportClock\":6,"
+                "\"deviceId\":\"device-b\",\"deviceName\":\"Device B\"}\n");
+    file2.close();
+
+    const auto latest =
+        ProgressSyncLog::latestFromDirectory(m_dir->path(), QStringLiteral("book-skew"), QStringLiteral("nobody"));
+    QVERIFY(latest.has_value());
+    QCOMPARE(latest->deviceId, QStringLiteral("device-b"));
+    QCOMPARE(latest->position, 9);
+}
+
+void ProgressSyncLogDirectoryTest::googleDriveNewerWithNoLocalFolderAnswer()
+{
+    ProgressSyncLog::RemoteEntry googleRemote;
+    googleRemote.deviceId = QStringLiteral("device-drive");
+    googleRemote.timestamp = QDateTime::currentDateTimeUtc();
+    QVERIFY(ProgressSyncLog::isGoogleDriveNewer(googleRemote, std::nullopt));
+}
+
+void ProgressSyncLogDirectoryTest::googleDriveNewerByLamportDespiteOlderTimestamp()
+{
+    ProgressSyncLog::RemoteEntry googleRemote;
+    googleRemote.deviceId = QStringLiteral("device-drive");
+    googleRemote.timestamp = QDateTime::currentDateTimeUtc().addSecs(-3600); // looks older by wall clock
+    googleRemote.lamportClock = 10;
+
+    ProgressSyncLog::RemoteEntry localFolderRemote;
+    localFolderRemote.deviceId = QStringLiteral("device-local-folder");
+    localFolderRemote.timestamp = QDateTime::currentDateTimeUtc(); // looks newer by wall clock
+    localFolderRemote.lamportClock = 5;
+
+    QVERIFY(ProgressSyncLog::isGoogleDriveNewer(googleRemote, localFolderRemote));
+}
+
+void ProgressSyncLogDirectoryTest::googleDriveNotNewerWhenLocalFolderHasHigherLamport()
+{
+    ProgressSyncLog::RemoteEntry googleRemote;
+    googleRemote.deviceId = QStringLiteral("device-drive");
+    googleRemote.timestamp = QDateTime::currentDateTimeUtc();
+    googleRemote.lamportClock = 5;
+
+    ProgressSyncLog::RemoteEntry localFolderRemote;
+    localFolderRemote.deviceId = QStringLiteral("device-local-folder");
+    localFolderRemote.timestamp = QDateTime::currentDateTimeUtc().addSecs(-3600);
+    localFolderRemote.lamportClock = 10;
+
+    QVERIFY(!ProgressSyncLog::isGoogleDriveNewer(googleRemote, localFolderRemote));
+}
+
+void ProgressSyncLogDirectoryTest::googleDriveNewerByTimestampWhenNeitherHasLamport()
+{
+    ProgressSyncLog::RemoteEntry googleRemote;
+    googleRemote.deviceId = QStringLiteral("device-drive");
+    googleRemote.timestamp = QDateTime::currentDateTimeUtc();
+    // lamportClock left at its default (0) -- simulates a pre-migration entry.
+
+    ProgressSyncLog::RemoteEntry localFolderRemote;
+    localFolderRemote.deviceId = QStringLiteral("device-local-folder");
+    localFolderRemote.timestamp = QDateTime::currentDateTimeUtc().addSecs(-3600);
+
+    QVERIFY(ProgressSyncLog::isGoogleDriveNewer(googleRemote, localFolderRemote));
 }
 
 QTEST_MAIN(ProgressSyncLogDirectoryTest)

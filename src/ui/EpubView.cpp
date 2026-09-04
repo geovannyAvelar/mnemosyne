@@ -694,14 +694,13 @@ void EpubView::restoreProgressAndCheckSync()
 
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
     const QString bookHash = m_bookHash;
-    const QDateTime localFolderTimestamp = localFolderRemote ? localFolderRemote->timestamp : QDateTime();
     GoogleDriveSync::latestFromOtherDevices(
         bookHash, DeviceIdentity::id(),
-        [this, bookHash, localFolderTimestamp](std::optional<ProgressSyncLog::RemoteEntry> googleRemote) {
+        [this, bookHash, localFolderRemote](std::optional<ProgressSyncLog::RemoteEntry> googleRemote) {
             if (!googleRemote || bookHash != m_bookHash) {
                 return; // no result, or this view has since moved on to a different book
             }
-            if (localFolderTimestamp.isValid() && googleRemote->timestamp <= localFolderTimestamp) {
+            if (!ProgressSyncLog::isGoogleDriveNewer(*googleRemote, localFolderRemote)) {
                 return; // the local-folder sync already offered something at least as new
             }
             offerSyncedPosition(*googleRemote);

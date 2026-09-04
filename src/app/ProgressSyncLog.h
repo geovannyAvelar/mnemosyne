@@ -20,6 +20,7 @@ struct RemoteEntry
     int position = 0;
     qreal zoom = 1.0;
     QDateTime timestamp;
+    quint64 lamportClock = 0; // see SyncOrdering.h; 0 = no Lamport info (pre-migration entry)
     QString deviceId;
     QString deviceName;
 };
@@ -40,5 +41,12 @@ void appendEntryToDirectory(const QString &dir, const QString &deviceId, const Q
                              const QString &bookHash, const QString &title, int position, qreal zoom);
 std::optional<RemoteEntry> latestFromDirectory(const QString &dir, const QString &bookHash,
                                                 const QString &excludeDeviceId);
+
+// True if googleRemote should be preferred over localFolderRemote (or
+// there's no local-folder answer to compare against) -- shared by every
+// view's restore-progress flow so the two backends are compared
+// consistently via the same Lamport-aware ordering used everywhere else in
+// this file, instead of each call site comparing raw timestamps itself.
+bool isGoogleDriveNewer(const RemoteEntry &googleRemote, const std::optional<RemoteEntry> &localFolderRemote);
 
 } // namespace ProgressSyncLog

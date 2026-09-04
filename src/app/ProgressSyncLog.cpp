@@ -1,7 +1,9 @@
 #include "ProgressSyncLog.h"
 
 #include "DeviceIdentity.h"
+#include "LamportClock.h"
 #include "SyncFolder.h"
+#include "SyncOrdering.h"
 
 #include <QDir>
 #include <QFile>
@@ -9,6 +11,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+
+#include <algorithm>
 
 namespace ProgressSyncLog {
 
@@ -43,6 +47,7 @@ void appendEntryToDirectory(const QString &dir, const QString &deviceId, const Q
     obj["position"] = position;
     obj["zoom"] = zoom;
     obj["timestamp"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    obj["lamportClock"] = static_cast<qint64>(LamportClock::tick());
     obj["deviceId"] = deviceId;
     obj["deviceName"] = deviceName;
 
@@ -63,6 +68,7 @@ std::optional<RemoteEntry> latestFromDirectory(const QString &dir, const QString
     }
 
     std::optional<RemoteEntry> latest;
+    quint64 maxObservedLamport = 0;
 
     const QStringList logFiles = QDir(dir).entryList(QStringList() << QStringLiteral("*.jsonl"), QDir::Files);
     for (const QString &fileName : logFiles) {
@@ -94,6 +100,7 @@ std::optional<RemoteEntry> latestFromDirectory(const QString &dir, const QString
             entry.position = obj.value(QStringLiteral("position")).toInt();
             entry.zoom = obj.value(QStringLiteral("zoom")).toDouble(1.0);
             entry.timestamp = QDateTime::fromString(obj.value(QStringLiteral("timestamp")).toString(), Qt::ISODateWithMs);
+            entry.lamportClock = static_cast<quint64>(obj.value(QStringLiteral("lamportClock")).toDouble());
             entry.deviceId = obj.value(QStringLiteral("deviceId")).toString();
             entry.deviceName = obj.value(QStringLiteral("deviceName")).toString();
 
@@ -103,13 +110,29 @@ std::optional<RemoteEntry> latestFromDirectory(const QString &dir, const QString
             if (entry.deviceName.compare(QStringLiteral("localhost"), Qt::CaseInsensitive) == 0) {
                 continue; // dev/test machines often resolve their hostname to "localhost"; never worth a jump prompt
             }
-            if (!latest || entry.timestamp > latest->timestamp) {
+            maxObservedLamport = std::max(maxObservedLamport, entry.lamportClock);
+            if (!latest ||
+                isNewerEntry({entry.lamportClock, entry.timestamp}, entry.deviceId,
+                              {latest->lamportClock, latest->timestamp}, latest->deviceId)) {
                 latest = entry;
             }
         }
     }
 
+    if (maxObservedLamport > 0) {
+        LamportClock::observe(maxObservedLamport);
+    }
+
     return latest;
+}
+
+bool isGoogleDriveNewer(const RemoteEntry &googleRemote, const std::optional<RemoteEntry> &localFolderRemote)
+{
+    if (!localFolderRemote) {
+        return true;
+    }
+    return isNewerEntry({googleRemote.lamportClock, googleRemote.timestamp}, googleRemote.deviceId,
+                         {localFolderRemote->lamportClock, localFolderRemote->timestamp}, localFolderRemote->deviceId);
 }
 
 } // namespace ProgressSyncLog

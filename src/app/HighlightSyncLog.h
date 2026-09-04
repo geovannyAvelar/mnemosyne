@@ -23,6 +23,9 @@ struct RemoteEntry
     Op op = Op::Upsert;
     Highlight highlight; // valid fields only when op == Upsert
     QDateTime timestamp; // when this operation happened, for last-write-wins merging
+    quint64 lamportClock = 0; // see SyncOrdering.h; 0 = no Lamport info (pre-migration entry). For Upsert this is
+                              // the same value as highlight.lamportClock; for Delete there's no highlight to draw
+                              // one from, so it's ticked fresh here.
     QString deviceId;
     QString deviceName;
 };

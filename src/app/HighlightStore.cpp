@@ -1,6 +1,7 @@
 #include "HighlightStore.h"
 
 #include "HighlightSync.h"
+#include "LamportClock.h"
 
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
 #include "PluginHost.h"
@@ -54,6 +55,7 @@ void writeHighlights(const QString &bookHash, const QVector<Highlight> &highligh
         settings.setValue("color", highlights[i].color.rgba());
         settings.setValue("id", highlights[i].id);
         settings.setValue("updatedAt", highlights[i].updatedAt);
+        settings.setValue("lamportClock", highlights[i].lamportClock);
     }
     settings.endArray();
 }
@@ -92,6 +94,7 @@ QVector<Highlight> highlightsFor(const QString &bookHash)
         h.color = QColor::fromRgba(settings.value("color", kDefaultHighlightColor.rgba()).toUInt());
         h.id = settings.value("id").toString();
         h.updatedAt = settings.value("updatedAt").toDateTime();
+        h.lamportClock = settings.value("lamportClock", 0).toULongLong();
 
         // Data persisted before highlight sync existed has no id/updatedAt.
         // Mint them now so this highlight becomes syncable going forward,
@@ -99,6 +102,7 @@ QVector<Highlight> highlightsFor(const QString &bookHash)
         if (h.id.isEmpty()) {
             h.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
             h.updatedAt = h.createdAt;
+            h.lamportClock = LamportClock::tick();
             needsRewrite = true;
         }
 
@@ -123,6 +127,7 @@ void addHighlight(const QString &bookHash, const Highlight &highlightIn)
     Highlight highlight = highlightIn;
     highlight.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     highlight.updatedAt = QDateTime::currentDateTime();
+    highlight.lamportClock = LamportClock::tick();
 
     QVector<Highlight> highlights = highlightsFor(bookHash);
     highlights.append(highlight);
@@ -162,6 +167,7 @@ void setNote(const QString &bookHash, int index, const QString &note)
     }
     highlights[index].note = note;
     highlights[index].updatedAt = QDateTime::currentDateTime();
+    highlights[index].lamportClock = LamportClock::tick();
     writeHighlights(bookHash, highlights);
 
     HighlightSync::pushUpsert(bookHash, highlights[index]);
@@ -178,6 +184,7 @@ void setColor(const QString &bookHash, int index, const QColor &color)
     }
     highlights[index].color = color;
     highlights[index].updatedAt = QDateTime::currentDateTime();
+    highlights[index].lamportClock = LamportClock::tick();
     writeHighlights(bookHash, highlights);
 
     HighlightSync::pushUpsert(bookHash, highlights[index]);

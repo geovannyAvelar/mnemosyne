@@ -1,7 +1,9 @@
 #include "HighlightSyncLog.h"
 
 #include "DeviceIdentity.h"
+#include "LamportClock.h"
 #include "SyncFolder.h"
+#include "SyncOrdering.h"
 
 #include <QDir>
 #include <QFile>
@@ -9,6 +11,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+
+#include <algorithm>
 
 namespace HighlightSyncLog {
 
@@ -51,6 +55,14 @@ void appendEntryToDirectory(const QString &dir, const QString &deviceId, const Q
     const QDateTime updatedAt = highlight.updatedAt.isValid() ? highlight.updatedAt : QDateTime::currentDateTimeUtc();
     obj["updatedAt"] = updatedAt.toUTC().toString(Qt::ISODateWithMs);
     obj["timestamp"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    // Upsert: reuse the highlight's own Lamport value (already ticked by
+    // HighlightStore when it was edited) rather than ticking again here --
+    // this is what lets the value round-trip through a receiving device
+    // and back into its own local storage unchanged (see
+    // entriesFromDirectory() below). Delete has no highlight content to
+    // draw one from, so it ticks fresh.
+    obj["lamportClock"] =
+        static_cast<qint64>(op == Op::Upsert ? highlight.lamportClock : LamportClock::tick());
     obj["deviceId"] = deviceId;
     obj["deviceName"] = deviceName;
 
@@ -70,6 +82,8 @@ QVector<RemoteEntry> entriesFromDirectory(const QString &dir, const QString &boo
     if (dir.isEmpty() || bookHash.isEmpty()) {
         return result;
     }
+
+    quint64 maxObservedLamport = 0;
 
     const QStringList logFiles =
         QDir(dir).entryList(QStringList() << QStringLiteral("*-highlights.jsonl"), QDir::Files);
@@ -102,6 +116,7 @@ QVector<RemoteEntry> entriesFromDirectory(const QString &dir, const QString &boo
             entry.bookHash = bookHash;
             entry.op = opFromString(obj.value(QStringLiteral("op")).toString());
             entry.timestamp = QDateTime::fromString(obj.value(QStringLiteral("timestamp")).toString(), Qt::ISODateWithMs);
+            entry.lamportClock = static_cast<quint64>(obj.value(QStringLiteral("lamportClock")).toDouble());
             entry.deviceId = obj.value(QStringLiteral("deviceId")).toString();
             entry.deviceName = obj.value(QStringLiteral("deviceName")).toString();
 
@@ -125,10 +140,22 @@ QVector<RemoteEntry> entriesFromDirectory(const QString &dir, const QString &boo
                 h.color = QColor::fromRgba(static_cast<QRgb>(obj.value(QStringLiteral("colorRgba")).toDouble()));
                 h.createdAt = QDateTime::fromString(obj.value(QStringLiteral("createdAt")).toString(), Qt::ISODateWithMs);
                 h.updatedAt = QDateTime::fromString(obj.value(QStringLiteral("updatedAt")).toString(), Qt::ISODateWithMs);
+                // Propagates the wire-level Lamport value into the embedded
+                // highlight so a receiving device's local copy carries it
+                // once merged in (see HighlightSync::mergeEntries) --
+                // without this, every highlight a device only *receives*
+                // (never edits itself) would keep lamportClock == 0
+                // forever, forcing wall-clock fallback for it indefinitely.
+                h.lamportClock = entry.lamportClock;
             }
 
+            maxObservedLamport = std::max(maxObservedLamport, entry.lamportClock);
             result.append(entry);
         }
+    }
+
+    if (maxObservedLamport > 0) {
+        LamportClock::observe(maxObservedLamport);
     }
 
     return result;

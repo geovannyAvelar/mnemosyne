@@ -3,6 +3,7 @@
 #include "DeviceIdentity.h"
 #include "HighlightStore.h"
 #include "HighlightSyncLog.h"
+#include "SyncOrdering.h"
 
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
 #include "GoogleDriveHighlightSync.h"
@@ -38,7 +39,9 @@ bool mergeEntries(const QString &bookHash, const QVector<HighlightSyncLog::Remot
     QHash<QString, HighlightSyncLog::RemoteEntry> bestById;
     for (const HighlightSyncLog::RemoteEntry &entry : entries) {
         auto it = bestById.find(entry.id);
-        if (it == bestById.end() || entry.timestamp > it->timestamp) {
+        if (it == bestById.end() ||
+            isNewerEntry({entry.lamportClock, entry.timestamp}, entry.deviceId, {it->lamportClock, it->timestamp},
+                         it->deviceId)) {
             bestById.insert(entry.id, entry);
         }
     }
@@ -48,7 +51,9 @@ bool mergeEntries(const QString &bookHash, const QVector<HighlightSyncLog::Remot
         const HighlightSyncLog::RemoteEntry &remote = it.value();
         const auto localIt = byId.find(remote.id);
         const bool localExists = localIt != byId.end();
-        if (localExists && remote.timestamp <= effectiveTime(localIt.value())) {
+        if (localExists &&
+            !isNewerThanLocal({remote.lamportClock, remote.timestamp},
+                               {localIt.value().lamportClock, effectiveTime(localIt.value())})) {
             continue; // local is at least as new; remote is stale
         }
 

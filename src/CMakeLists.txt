@@ -30,6 +30,9 @@ set(MNEMOSYNE_CORE_SOURCES
     app/HighlightExporter.cpp
     app/DeviceIdentity.h
     app/DeviceIdentity.cpp
+    app/LamportClock.h
+    app/LamportClock.cpp
+    app/SyncOrdering.h
     app/FileIdentity.h
     app/FileIdentity.cpp
     app/SyncFolder.h

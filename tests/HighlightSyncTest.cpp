@@ -32,6 +32,8 @@ private slots:
     void sameIdEditedBothSidesNewerWins();
     void remoteDeleteNewerThanLocalRemovesIt();
     void remoteDeleteOlderThanLocalIsIgnored();
+    void lamportClockWinsOverMisleadingTimestamp();
+    void receivedHighlightCarriesRemoteLamportClock();
 
 private:
     std::unique_ptr<QTemporaryDir> m_syncDir;
@@ -173,6 +175,65 @@ void HighlightSyncTest::remoteDeleteOlderThanLocalIsIgnored()
     QCOMPARE(highlights.size(), 1);
     QCOMPARE(highlights.first().id, QStringLiteral("hl-survives"));
     QCOMPARE(highlights.first().note, QStringLiteral("kept locally"));
+}
+
+void HighlightSyncTest::lamportClockWinsOverMisleadingTimestamp()
+{
+    // Mirrors sameIdEditedBothSidesNewerWins(), but with the wall-clock
+    // relationship deliberately reversed (local's updatedAt is pushed into
+    // the future, so it *looks* newer than the remote entry's real-time
+    // wire timestamp) while giving both sides an explicit, correctly-
+    // ordered Lamport value. If Lamport clocks -- not timestamps -- are
+    // deciding the merge, the remote edit still wins despite looking
+    // "older" by wall clock; this is exactly the clock-skew scenario the
+    // whole change exists to fix.
+    const QString bookHash = QStringLiteral("book-conflict-lamport-wins");
+
+    Highlight local;
+    local.id = QStringLiteral("hl-conflict-lamport");
+    local.note = QStringLiteral("local note");
+    local.createdAt = QDateTime::currentDateTimeUtc();
+    local.updatedAt = local.createdAt.addSecs(3600); // wall clock looks newer than the remote entry below
+    local.lamportClock = 5;
+    HighlightStore::replaceMerged(bookHash, {local});
+
+    Highlight remote = local;
+    remote.note = QStringLiteral("remote note");
+    remote.lamportClock = 6; // genuinely happened after, in Lamport terms
+    appendRemote(bookHash, local.id, HighlightSyncLog::Op::Upsert, remote);
+
+    QVERIFY(pullSync(bookHash));
+
+    const QVector<Highlight> highlights = HighlightStore::highlightsFor(bookHash);
+    QCOMPARE(highlights.size(), 1);
+    QCOMPARE(highlights.first().note, QStringLiteral("remote note"));
+    QCOMPARE(highlights.first().lamportClock, quint64(6));
+}
+
+void HighlightSyncTest::receivedHighlightCarriesRemoteLamportClock()
+{
+    // Regression test for a bug caught during design review: a receiving
+    // device must persist the sender's Lamport value into its own local
+    // copy, not just use it transiently during this merge -- otherwise
+    // every highlight a device only ever *receives* (never edits itself)
+    // would carry lamportClock == 0 forever, forcing every future
+    // comparison for it back onto wall-clock time.
+    const QString bookHash = QStringLiteral("book-remote-lamport-propagates");
+
+    Highlight remote;
+    remote.id = QStringLiteral("hl-propagate");
+    remote.targetIndex = 0;
+    remote.text = QStringLiteral("remote passage");
+    remote.createdAt = QDateTime::currentDateTimeUtc();
+    remote.updatedAt = remote.createdAt;
+    remote.lamportClock = 42; // simulates a value the sending device already ticked
+    appendRemote(bookHash, remote.id, HighlightSyncLog::Op::Upsert, remote);
+
+    QVERIFY(pullSync(bookHash));
+
+    const QVector<Highlight> highlights = HighlightStore::highlightsFor(bookHash);
+    QCOMPARE(highlights.size(), 1);
+    QCOMPARE(highlights.first().lamportClock, quint64(42));
 }
 
 QTEST_MAIN(HighlightSyncTest)

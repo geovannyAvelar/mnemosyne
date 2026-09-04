@@ -24,4 +24,5 @@ struct Highlight
     // keep compiling unchanged.
     QString id; // stable UUID, used to identify this highlight across devices for sync; see HighlightSync
     QDateTime updatedAt; // bumped on every local edit; falls back to createdAt when absent (pre-sync data)
+    quint64 lamportClock = 0; // bumped (LamportClock::tick()) alongside updatedAt; 0 = no Lamport info yet (pre-migration data) -- see SyncOrdering.h
 };
