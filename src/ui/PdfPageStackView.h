@@ -7,14 +7,31 @@
 #include <QColor>
 #include <QHash>
 #include <QImage>
+#include <QMutex>
 #include <QPoint>
 #include <QRect>
 #include <QRectF>
+#include <QSharedPointer>
 #include <QVector>
 #include <QWidget>
 
 class QContextMenuEvent;
 class QMouseEvent;
+
+// Shared with background page-render tasks (see PdfPageStackView.cpp) so
+// they can safely check the live document without racing its destruction --
+// mirrors PdfPageImageProvider::documentMutex() on the Qt Quick side. Held
+// via QSharedPointer rather than accessed through a raw PdfPageStackView*
+// from those tasks, so a render already queued or running on QThreadPool
+// stays safe even if this widget is destroyed first (e.g. a tab closing
+// mid-render): the task keeps its own reference to this struct, and by the
+// time the widget goes away PdfView's destructor has already used it to
+// null out `document` before the real IDocument is freed.
+struct PdfPageRenderContext
+{
+    QMutex mutex;
+    IDocument *document = nullptr; // non-owning; guarded by mutex
+};
 
 // Paints the whole PDF page stack as a single continuous, virtualized
 // viewport widget -- no per-page child widgets. Replaces the old model of
@@ -51,6 +68,12 @@ public:
     // rasterization) from document, which must outlive this widget (PdfView
     // owns the real IDocument). Call setZoom() afterward to establish the
     // initial layout.
+    //
+    // Also called with nullptr from PdfView's destructor before m_document
+    // is freed: this takes the render-context mutex to clear the pointer
+    // background render tasks see, blocking until any task currently mid-
+    // render (i.e. already holding that same lock) finishes, so no task can
+    // still be touching the real IDocument once this call returns.
     void setDocument(IDocument *document);
 
     void setZoom(qreal zoom);
@@ -102,6 +125,11 @@ public:
     // the search-matching logic itself.
     QVector<QRect> searchRectsForPage(int index) const { return m_pageSearchRects.value(index); }
 
+    // Test-visibility accessor confirming a materialized page's image has
+    // actually arrived from its background render task -- lets a test poll
+    // for that without duplicating the render-dispatch logic itself.
+    bool hasRenderedImage(int index) const { return m_pageImages.contains(index); }
+
 signals:
     // Fired on press, every move while dragging, and release -- mirrors
     // PdfPageCanvas::selectionChanged(). Nothing currently needs to connect
@@ -126,6 +154,19 @@ private:
     void evictPage(int index);
     void applyOverlaysToPage(int index);
     void recomputeOffsets();
+    // Dispatches a background render of page `index` at `zoom` unless one
+    // for that exact (index, zoom) pair is already in flight. The image
+    // itself is the only part of materialization moved off the UI thread --
+    // words/overlays stay synchronous since they're cheap and everything
+    // else (selection, search, highlights) only ever needs those, not the
+    // rendered image.
+    void requestPageImage(int index, qreal zoom);
+    // Slot for PdfPageRenderTask::finished, delivered via a queued
+    // connection from whichever QThreadPool worker thread rendered it.
+    // Discards the result if the page has since been evicted or `zoom` no
+    // longer matches m_zoom (a page can be re-requested at a new zoom while
+    // an older-zoom render for it is still in flight).
+    void onPageRendered(int index, qreal zoom, const QImage &image);
     // Re-derives m_liveSelectionRects (pixel space) from m_selectionModel's
     // current page-space rects, emits selectionChanged(), and repaints.
     // Called after every mouse-handler touch of the model.
@@ -139,6 +180,9 @@ private:
     QVector<qreal> m_pageOffsetY; // cumulative top offset per page, at current zoom
     qreal m_zoom = 1.0;
     qreal m_maxPageWidthPx = 0.0;
+
+    QSharedPointer<PdfPageRenderContext> m_renderContext = QSharedPointer<PdfPageRenderContext>::create();
+    QHash<int, qreal> m_pendingRenderZoom; // pageIndex -> zoom of its current in-flight render task, if any
 
     QHash<int, QImage> m_pageImages;
     QHash<int, QVector<TextWord>> m_pageWords; // also doubles as "is this page materialized"

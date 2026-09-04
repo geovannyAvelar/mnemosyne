@@ -91,6 +91,18 @@ PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget 
     m_scrollArea->verticalScrollBar()->setValue(int(m_pageStackView->pageOffsetY(m_currentPage)));
 }
 
+PdfView::~PdfView()
+{
+    // m_pageStackView renders pages on background QThreadPool tasks that
+    // read m_document through a mutex-guarded pointer (see
+    // PdfPageStackView::setDocument()). Member destruction runs before
+    // ~QWidget() destroys child widgets like m_pageStackView, so without
+    // this call m_document (below, in reverse declaration order) would be
+    // freed while a task could still be mid-render against it. This blocks
+    // until any such in-flight render finishes before that happens.
+    m_pageStackView->setDocument(nullptr);
+}
+
 QString PdfView::documentTitle() const
 {
     return m_document ? m_document->title() : QString();

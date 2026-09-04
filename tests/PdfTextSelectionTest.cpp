@@ -55,6 +55,8 @@ private slots:
     void copySelectionPutsSelectedTextOnClipboard();
     void selectionMovesLiveDuringDragBeforeRelease();
     void addedHighlightCoversFullWordSnappedSelection();
+    void materializedPageEventuallyGetsRenderedImage();
+    void destroyingViewWhileRenderingInFlightDoesNotCrash();
 
 private:
     std::unique_ptr<PdfView> makePdfView();
@@ -219,6 +221,50 @@ void PdfTextSelectionTest::addedHighlightCoversFullWordSnappedSelection()
     for (int i = 0; i <= 2; ++i) {
         QVERIFY2(highlights[0].pageRect.contains(words[i].boundingBox),
                  qPrintable(QStringLiteral("word %1's box isn't fully covered by the saved highlight").arg(i)));
+    }
+}
+
+void PdfTextSelectionTest::materializedPageEventuallyGetsRenderedImage()
+{
+    // Page rendering happens on a QThreadPool worker thread now (see
+    // PdfPageStackView::requestPageImage()) rather than synchronously
+    // inside materializePage(), so the image for a freshly-opened view's
+    // current page isn't guaranteed to be there the instant the constructor
+    // returns -- it should, however, always land shortly after.
+    auto view = makePdfView();
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
+
+    QTRY_VERIFY(stackView->hasRenderedImage(0));
+}
+
+void PdfTextSelectionTest::destroyingViewWhileRenderingInFlightDoesNotCrash()
+{
+    // Regression coverage for PdfView::~PdfView() and the mutex handoff in
+    // PdfPageStackView::setDocument(nullptr): every goToPage() below
+    // dispatches a new background render, and the view is destroyed right
+    // after with no wait, so some of these iterations really do race
+    // ~PdfView() against a render task still touching the document. Without
+    // the destructor's setDocument(nullptr) call (blocking until any such
+    // task finishes before m_document is freed) this would be a
+    // use-after-free -- a multi-page fixture and several page jumps per
+    // iteration widen the odds of actually landing mid-render.
+    for (int i = 0; i < 25; ++i) {
+        QString error;
+        auto doc = PopplerPdfDocument::load(fixturePath("test_multipage.pdf"), &error);
+        Q_ASSERT_X(doc, "test", qPrintable(error));
+        auto view = std::make_unique<PdfView>(std::move(doc), fixturePath("test_multipage.pdf"));
+        view->resize(900, 700);
+        view->show();
+
+        auto *stackView = view->findChild<PdfPageStackView *>();
+        QVERIFY(stackView);
+        for (int page = 0; page < stackView->pageCount(); ++page) {
+            view->goToPage(page);
+        }
+        // No wait: view (and its document) is destroyed here, quite
+        // possibly while one of the renders just requested above is still
+        // in flight on a QThreadPool worker thread.
     }
 }
 

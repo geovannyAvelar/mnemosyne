@@ -24,6 +24,7 @@ class PdfView : public QWidget, public IReaderView
 
 public:
     explicit PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget *parent = nullptr);
+    ~PdfView() override;
 
     QString documentTitle() const override;
     QVector<TocNode> tableOfContents() const override;

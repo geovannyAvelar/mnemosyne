@@ -4,10 +4,68 @@
 
 #include <QContextMenuEvent>
 #include <QMouseEvent>
+#include <QMutexLocker>
 #include <QPainter>
+#include <QRunnable>
+#include <QThreadPool>
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
+
+// Renders one page's image on a QThreadPool worker thread so scrolling/zoom
+// never blocks the UI the way a direct page->renderToImage() call would --
+// mirrors quick/PdfPageImageProvider's PdfPageImageResponse task on the Qt
+// Quick side, adapted to hand its result back as plain signal arguments
+// (no QQuickImageResponse-style follow-up accessor calls needed) rather
+// than requiring the receiver to call back into this object afterward --
+// which is also why, unlike PdfPageImageResponse, this can use QRunnable's
+// default auto-delete: by the time onPageRendered() runs, everything it
+// needs already arrived as arguments on the queued signal.
+//
+// Holds a QSharedPointer<PdfPageRenderContext> rather than a
+// PdfPageStackView*, so it stays safe to run even if the widget that
+// requested it has since been destroyed (e.g. its tab was closed while this
+// task was still queued): the context struct outlives the widget for as
+// long as any task still references it, and re-reads `document` fresh
+// through it at render time rather than capturing a pointer up front, so it
+// always reflects whatever setDocument() was most recently told -- even if
+// that happened after this task was queued.
+class PdfPageRenderTask : public QObject, public QRunnable
+{
+    Q_OBJECT
+
+public:
+    PdfPageRenderTask(QSharedPointer<PdfPageRenderContext> context, int pageIndex, qreal zoom)
+        : m_context(std::move(context))
+        , m_pageIndex(pageIndex)
+        , m_zoom(zoom)
+    {
+    }
+
+    void run() override
+    {
+        QImage image;
+        {
+            QMutexLocker locker(&m_context->mutex);
+            if (m_context->document) {
+                const std::unique_ptr<IPage> page = m_context->document->page(m_pageIndex);
+                if (page) {
+                    image = page->renderToImage(m_zoom);
+                }
+            }
+        }
+        emit finished(m_pageIndex, m_zoom, image);
+    }
+
+signals:
+    void finished(int pageIndex, qreal zoom, const QImage &image);
+
+private:
+    QSharedPointer<PdfPageRenderContext> m_context;
+    int m_pageIndex;
+    qreal m_zoom;
+};
 
 namespace {
 constexpr int kMaterializeRadius = 2; // pages rendered on either side of the current-page hint
@@ -52,6 +110,11 @@ PdfPageStackView::PdfPageStackView(QWidget *parent)
 
 void PdfPageStackView::setDocument(IDocument *document)
 {
+    {
+        QMutexLocker locker(&m_renderContext->mutex);
+        m_renderContext->document = document;
+    }
+
     m_document = document;
     m_pageSizePoints.clear();
     if (!m_document) {
@@ -174,16 +237,55 @@ void PdfPageStackView::materializePage(int index, bool forceRerender)
         return;
     }
 
-    std::unique_ptr<IPage> page = m_document->page(index);
-    if (!page) {
-        return;
-    }
     if (!alreadyMaterialized) {
+        QMutexLocker locker(&m_renderContext->mutex);
+        std::unique_ptr<IPage> page = m_document->page(index);
+        if (!page) {
+            return;
+        }
         m_pageWords.insert(index, page->words());
     }
 
-    m_pageImages.insert(index, page->renderToImage(m_zoom));
+    // Overlays only depend on words (already up to date above) plus the
+    // current zoom's pixel geometry, so they can be recomputed immediately
+    // -- no need to wait for the image, which is the only part rendered in
+    // the background below.
     applyOverlaysToPage(index);
+    requestPageImage(index, m_zoom);
+}
+
+void PdfPageStackView::requestPageImage(int index, qreal zoom)
+{
+    const auto it = m_pendingRenderZoom.constFind(index);
+    if (it != m_pendingRenderZoom.constEnd() && qFuzzyCompare(it.value(), zoom)) {
+        return; // an identical (index, zoom) render is already in flight
+    }
+    m_pendingRenderZoom.insert(index, zoom);
+
+    auto *task = new PdfPageRenderTask(m_renderContext, index, zoom);
+    connect(task, &PdfPageRenderTask::finished, this, &PdfPageStackView::onPageRendered);
+    QThreadPool::globalInstance()->start(task);
+}
+
+void PdfPageStackView::onPageRendered(int index, qreal zoom, const QImage &image)
+{
+    const auto it = m_pendingRenderZoom.constFind(index);
+    if (it != m_pendingRenderZoom.constEnd() && qFuzzyCompare(it.value(), zoom)) {
+        // Only clear the in-flight marker if no newer request has since
+        // superseded it -- otherwise this would let a duplicate request for
+        // that newer zoom slip through requestPageImage()'s dedup check.
+        m_pendingRenderZoom.remove(index);
+    }
+
+    if (!m_pageWords.contains(index)) {
+        return; // evicted while this render was in flight
+    }
+    if (!qFuzzyCompare(zoom, m_zoom) || image.isNull()) {
+        return; // stale (a fresher render for this page is in flight or already landed) or failed
+    }
+
+    m_pageImages.insert(index, image);
+    update();
 }
 
 void PdfPageStackView::evictPage(int index)
@@ -406,3 +508,5 @@ void PdfPageStackView::contextMenuEvent(QContextMenuEvent *event)
     }
     emit contextMenuRequested(event->globalPos(), pageIndex, toPagePoint(event->pos(), pageIndex));
 }
+
+#include "PdfPageStackView.moc"
