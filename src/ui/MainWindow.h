@@ -92,6 +92,13 @@ private:
 #endif
     void onTabChanged(int index);
     void onTabCloseRequested(int index);
+#ifdef Q_OS_MACOS
+    // Points the Touch Bar (on a physical-Touch-Bar MacBook) at the newly
+    // active tab -- page/zoom controls if it's a PdfView, or back to
+    // AppKit's default Touch Bar for anything else (Library, other document
+    // types). Called from onTabChanged().
+    void updateTouchBar(QWidget *activeWidget);
+#endif
     int findTabForFilePath(const QString &filePath) const;
 
     TocDock *m_tocDock = nullptr;

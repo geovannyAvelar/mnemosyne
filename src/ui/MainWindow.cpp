@@ -32,6 +32,9 @@
 #include "ui/PluginsDialog.h"
 #endif
 #include "ui/PdfView.h"
+#ifdef Q_OS_MACOS
+#include "platform/MacTouchBar.h"
+#endif
 #include "ui/SearchDock.h"
 #include "ui/Theme.h"
 #include "ui/TocDock.h"
@@ -893,6 +896,9 @@ void MainWindow::onTabChanged(int index)
         if (widget == m_libraryView) {
             m_libraryView->refresh();
         }
+#ifdef Q_OS_MACOS
+        updateTouchBar(widget);
+#endif
         return;
     }
 
@@ -908,7 +914,24 @@ void MainWindow::onTabChanged(int index)
         refreshBookInfoDock();
         setWindowTitle(tr("%1 — Mnemosyne").arg(m_currentView->documentTitle()));
     }
+#ifdef Q_OS_MACOS
+    updateTouchBar(widget);
+#endif
 }
+
+#ifdef Q_OS_MACOS
+void MainWindow::updateTouchBar(QWidget *activeWidget)
+{
+    auto *pdfView = dynamic_cast<PdfView *>(activeWidget);
+    if (!pdfView) {
+        MacTouchBar::clearControls(windowHandle());
+        return;
+    }
+    MacTouchBar::installPdfControls(
+        windowHandle(), [pdfView] { pdfView->previousPage(); }, [pdfView] { pdfView->nextPage(); },
+        [pdfView] { pdfView->zoomOut(); }, [pdfView] { pdfView->zoomIn(); });
+}
+#endif
 
 void MainWindow::refreshBookInfoDock()
 {

@@ -278,6 +278,8 @@ if(APPLE)
     list(APPEND MNEMOSYNE_DESKTOP_UI_SOURCES
         platform/MacWindowChrome.h
         platform/MacWindowChrome.mm
+        platform/MacTouchBar.h
+        platform/MacTouchBar.mm
     )
 endif()
 
