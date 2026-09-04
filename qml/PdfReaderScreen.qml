@@ -19,56 +19,20 @@ Item {
 
     signal backRequested()
 
-    // Zoom row + page indicator auto-hide after a few seconds so they don't
-    // sit over the page while reading, and reappear on a double-tap
-    // anywhere on screen (the back button stays visible either way — see
-    // topBar below). hideHintVisible briefly explains that gesture right
-    // as the controls disappear, since there's otherwise no other affordance
-    // hinting a double-tap does anything.
+    // Top bar (back + zoom) and bottom nav bar (page indicator) toggle
+    // together on a single tap anywhere on the document — no auto-hide
+    // timer; the reader stays however the user last left it. Each bar
+    // slides fully off-screen as a whole (top bar up, bottom bar down)
+    // rather than just fading its contents in place, matching Acrobat's
+    // mobile reader. The OS back gesture still works while the bars are
+    // hidden.
     property bool controlsVisible: true
-    property bool hideHintVisible: false
 
-    function showControls() {
-        root.controlsVisible = true
-        hideControlsTimer.restart()
+    function toggleControls() {
+        root.controlsVisible = !root.controlsVisible
     }
 
-    Timer {
-        id: hideControlsTimer
-        interval: 3000
-        running: true
-        onTriggered: {
-            // Don't yank the page-jump field away mid-edit.
-            if (root._editingPage) {
-                restart()
-                return
-            }
-            root.controlsVisible = false
-        }
-    }
-
-    onControlsVisibleChanged: {
-        if (!controlsVisible) {
-            hideHintVisible = true
-            hideHintTimer.restart()
-        } else {
-            hideHintVisible = false
-        }
-    }
-
-    Timer {
-        id: hideHintTimer
-        interval: 2000
-        onTriggered: root.hideHintVisible = false
-    }
-
-    TapHandler {
-        // Not a MouseArea, same reasoning as PdfContinuousPageItem's own
-        // TapHandler (see there) — doesn't take an exclusive grab, so it
-        // coexists with pageList's Flickable drag and the per-page
-        // long-press selection handler instead of starving them.
-        onDoubleTapped: root.showControls()
-    }
+    onControlsVisibleChanged: root.updateSyncPromptVisibility()
 
     // Every document opens at its natural 100% size (1 PDF point = 1 QML
     // pixel) — no fit-to-width shrinking, regardless of whatever zoom
@@ -89,15 +53,30 @@ Item {
     Connections {
         target: root.documentModel
         function onRemoteProgressAvailable(position, zoom, deviceName) {
-            syncPromptBar.showPrompt(qsTr("Synced position available: page %1 (from %2) — jump?")
-                                      .arg(position + 1).arg(deviceName))
+            root._pendingSyncMessage = qsTr("Synced position available: page %1 (from %2) — jump?")
+                                        .arg(position + 1).arg(deviceName)
             root._pendingRemotePosition = position
             root._pendingRemoteZoom = zoom
+            root.updateSyncPromptVisibility()
         }
     }
 
     property int _pendingRemotePosition: -1
     property real _pendingRemoteZoom: 1.0
+    property string _pendingSyncMessage: ""
+
+    // Keeps the sync banner from popping up over the page uninvited while
+    // the top/bottom bars are hidden — it only shows alongside them (once
+    // the user taps to reveal controls), and hides again the moment they
+    // tap to hide the bars. Dismissing or jumping clears the pending
+    // message so it doesn't reappear next time the bars are shown.
+    function updateSyncPromptVisibility() {
+        if (root._pendingSyncMessage !== "" && root.controlsVisible) {
+            syncPromptBar.showPrompt(root._pendingSyncMessage)
+        } else {
+            syncPromptBar.visible = false
+        }
+    }
 
     // The most a pinch (or the toolbar's − button) can zoom OUT to: the
     // first page's width exactly filling the viewport — zooming out any
@@ -170,7 +149,9 @@ Item {
                 root.documentModel.currentPage = root._pendingRemotePosition
                 pageList.positionViewAtIndex(root._pendingRemotePosition, ListView.Beginning)
             }
+            root._pendingSyncMessage = ""
         }
+        onDismissed: root._pendingSyncMessage = ""
     }
 
     Rectangle {
@@ -182,16 +163,31 @@ Item {
         color: Theme.panel
         border.color: Theme.border
         border.width: 1
+        // Floats above pageList (which now fills the whole screen) rather
+        // than sitting beside it.
         z: 10
+        // Whole bar hides — including the back button — so reading is
+        // fully immersive; the OS back gesture still works meanwhile, and
+        // a tap brings the bar (and the button) right back.
+        enabled: root.controlsVisible
+
+        transform: Translate {
+            y: root.controlsVisible ? 0 : -topBar.height
+            Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        }
+
+        // Blocks a tap anywhere in the bar's empty space (the fillWidth
+        // spacers below have no input handling of their own) from falling
+        // through to the document's tap-to-toggle MouseArea underneath —
+        // without this, tapping just slightly off one of the real buttons
+        // closed the bar you were trying to use instead of doing nothing.
+        MouseArea { anchors.fill: parent }
 
         RowLayout {
             anchors.fill: parent
             anchors.margins: 4
             spacing: 2
 
-            // Always visible, unlike the zoom controls below — it's the
-            // only way back to the library, so auto-hiding it along with
-            // the rest would strand the user.
             Button {
                 text: "‹"
                 flat: true
@@ -202,10 +198,7 @@ Item {
 
             RowLayout {
                 spacing: 2
-                opacity: root.controlsVisible ? 1 : 0
-                visible: opacity > 0
                 Layout.alignment: Qt.AlignVCenter
-                Behavior on opacity { NumberAnimation { duration: 150 } }
 
                 Button {
                     text: "−" // minus sign
@@ -239,10 +232,12 @@ Item {
 
     ListView {
         id: pageList
-        anchors.top: topBar.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: navBar.top
+        // Fills the whole screen at all times — topBar and navBar float
+        // above it as overlays (see their z: 10) rather than squeezing it
+        // between two reserved strips, so hiding them actually gives the
+        // document the full screen instead of leaving a blank gap where
+        // the bars used to sit.
+        anchors.fill: parent
         clip: true
         model: root.documentModel.pageCount
         spacing: 6
@@ -289,6 +284,7 @@ Item {
         delegate: PdfContinuousPageItem {
             documentModel: root.documentModel
             renderScale: Math.max(2.0, pageList.committedZoom)
+            onTapped: root.toggleControls()
         }
 
         PinchHandler {
@@ -320,13 +316,28 @@ Item {
         color: Theme.panel
         border.color: Theme.border
         border.width: 1
+        // Floats above pageList (which now fills the whole screen) rather
+        // than sitting beside it.
+        z: 10
+        // Blocks taps on the page label/field while the bar is slid
+        // off-screen.
+        enabled: root.controlsVisible
+
+        transform: Translate {
+            y: root.controlsVisible ? 0 : navBar.height
+            Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        }
+
+        // Blocks a tap anywhere in the bar's empty space (the fillWidth
+        // spacers below have no input handling of their own) from falling
+        // through to the document's tap-to-toggle MouseArea underneath —
+        // without this, tapping just slightly off the page number closed
+        // the bar instead of opening the page-jump field.
+        MouseArea { anchors.fill: parent }
 
         RowLayout {
             anchors.fill: parent
             anchors.margins: 8
-            opacity: root.controlsVisible ? 1 : 0
-            visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 150 } }
 
             Item { Layout.fillWidth: true }
 
@@ -338,34 +349,6 @@ Item {
             }
 
             Item { Layout.fillWidth: true }
-        }
-    }
-
-    // Brief explanation of the reappear gesture, shown for a couple of
-    // seconds right as the controls above fade out — otherwise a
-    // double-tap to bring them back isn't discoverable at all.
-    Rectangle {
-        id: hideHint
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: navBar.top
-        anchors.bottomMargin: 16
-        width: hintText.implicitWidth + 24
-        height: hintText.implicitHeight + 16
-        radius: 8
-        color: Theme.panel
-        border.color: Theme.border
-        border.width: 1
-        opacity: root.hideHintVisible ? 0.9 : 0
-        visible: opacity > 0
-        z: 10
-        Behavior on opacity { NumberAnimation { duration: 200 } }
-
-        Text {
-            id: hintText
-            anchors.centerIn: parent
-            text: qsTr("Double-tap to show controls")
-            color: Theme.mutedText
-            font.pixelSize: 13
         }
     }
 

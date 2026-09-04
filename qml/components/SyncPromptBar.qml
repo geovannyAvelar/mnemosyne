@@ -15,6 +15,7 @@ Rectangle {
     id: root
 
     signal jumpRequested()
+    signal dismissed()
 
     property alias message: messageText.text
 
@@ -27,6 +28,11 @@ Rectangle {
     color: "#D97757"
     implicitHeight: visible ? contentRow.implicitHeight + 16 : 0
     clip: true
+
+    // Blocks a tap on the message text (which has no input handling of
+    // its own) from falling through to whatever's behind this banner —
+    // callers may sit content directly underneath it.
+    MouseArea { anchors.fill: parent }
 
     RowLayout {
         id: contentRow
@@ -59,7 +65,10 @@ Rectangle {
             text: qsTr("Dismiss")
             flat: true
             palette.buttonText: "white"
-            onClicked: root.visible = false
+            onClicked: {
+                root.visible = false
+                root.dismissed()
+            }
         }
     }
 }

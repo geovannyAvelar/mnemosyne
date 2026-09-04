@@ -26,6 +26,18 @@ Flickable {
     required property int index
     required property var documentModel
 
+    // Tap-anywhere-on-the-page-to-toggle-controls, bubbled up to
+    // PdfReaderScreen. Handled here (nested inside this per-page Flickable,
+    // via the sibling MouseArea below) rather than at the outer ListView
+    // level — a tap detector placed *outside* this Flickable has no
+    // cooperative relationship with its horizontal drag-to-pan, so it just
+    // wins every touch outright and pan never gets a chance to start. Only
+    // being a genuine child of the exact Flickable whose gesture it must
+    // coexist with lets Qt Quick's childMouseEventFilter arbitrate between
+    // the two, the same mechanism that already lets the outer ListView's
+    // vertical scroll coexist with a tap.
+    signal tapped()
+
     readonly property size pointSize: documentModel.pageSizePoints(index)
     // The resolution Poppler last rasterized this page at — kept in sync
     // with documentModel.zoom by PdfReaderScreen's PinchHandler once a
@@ -146,6 +158,23 @@ Flickable {
                 }
             }
         }
+    }
+
+    MouseArea {
+        // Direct child of root (this page's own horizontal Flickable), NOT
+        // nested inside pageImage with the selection TapHandler above —
+        // this only needs root's OWN childMouseEventFilter arbitration
+        // against root's own drag, not any relationship with selection or
+        // the outer ListView's PinchHandler. A MouseArea (not TapHandler)
+        // because on-device testing found TapHandler never reliably fires
+        // when a Flickable ancestor is interactive, no matter where it's
+        // nested — only a MouseArea gets the childMouseEventFilter
+        // cooperation that lets a plain tap coexist with dragging.
+        // Declared after pageImage (rather than before) so it actually
+        // gets input priority — a hit-test candidate declared earlier in
+        // the same parent lost out to later siblings in earlier testing.
+        anchors.fill: parent
+        onClicked: root.tapped()
     }
 
     SelectionToolbar {
