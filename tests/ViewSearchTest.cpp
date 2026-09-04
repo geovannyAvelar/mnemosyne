@@ -1,7 +1,7 @@
 #include "epub/EpubDocument.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/EpubView.h"
-#include "ui/PdfPageCanvas.h"
+#include "ui/PdfPageStackView.h"
 #include "ui/PdfView.h"
 
 #include <QCoreApplication>
@@ -113,7 +113,7 @@ void ViewSearchTest::epubSearchReturnsEmptyForNoMatch()
 
 // Exercises IReaderView::setSearchTerm() — the yellow "dauber" overlay that
 // marks every hit of the active search term, distinct from persisted
-// Highlight annotations. See PdfPageCanvas::setSearchRects() and
+// Highlight annotations. See PdfPageStackView::searchRectsForPage() and
 // EpubView::applyHighlightsToBrowser()'s search-format branch.
 void ViewSearchTest::pdfSetSearchTermHighlightsMatchOnCurrentPage()
 {
@@ -122,14 +122,14 @@ void ViewSearchTest::pdfSetSearchTermHighlightsMatchOnCurrentPage()
     QVERIFY2(doc, qPrintable(error));
 
     PdfView view(std::move(doc), fixturePath("test.pdf"));
-    auto *canvas = view.findChild<PdfPageCanvas *>();
-    QVERIFY(canvas);
-    QVERIFY(canvas->searchRects().isEmpty()); // nothing highlighted before searching
+    auto *stackView = view.findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
+    QVERIFY(stackView->searchRectsForPage(0).isEmpty()); // nothing highlighted before searching
 
     // Fixture text: "Searchable PDF fixture text for full text search testing."
     // — "fixture" appears exactly once.
     view.setSearchTerm(QStringLiteral("fixture"));
-    QCOMPARE(canvas->searchRects().size(), 1);
+    QCOMPARE(stackView->searchRectsForPage(0).size(), 1);
 }
 
 void ViewSearchTest::pdfSetSearchTermEmptyClearsHighlight()
@@ -139,14 +139,14 @@ void ViewSearchTest::pdfSetSearchTermEmptyClearsHighlight()
     QVERIFY2(doc, qPrintable(error));
 
     PdfView view(std::move(doc), fixturePath("test.pdf"));
-    auto *canvas = view.findChild<PdfPageCanvas *>();
-    QVERIFY(canvas);
+    auto *stackView = view.findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
 
     view.setSearchTerm(QStringLiteral("fixture"));
-    QVERIFY(!canvas->searchRects().isEmpty());
+    QVERIFY(!stackView->searchRectsForPage(0).isEmpty());
 
     view.setSearchTerm(QString());
-    QVERIFY(canvas->searchRects().isEmpty());
+    QVERIFY(stackView->searchRectsForPage(0).isEmpty());
 }
 
 void ViewSearchTest::epubSetSearchTermHighlightsMatchesInCurrentChapter()

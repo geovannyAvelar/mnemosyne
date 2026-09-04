@@ -224,6 +224,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/PdfView.cpp
     ui/PdfPageCanvas.h
     ui/PdfPageCanvas.cpp
+    ui/PdfPageStackView.h
+    ui/PdfPageStackView.cpp
     ui/EpubView.h
     ui/EpubView.cpp
     ui/ComicView.h

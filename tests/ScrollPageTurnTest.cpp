@@ -4,7 +4,7 @@
 #include "epub/EpubDocument.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/EpubView.h"
-#include "ui/PdfPageCanvas.h"
+#include "ui/PdfPageStackView.h"
 #include "ui/PdfView.h"
 
 #include <QCoreApplication>
@@ -92,12 +92,10 @@ std::unique_ptr<PdfView> ScrollPageTurnTest::makePdfView()
     Q_ASSERT_X(doc, "makePdfView", qPrintable(error));
     auto view = std::make_unique<PdfView>(std::move(doc), fixturePath("test_multipage.pdf"));
     view->resize(400, 300); // smaller than a rendered page, so there's real scroll range to test
-    // Layout (and thus the scroll area's viewport size / scrollbar range /
-    // each PdfPageCanvas's y()) isn't fully realized until the widget is
-    // actually shown.
+    // The scroll area's viewport size / scrollbar range isn't fully
+    // realized until the widget is actually shown.
     view->show();
     static_cast<void>(QTest::qWaitForWindowExposed(view.get()));
-    QCoreApplication::processEvents(); // let the deferred initial-scroll-to-saved-page timer fire
     return view;
 }
 
@@ -118,21 +116,22 @@ void ScrollPageTurnTest::pdfCurrentPageTracksScrollPosition()
     auto view = makePdfView();
     auto *scrollArea = view->findChild<QScrollArea *>();
     QVERIFY(scrollArea);
-    const QList<PdfPageCanvas *> canvases = view->findChildren<PdfPageCanvas *>();
-    QCOMPARE(canvases.size(), 3); // test_multipage.pdf's page count
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
+    QCOMPARE(stackView->pageCount(), 3); // test_multipage.pdf's page count
 
     QCOMPARE(view->currentPosition(), 0);
 
-    // Scroll so page 1's canvas dominates the viewport.
-    scrollArea->verticalScrollBar()->setValue(canvases[1]->y());
+    // Scroll so page 1 dominates the viewport.
+    scrollArea->verticalScrollBar()->setValue(int(stackView->pageOffsetY(1)));
     QCOMPARE(view->currentPosition(), 1);
 
     // ... and page 2's.
-    scrollArea->verticalScrollBar()->setValue(canvases[2]->y());
+    scrollArea->verticalScrollBar()->setValue(int(stackView->pageOffsetY(2)));
     QCOMPARE(view->currentPosition(), 2);
 
     // Scrolling back up updates it again -- not a one-way ratchet.
-    scrollArea->verticalScrollBar()->setValue(canvases[0]->y());
+    scrollArea->verticalScrollBar()->setValue(int(stackView->pageOffsetY(0)));
     QCOMPARE(view->currentPosition(), 0);
 }
 
@@ -208,14 +207,16 @@ void ScrollPageTurnTest::pdfGoToPageScrollsToPageTop()
     auto view = makePdfView();
     auto *scrollArea = view->findChild<QScrollArea *>();
     QVERIFY(scrollArea);
-    const QList<PdfPageCanvas *> canvases = view->findChildren<PdfPageCanvas *>();
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
 
     view->goToPage(2);
     QCOMPARE(view->currentPosition(), 2);
 
-    // goToPage()'s scrollbar positioning is deferred a tick (canvas y()
-    // isn't necessarily settled synchronously after a resize/materialize).
-    QTRY_COMPARE_WITH_TIMEOUT(scrollArea->verticalScrollBar()->value(), canvases[2]->y(), 2000);
+    // goToPage()'s scrollbar positioning is synchronous -- PdfPageStackView's
+    // page offsets are plain analytic math, not layout geometry that needs a
+    // tick to settle.
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), int(stackView->pageOffsetY(2)));
 }
 
 void ScrollPageTurnTest::pdfZoomPreservesCurrentPage()

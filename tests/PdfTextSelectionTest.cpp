@@ -2,7 +2,7 @@
 #include "app/HighlightStore.h"
 #include "core/Highlight.h"
 #include "pdf/PopplerPdfDocument.h"
-#include "ui/PdfPageCanvas.h"
+#include "ui/PdfPageStackView.h"
 #include "ui/PdfView.h"
 
 #include <QApplication>
@@ -38,10 +38,10 @@ void sendDrag(QWidget *target, const QPoint &from, const QPoint &to)
 } // namespace
 
 // Selection is resolved word-by-word from Poppler's text boxes (see
-// PdfView::updateSelectionFromDrag), not one rectangle spanning whatever
-// pixels the drag happened to cover — these tests exercise that end to end
-// through real synthetic mouse events on the actual canvas widget, the same
-// way a user's click-drag arrives.
+// PdfPageStackView::updateLiveSelection), not one rectangle spanning
+// whatever pixels the drag happened to cover — these tests exercise that
+// end to end through real synthetic mouse events on the actual viewport
+// widget, the same way a user's click-drag arrives.
 class PdfTextSelectionTest : public QObject
 {
     Q_OBJECT
@@ -58,10 +58,15 @@ private slots:
 
 private:
     std::unique_ptr<PdfView> makePdfView();
-    // Center of the given word's bounding box, in canvas pixels, computed
-    // independently via Poppler — not hardcoded — so the test stays valid if
-    // the fixture text or rendering changes.
+    // Center of the given word's bounding box, in *page-local* pixels,
+    // computed independently via Poppler — not hardcoded — so the test
+    // stays valid if the fixture text or rendering changes.
     QPoint wordCenterPixel(int wordIndex, qreal zoom = 1.5);
+    // PdfPageStackView paints the whole document as one viewport widget, so
+    // mouse events need viewport-local coordinates -- this adds page 0's
+    // own offset (kPageSpacing above it, plus any horizontal centering) on
+    // top of a page-local point like wordCenterPixel()'s.
+    QPoint toViewportPoint(PdfPageStackView *view, int pageIndex, const QPoint &pageLocalPoint);
 };
 
 void PdfTextSelectionTest::initTestCase()
@@ -101,13 +106,18 @@ QPoint PdfTextSelectionTest::wordCenterPixel(int wordIndex, qreal zoom)
     return QPoint(static_cast<int>(center.x() * zoom), static_cast<int>(center.y() * zoom));
 }
 
+QPoint PdfTextSelectionTest::toViewportPoint(PdfPageStackView *view, int pageIndex, const QPoint &pageLocalPoint)
+{
+    return pageLocalPoint + QPoint(int(view->pageXOffset(pageIndex)), int(view->pageOffsetY(pageIndex)));
+}
+
 void PdfTextSelectionTest::dragOverWholePageSelectsAllWordsInOrder()
 {
     auto view = makePdfView();
-    auto *canvas = view->findChild<PdfPageCanvas *>();
-    QVERIFY(canvas);
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
 
-    sendDrag(canvas, QPoint(0, 0), QPoint(2000, 2000));
+    sendDrag(stackView, toViewportPoint(stackView, 0, QPoint(0, 0)), toViewportPoint(stackView, 0, QPoint(2000, 2000)));
 
     // Fixture text (tests/fixtures/test.pdf):
     // "Searchable PDF fixture text for full text search testing."
@@ -117,15 +127,15 @@ void PdfTextSelectionTest::dragOverWholePageSelectsAllWordsInOrder()
 void PdfTextSelectionTest::clickOnSingleWordSelectsOnlyThatWord()
 {
     auto view = makePdfView();
-    auto *canvas = view->findChild<PdfPageCanvas *>();
-    QVERIFY(canvas);
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
 
     // Word 0 is "Searchable". A small drag fully contained within its box
     // (real movement, but short of reaching word 1) should select just that
     // one word, not the whole line — this is the behavior a single
     // bounding-rectangle selection couldn't give you.
-    const QPoint point = wordCenterPixel(0);
-    sendDrag(canvas, point - QPoint(3, 0), point + QPoint(3, 0));
+    const QPoint point = toViewportPoint(stackView, 0, wordCenterPixel(0));
+    sendDrag(stackView, point - QPoint(3, 0), point + QPoint(3, 0));
 
     QCOMPARE(view->selectedText(), QStringLiteral("Searchable"));
 }
@@ -133,11 +143,11 @@ void PdfTextSelectionTest::clickOnSingleWordSelectsOnlyThatWord()
 void PdfTextSelectionTest::copySelectionPutsSelectedTextOnClipboard()
 {
     auto view = makePdfView();
-    auto *canvas = view->findChild<PdfPageCanvas *>();
-    QVERIFY(canvas);
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
 
-    const QPoint point = wordCenterPixel(1); // "PDF"
-    sendDrag(canvas, point - QPoint(3, 0), point + QPoint(3, 0));
+    const QPoint point = toViewportPoint(stackView, 0, wordCenterPixel(1)); // "PDF"
+    sendDrag(stackView, point - QPoint(3, 0), point + QPoint(3, 0));
     QCOMPARE(view->selectedText(), QStringLiteral("PDF"));
 
     QApplication::clipboard()->clear();
@@ -149,27 +159,27 @@ void PdfTextSelectionTest::copySelectionPutsSelectedTextOnClipboard()
 void PdfTextSelectionTest::selectionMovesLiveDuringDragBeforeRelease()
 {
     auto view = makePdfView();
-    auto *canvas = view->findChild<PdfPageCanvas *>();
-    QVERIFY(canvas);
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
 
-    const QPoint start = wordCenterPixel(0); // "Searchable"
-    const QPoint mid = wordCenterPixel(2); // "fixture"
+    const QPoint start = toViewportPoint(stackView, 0, wordCenterPixel(0)); // "Searchable"
+    const QPoint mid = toViewportPoint(stackView, 0, wordCenterPixel(2)); // "fixture"
 
-    QMouseEvent press(QEvent::MouseButtonPress, start, canvas->mapToGlobal(start), Qt::LeftButton,
+    QMouseEvent press(QEvent::MouseButtonPress, start, stackView->mapToGlobal(start), Qt::LeftButton,
                        Qt::LeftButton, Qt::NoModifier);
-    QCoreApplication::sendEvent(canvas, &press);
+    QCoreApplication::sendEvent(stackView, &press);
 
-    QMouseEvent move(QEvent::MouseMove, mid, canvas->mapToGlobal(mid), Qt::LeftButton, Qt::LeftButton,
+    QMouseEvent move(QEvent::MouseMove, mid, stackView->mapToGlobal(mid), Qt::LeftButton, Qt::LeftButton,
                       Qt::NoModifier);
-    QCoreApplication::sendEvent(canvas, &move);
+    QCoreApplication::sendEvent(stackView, &move);
 
     // Still mid-drag — no release yet — but the selection should already
     // reflect words 0..2, not be empty until the button comes up.
     QCOMPARE(view->selectedText(), QStringLiteral("Searchable PDF fixture"));
 
-    QMouseEvent release(QEvent::MouseButtonRelease, mid, canvas->mapToGlobal(mid), Qt::LeftButton,
+    QMouseEvent release(QEvent::MouseButtonRelease, mid, stackView->mapToGlobal(mid), Qt::LeftButton,
                          Qt::LeftButton, Qt::NoModifier);
-    QCoreApplication::sendEvent(canvas, &release);
+    QCoreApplication::sendEvent(stackView, &release);
 
     QCOMPARE(view->selectedText(), QStringLiteral("Searchable PDF fixture"));
 }
@@ -177,8 +187,8 @@ void PdfTextSelectionTest::selectionMovesLiveDuringDragBeforeRelease()
 void PdfTextSelectionTest::addedHighlightCoversFullWordSnappedSelection()
 {
     auto view = makePdfView();
-    auto *canvas = view->findChild<PdfPageCanvas *>();
-    QVERIFY(canvas);
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
 
     // Start the drag inside word 0's right half and end it inside word 2's
     // left half -- nearestWordIndex() still resolves this to the full
@@ -188,9 +198,9 @@ void PdfTextSelectionTest::addedHighlightCoversFullWordSnappedSelection()
     // edge and ends to the left of word 2's right edge. A highlight built
     // from that raw span (rather than the word-snapped selection) would
     // clip the outer edges of word 0 and word 2 -- the reported bug.
-    const QPoint start = wordCenterPixel(0) + QPoint(4, 0);
-    const QPoint end = wordCenterPixel(2) - QPoint(4, 0);
-    sendDrag(canvas, start, end);
+    const QPoint start = toViewportPoint(stackView, 0, wordCenterPixel(0) + QPoint(4, 0));
+    const QPoint end = toViewportPoint(stackView, 0, wordCenterPixel(2) - QPoint(4, 0));
+    sendDrag(stackView, start, end);
     QCOMPARE(view->selectedText(), QStringLiteral("Searchable PDF fixture"));
 
     view->addHighlightForSelection();
