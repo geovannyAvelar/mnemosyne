@@ -2,9 +2,8 @@
 
 #include <QToolBar>
 
-// A QToolBar that drags the window when clicked on its empty background,
-// standing in for the window-move behavior a native title bar would
-// otherwise provide (there isn't one — see MacWindowChrome).
+// A QToolBar that drags the window when clicked on its empty background, so
+// the window can also be moved from here in addition to the native title bar.
 //
 // It also permanently suppresses Qt's toolbar-overflow ("qt_toolbar_ext_button")
 // mechanism: on this app's dock/toolbar combination, that overflow decision

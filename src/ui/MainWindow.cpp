@@ -39,7 +39,6 @@
 #include "ui/Theme.h"
 #include "ui/TocDock.h"
 #include "ui/TopBar.h"
-#include "ui/TrafficLightButton.h"
 #include "ui/TxtView.h"
 
 #include <QAction>
@@ -52,14 +51,12 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QHBoxLayout>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
-#include <QMouseEvent>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSizePolicy>
@@ -160,33 +157,6 @@ MainWindow::MainWindow(QWidget *parent)
             toggleSidebar();
         }
     });
-}
-
-void MainWindow::mousePressEvent(QMouseEvent *event)
-{
-    qDebug() << "DIAG MainWindow::mousePressEvent pos=" << event->pos() << "childAt=" << childAt(event->pos());
-#ifdef Q_OS_MACOS
-    // Qt's Cocoa backend keeps a top contentsMargins() equal to the old
-    // native title bar's height -- a leftover safe-area inset from before
-    // MacWindowChrome::integrateTitleBar() (see main.cpp) removed that title
-    // bar, which it recomputes and reapplies on its own even after being
-    // explicitly zeroed, so it can't be gotten rid of from here. That margin
-    // pushes TopBar's top edge down, leaving a strip directly above it that
-    // belongs to no widget (TopBar's own empty-background drag handling,
-    // see TopBar::mousePressEvent(), never sees clicks that land outside
-    // its own bounds) and isn't native-draggable either, since Qt's content
-    // view already covers it. Handling it exactly like TopBar does --
-    // starting a window drag on an otherwise-unclaimed click -- covers that
-    // strip without needing to eliminate it.
-    if (event->button() == Qt::LeftButton && !childAt(event->pos())) {
-        if (QWindow *handle = windowHandle()) {
-            bool ok = handle->startSystemMove();
-            qDebug() << "DIAG MainWindow: startSystemMove() returned" << ok;
-            return;
-        }
-    }
-#endif
-    QMainWindow::mousePressEvent(event);
 }
 
 void MainWindow::changeEvent(QEvent *event)
@@ -487,9 +457,6 @@ void MainWindow::setupDocks()
 
 void MainWindow::setupSidebarToggle()
 {
-    // On macOS the native title bar is hidden entirely (see MacWindowChrome)
-    // and this bar draws its own close/minimize/fullscreen buttons instead,
-    // so the window chrome is genuinely part of the app's own GUI.
     auto *topBar = new TopBar(tr("Window"), this);
     topBar->setObjectName(QStringLiteral("windowTopBar"));
     topBar->setMovable(false);
@@ -497,49 +464,6 @@ void MainWindow::setupSidebarToggle()
     topBar->setIconSize(QSize(18, 18));
     topBar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     addToolBar(Qt::TopToolBarArea, topBar);
-#ifdef Q_OS_MACOS
-    topBar->setFixedHeight(52);
-
-    auto *trafficLights = new QWidget(topBar);
-    // QToolBarLayout stretches an added widget to the bar's full height by
-    // default, but the buttons inside are only as tall as their own
-    // sizeHint (14px). Left alone, that leftover vertical padding is still
-    // part of this container's geometry, so childAt() finds *it* there
-    // instead of nullptr, defeating TopBar::mousePressEvent()'s "empty
-    // background" check the same way the spacers below do. A Fixed vertical
-    // policy stops the layout from stretching the container in the first
-    // place, so that padding truly belongs to no widget and falls through
-    // to the toolbar for the drag -- unlike WA_TransparentForMouseEvents,
-    // this doesn't risk also swallowing clicks on the buttons themselves.
-    trafficLights->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    auto *trafficLightsLayout = new QHBoxLayout(trafficLights);
-    trafficLightsLayout->setContentsMargins(0, 0, 0, 0);
-    trafficLightsLayout->setSpacing(8);
-
-    auto *closeButton = new TrafficLightButton(QColor(0xFF, 0x5F, 0x57), TrafficLightButton::Glyph::Close, trafficLights);
-    auto *minimizeButton = new TrafficLightButton(QColor(0xFE, 0xBC, 0x2E), TrafficLightButton::Glyph::Minimize, trafficLights);
-    auto *zoomButton = new TrafficLightButton(QColor(0x28, 0xC8, 0x40), TrafficLightButton::Glyph::Zoom, trafficLights);
-    closeButton->setToolTip(tr("Close"));
-    minimizeButton->setToolTip(tr("Minimize"));
-    zoomButton->setToolTip(tr("Full Screen"));
-
-    connect(closeButton, &QAbstractButton::clicked, this, &QWidget::close);
-    connect(minimizeButton, &QAbstractButton::clicked, this, &QWidget::showMinimized);
-    connect(zoomButton, &QAbstractButton::clicked, this, &MainWindow::toggleFullScreen);
-
-    trafficLightsLayout->addWidget(closeButton);
-    trafficLightsLayout->addWidget(minimizeButton);
-    trafficLightsLayout->addWidget(zoomButton);
-    topBar->addWidget(trafficLights);
-
-    auto *trafficLightSpacer = new QWidget(topBar);
-    trafficLightSpacer->setFixedWidth(16);
-    // Otherwise this widget is what childAt() finds under the cursor here,
-    // which defeats TopBar::mousePressEvent()'s "empty background" check for
-    // starting a window drag -- see the matching spacer below.
-    trafficLightSpacer->setAttribute(Qt::WA_TransparentForMouseEvents);
-    topBar->addWidget(trafficLightSpacer);
-#endif
 
     m_sidebarToggleAction = topBar->addAction(Theme::sidebarToggleIcon(), QString());
     m_sidebarToggleAction->setToolTip(tr("Hide Sidebar"));

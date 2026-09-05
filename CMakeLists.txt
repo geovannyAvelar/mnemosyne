@@ -12,7 +12,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(APPLE AND NOT IOS)
-  # Needed to compile platform/MacWindowChrome.mm (native title-bar integration).
+  # Needed to compile platform/MacTouchBar.mm (Touch Bar integration).
   enable_language(OBJCXX)
 
   # Homebrew keg-only packages aren't on the default prefix path. Cover both

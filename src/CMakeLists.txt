@@ -218,7 +218,7 @@ target_include_directories(mnemosynequick PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 # entirely rather than reusing any of it. QWidgets isn't available on
 # Android or iOS at all, so this whole block is skipped on both: without
 # excluding IOS here too, an iOS cross-compile would try to build this
-# (and the AppKit-only platform/MacWindowChrome.mm below, since CMake's
+# (and the AppKit-only platform/MacTouchBar.mm below, since CMake's
 # APPLE is true for iOS as well as macOS) and fail outright.
 if(NOT ANDROID AND NOT IOS)
 
@@ -266,8 +266,6 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/Theme.cpp
     ui/TopBar.h
     ui/TopBar.cpp
-    ui/TrafficLightButton.h
-    ui/TrafficLightButton.cpp
 )
 
 if(MNEMOSYNE_ENABLE_HTML)
@@ -279,8 +277,6 @@ endif()
 
 if(APPLE)
     list(APPEND MNEMOSYNE_DESKTOP_UI_SOURCES
-        platform/MacWindowChrome.h
-        platform/MacWindowChrome.mm
         platform/MacTouchBar.h
         platform/MacTouchBar.mm
     )
