@@ -11,8 +11,9 @@ It is **not** the reader UI — that lands in later mobile-port milestones.
 Poppler-Qt6 and libzip have no prebuilt Android packages, unlike every
 desktop platform Mnemosyne supports. They must be cross-compiled once per
 Android ABI and pointed at via `-DMNEMOSYNE_ANDROID_DEPS_PREFIX=...`.
-`libpoppler-qt6.so`/`libpoppler.so`/`libzip.so`/`libfreetype.so` are **not**
-committed to this repo (multi-hundred-MB of ABI-specific binaries); build
+`libpoppler-qt6.so`/`libpoppler.so`/`libzip.so`/`libfreetype.so`/
+`libjpeg.so`/`libopenjp2.so` are **not** committed to this repo
+(multi-hundred-MB of ABI-specific binaries); build
 them locally following the recipe below, or run
 `scripts/build-android-deps.sh <prefix> <abi> <android-platform>
 <qt-android-kit-dir>`, a parameterized version of the exact same recipe —
@@ -41,13 +42,13 @@ An x86_64 emulator (`google_apis` system image) is enough to test an
 `android_x86_64` build locally without a physical device; KVM acceleration
 needs `/dev/kvm` and membership in the `kvm` group.
 
-## 2. Cross-compile the three dependencies
+## 2. Cross-compile the five dependencies
 
-All three use CMake with the NDK's toolchain file, installed into one
+All five use CMake with the NDK's toolchain file, installed into one
 prefix per ABI (e.g. `~/android-deps/install-x86_64`). Run each `cmake -S
 ... -B ... && cmake --build ... && cmake --install ...` in order —
-freetype and libzip have no interdependency, but poppler needs freetype
-already installed at the target prefix.
+freetype, libzip, libjpeg-turbo, and openjpeg have no interdependency, but
+poppler needs all four already installed at the target prefix.
 
 **Freetype 2.13.3** — minimal build (no HarfBuzz/PNG/Bzip2/Brotli; the
 NDK sysroot's `libz` covers zlib):
@@ -74,11 +75,42 @@ cmake -S libzip-1.10.1 -B build/libzip-$ABI -G Ninja \
   -DBUILD_TOOLS=OFF -DBUILD_REGRESS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOC=OFF
 ```
 
+**libjpeg-turbo 3.2.0** — SIMD off (the x86_64 kernels need NASM, which
+isn't part of the NDK toolchain and isn't worth adding for JPEG decode
+speed in a document reader), TurboJPEG API/tools off (Poppler only calls
+the classic `libjpeg` API), shared like freetype/libzip above:
+```bash
+cmake -S libjpeg-turbo-3.2.0 -B build/jpeg-$ABI -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+  -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-28 \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PREFIX \
+  -DENABLE_SHARED=ON -DENABLE_STATIC=OFF \
+  -DWITH_SIMD=OFF -DWITH_TURBOJPEG=OFF -DWITH_TOOLS=OFF -DWITH_TESTS=OFF
+```
+
+**openjpeg 2.5.4** — JPX/JPEG2000 decoder; command-line codec tools off
+(only the library is needed, Poppler links against it directly), shared
+like the others above:
+```bash
+cmake -S openjpeg-2.5.4 -B build/openjpeg-$ABI -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake \
+  -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-28 \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$PREFIX \
+  -DBUILD_SHARED_LIBS=ON -DBUILD_STATIC_LIBS=OFF \
+  -DBUILD_CODEC=OFF -DBUILD_DOC=OFF -DBUILD_TESTING=OFF
+```
+This was added after discovering that some real-world PDFs (e.g. textbook
+scans) encode their embedded images as JPX rather than plain JPEG — the
+JPEG-only fix wasn't enough on its own, so don't assume DCTDECODER alone
+covers "images render."
+
 **Poppler 24.02.0** — Qt6 frontend only (no Qt5, glib, cpp wrapper, cairo,
-or command-line utils); JPEG/JPX/LCMS/TIFF/NSS/GPGME/curl all disabled to
-avoid cross-compiling further dependencies the smoke test doesn't need
-(real PDFs using those features will fail to fully render until a later
-pass adds them back). Font configuration auto-selects Poppler's own
+or command-line utils); LCMS/TIFF/NSS/GPGME/curl all disabled to avoid
+cross-compiling further dependencies the smoke test doesn't need (JPEG and
+JPEG2000 decode are covered by the libjpeg-turbo/openjpeg builds above;
+real PDFs using the other disabled features will fail to fully render
+until a later pass adds them back). Font configuration auto-selects
+Poppler's own
 `android` backend when `CMAKE_SYSTEM_NAME` is `Android` — no fontconfig
 needed. Configure with the target ABI's `qt-cmake` wrapper (not plain
 `cmake`) so Qt's own Android toolchain defaults line up, and add the
@@ -95,7 +127,7 @@ $QT_ANDROID_KIT/bin/qt-cmake -S poppler-24.02.0 -B build/poppler-$ABI -G Ninja \
   -DBUILD_QT6_TESTS=OFF -DBUILD_GTK_TESTS=OFF -DBUILD_CPP_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF \
   -DENABLE_CPP=OFF -DENABLE_GLIB=OFF -DENABLE_GOBJECT_INTROSPECTION=OFF \
   -DENABLE_UTILS=OFF -DENABLE_BOOST=OFF \
-  -DENABLE_LIBOPENJPEG=none -DENABLE_DCTDECODER=none -DENABLE_LCMS=OFF \
+  -DENABLE_LIBOPENJPEG=openjpeg2 -DENABLE_DCTDECODER=libjpeg -DENABLE_LCMS=OFF \
   -DENABLE_LIBCURL=OFF -DENABLE_LIBTIFF=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF \
   -DRUN_GPERF_IF_PRESENT=OFF
 ```
@@ -113,7 +145,7 @@ cmake --build build-android-$ABI
 ```
 
 The `MnemosyneAndroid` target (`src/CMakeLists.txt`, `if(ANDROID)` block)
-links `mnemosynebackend` + `Qt6::Quick`, and declares the four vendored
+links `mnemosynebackend` + `Qt6::Quick`, and declares the six vendored
 `.so`s via `QT_ANDROID_EXTRA_LIBS` — without that property androiddeployqt
 only bundles Qt's own libraries and the app dies at launch with
 `UnsatisfiedLinkError: library "libpoppler-qt6.so" not found`.
@@ -151,6 +183,6 @@ check `adb logcat`.
 
 Built and verified on `android_x86_64` only (this dev machine has no
 arm64 device/emulator). `arm64-v8a` — the real target for physical
-devices — needs the same three-dependency cross-compile repeated with
+devices — needs the same five-dependency cross-compile repeated with
 `-DANDROID_ABI=arm64-v8a`, not yet done. See the mobile-port plan for the
 full staged roadmap beyond this smoke test.

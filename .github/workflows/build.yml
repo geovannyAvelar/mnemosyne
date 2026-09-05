@@ -409,19 +409,19 @@ jobs:
       - name: Install Android NDK ${{ env.NDK_VERSION }}
         run: sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
 
-      # Poppler-Qt6/libzip/freetype have no prebuilt Android packages (see
-      # docs/android-build.md) and a from-scratch Poppler build takes real
-      # time, so this is cached across runs -- only rebuilt when the
-      # versions baked into scripts/build-android-deps.sh's cache key
-      # change.
+      # Poppler-Qt6/libzip/freetype/libjpeg-turbo/openjpeg have no prebuilt
+      # Android packages (see docs/android-build.md) and a from-scratch
+      # Poppler build takes real time, so this is cached across runs --
+      # only rebuilt when the versions baked into
+      # scripts/build-android-deps.sh's cache key change.
       - name: Cache cross-compiled Android dependencies
         id: android-deps-cache
         uses: actions/cache@v4
         with:
           path: ${{ env.DEPS_PREFIX }}
-          key: android-deps-${{ env.ANDROID_ABI }}-freetype2.13.3-libzip1.10.1-poppler24.02.0-v1
+          key: android-deps-${{ env.ANDROID_ABI }}-freetype2.13.3-libzip1.10.1-jpeg3.2.0-openjpeg2.5.4-poppler24.02.0-v3
 
-      - name: Cross-compile freetype/libzip/poppler for Android
+      - name: Cross-compile freetype/libzip/libjpeg-turbo/openjpeg/poppler for Android
         if: steps.android-deps-cache.outputs.cache-hit != 'true'
         env:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}

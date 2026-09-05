@@ -455,12 +455,12 @@ if(ANDROID)
         Qt6::CorePrivate # AndroidStorageAccess uses QtAndroidPrivate::startActivity (qandroidextras_p.h)
     )
 
-    # Poppler-Qt6/libzip/Freetype are linked but not Qt libraries, so
-    # androiddeployqt doesn't know to bundle them into the APK on its own —
-    # QT_ANDROID_EXTRA_LIBS is how a target tells it to.
+    # Poppler-Qt6/libzip/Freetype/libjpeg-turbo/openjpeg are linked but not
+    # Qt libraries, so androiddeployqt doesn't know to bundle them into the
+    # APK on its own — QT_ANDROID_EXTRA_LIBS is how a target tells it to.
     set_target_properties(MnemosyneAndroid PROPERTIES
         QT_ANDROID_EXTRA_LIBS
-            "${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libpoppler-qt6.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libpoppler.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libzip.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libfreetype.so"
+            "${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libpoppler-qt6.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libpoppler.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libzip.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libfreetype.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libjpeg.so;${MNEMOSYNE_ANDROID_DEPS_PREFIX}/lib/libopenjp2.so"
     )
 
     if(MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC)
@@ -568,12 +568,13 @@ elseif(IOS)
     # top-level, ENABLE_UNSTABLE_API_ABI_HEADERS-only header.
     target_include_directories(MnemosyneIOS PRIVATE ${MNEMOSYNE_IOS_DEPS_PREFIX}/include/poppler)
 
-    # Poppler-Qt6/libzip/Freetype were cross-compiled as static libraries
-    # (scripts/build-ios-deps.sh) rather than shared like Android's .so's --
-    # an iOS app bundle can embed dynamic frameworks, but that needs its
-    # own codesigning and an "Embed Frameworks" build phase per library, so
-    # static sidesteps all of that. Being static, they just need linking,
-    # not an Android-style QT_ANDROID_EXTRA_LIBS bundling step.
+    # Poppler-Qt6/libzip/Freetype/libjpeg-turbo/openjpeg were cross-compiled
+    # as static libraries (scripts/build-ios-deps.sh) rather than shared
+    # like Android's .so's -- an iOS app bundle can embed dynamic
+    # frameworks, but that needs its own codesigning and an "Embed
+    # Frameworks" build phase per library, so static sidesteps all of that.
+    # Being static, they just need linking, not an Android-style
+    # QT_ANDROID_EXTRA_LIBS bundling step.
     # z is poppler.a's own zlib dependency -- a static lib doesn't carry
     # its dependency graph the way Android's .so's do, so the final
     # executable link needs it spelled out explicitly (iOS's system
@@ -583,6 +584,8 @@ elseif(IOS)
         ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libpoppler.a
         ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libzip.a
         ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libfreetype.a
+        ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libjpeg.a
+        ${MNEMOSYNE_IOS_DEPS_PREFIX}/lib/libopenjp2.a
         z
     )
 

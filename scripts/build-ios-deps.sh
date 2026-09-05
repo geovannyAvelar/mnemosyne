@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Cross-compiles freetype, libzip, and Poppler-Qt6 for a single iOS
-# architecture into one prefix, for MNEMOSYNE_IOS_DEPS_PREFIX (see
-# top-level CMakeLists.txt and docs/ios-build.md). Mirrors
-# scripts/build-android-deps.sh's recipe with two iOS-specific changes:
+# Cross-compiles freetype, libzip, libjpeg-turbo, openjpeg, and Poppler-Qt6
+# for a single iOS architecture into one prefix, for
+# MNEMOSYNE_IOS_DEPS_PREFIX (see top-level CMakeLists.txt and
+# docs/ios-build.md). Mirrors scripts/build-android-deps.sh's recipe with
+# two iOS-specific changes:
 #
 # - Static libs (BUILD_SHARED_LIBS=OFF), not shared: iOS app bundles can
 #   embed dynamic frameworks, but that needs separate codesigning and an
@@ -40,6 +41,8 @@ IOS_DEPLOYMENT_TARGET=15.0
 
 FREETYPE_VERSION=2.13.3
 LIBZIP_VERSION=1.10.1
+JPEGTURBO_VERSION=3.2.0
+OPENJPEG_VERSION=2.5.4
 POPPLER_VERSION=24.02.0
 
 WORK_DIR="$(mktemp -d)"
@@ -52,11 +55,15 @@ curl -fsSL "https://download.savannah.gnu.org/releases/freetype/freetype-$FREETY
     -o "$WORK_DIR/freetype.tar.xz"
 curl -fsSL "https://libzip.org/download/libzip-$LIBZIP_VERSION.tar.xz" \
     -o "$WORK_DIR/libzip.tar.xz"
+curl -fsSL "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/$JPEGTURBO_VERSION/libjpeg-turbo-$JPEGTURBO_VERSION.tar.gz" \
+    -o "$WORK_DIR/jpeg.tar.gz"
+curl -fsSL "https://github.com/uclouvain/openjpeg/archive/refs/tags/v$OPENJPEG_VERSION.tar.gz" \
+    -o "$WORK_DIR/openjpeg.tar.gz"
 curl -fsSL "https://poppler.freedesktop.org/poppler-$POPPLER_VERSION.tar.xz" \
     -o "$WORK_DIR/poppler.tar.xz"
 
-for f in freetype libzip poppler; do
-    tar -xf "$WORK_DIR/$f.tar.xz" -C "$WORK_DIR"
+for f in freetype.tar.xz libzip.tar.xz jpeg.tar.gz openjpeg.tar.gz poppler.tar.xz; do
+    tar -xf "$WORK_DIR/$f" -C "$WORK_DIR"
 done
 
 echo "==> Building freetype $FREETYPE_VERSION"
@@ -84,13 +91,55 @@ cmake -S "$WORK_DIR/libzip-$LIBZIP_VERSION" -B "$WORK_DIR/build-libzip" -G Ninja
 cmake --build "$WORK_DIR/build-libzip"
 cmake --install "$WORK_DIR/build-libzip"
 
+echo "==> Building libjpeg-turbo $JPEGTURBO_VERSION"
+# WITH_SIMD=OFF: arm64 SIMD doesn't need it, but keeping this off matches
+# the Android recipe (see its comment) rather than diverging per-platform
+# for a document reader's JPEG decode path. Static like freetype/libzip
+# above, for the same reason noted at the top of this file. WITH_TOOLS/
+# WITH_TESTS=OFF: not needed, just the library -- but also load-bearing
+# here, not just trimming: libjpeg-turbo's CMakeLists.txt reads
+# CMAKE_SYSTEM_PROCESSOR unconditionally (for its CPU/SIMD-arch detection)
+# before WITH_SIMD is even consulted, and CMAKE_SYSTEM_PROCESSOR comes back
+# empty for this CMAKE_SYSTEM_NAME=iOS + CMAKE_OSX_ARCHITECTURES setup (unlike
+# freetype/libzip above, which never look at it) -- an empty expansion shifts
+# its string(TOLOWER ...) call and CMake errors with "string() not called
+# with correct number of arguments". CMAKE_SYSTEM_PROCESSOR is set explicitly
+# below to route around that.
+cmake -S "$WORK_DIR/libjpeg-turbo-$JPEGTURBO_VERSION" -B "$WORK_DIR/build-jpeg" -G Ninja \
+    -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_SYSTEM_PROCESSOR="$ARCH" -DCMAKE_OSX_SYSROOT="$SYSROOT" \
+    -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+    -DENABLE_SHARED=OFF -DENABLE_STATIC=ON \
+    -DWITH_SIMD=OFF -DWITH_TURBOJPEG=OFF -DWITH_TOOLS=OFF -DWITH_TESTS=OFF
+cmake --build "$WORK_DIR/build-jpeg"
+cmake --install "$WORK_DIR/build-jpeg"
+
+echo "==> Building openjpeg $OPENJPEG_VERSION"
+# This book's PDFs turned out to use JPX (JPEG2000), not plain JPEG, for
+# their embedded images -- ENABLE_LIBOPENJPEG=none below was originally
+# assumed to be the rarer case and left disabled alongside DCTDECODER, but
+# it wasn't. BUILD_CODEC=OFF: only the opj_compress/opj_decompress command-
+# line tools need it, not the library Poppler links against. Static like
+# the others above.
+cmake -S "$WORK_DIR/openjpeg-$OPENJPEG_VERSION" -B "$WORK_DIR/build-openjpeg" -G Ninja \
+    -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_SYSTEM_PROCESSOR="$ARCH" -DCMAKE_OSX_SYSROOT="$SYSROOT" \
+    -DCMAKE_OSX_ARCHITECTURES="$ARCH" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+    -DBUILD_SHARED_LIBS=OFF -DBUILD_STATIC_LIBS=ON \
+    -DBUILD_CODEC=OFF -DBUILD_DOC=OFF -DBUILD_TESTING=OFF
+cmake --build "$WORK_DIR/build-openjpeg"
+cmake --install "$WORK_DIR/build-openjpeg"
+
 echo "==> Building poppler $POPPLER_VERSION (Qt6 frontend only)"
-# freetype must already be installed at $PREFIX before this configure step.
-# Configure through the iOS kit's qt-cmake wrapper (Xcode generator by
-# default -- overridden to Ninja here to match freetype/libzip and avoid
-# a second, unsigned Xcode project for a library that's never run
-# directly) so Qt's own iOS toolchain defaults (sysroot, arch, deployment
-# target already baked into qt.toolchain.cmake) line up with the app build.
+# freetype, libjpeg-turbo, and openjpeg must already be installed at
+# $PREFIX before this configure step. Configure through the iOS kit's
+# qt-cmake wrapper (Xcode generator by default -- overridden to Ninja here
+# to match freetype/libzip/libjpeg-turbo/openjpeg and avoid a second,
+# unsigned Xcode project for a library that's never run directly) so Qt's
+# own iOS toolchain defaults (sysroot, arch, deployment target already
+# baked into qt.toolchain.cmake) line up with the app build.
 # CMAKE_FIND_ROOT_PATH is needed alongside CMAKE_PREFIX_PATH -- Qt's iOS
 # toolchain file sets CMAKE_FIND_ROOT_PATH_MODE_* to ONLY, the same
 # restriction the Android NDK toolchain file applies, so freetype's
@@ -111,7 +160,7 @@ echo "==> Building poppler $POPPLER_VERSION (Qt6 frontend only)"
     -DBUILD_QT6_TESTS=OFF -DBUILD_GTK_TESTS=OFF -DBUILD_CPP_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF \
     -DENABLE_CPP=OFF -DENABLE_GLIB=OFF -DENABLE_GOBJECT_INTROSPECTION=OFF \
     -DENABLE_UTILS=OFF -DENABLE_BOOST=OFF \
-    -DENABLE_LIBOPENJPEG=none -DENABLE_DCTDECODER=none -DENABLE_LCMS=OFF \
+    -DENABLE_LIBOPENJPEG=openjpeg2 -DENABLE_DCTDECODER=libjpeg -DENABLE_LCMS=OFF \
     -DENABLE_LIBCURL=OFF -DENABLE_LIBTIFF=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF \
     -DRUN_GPERF_IF_PRESENT=OFF
 cmake --build "$WORK_DIR/build-poppler"

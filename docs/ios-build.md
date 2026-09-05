@@ -42,11 +42,14 @@ top-level `CMakeLists.txt`, parallel to `MNEMOSYNE_ANDROID_DEPS_PREFIX`).
   in some recent Xcode versions for other Apple platforms (watchOS/tvOS), and
   it's not yet confirmed here whether iOS Simulator is unaffected.
 
-## 2. Cross-compile the three dependencies (not yet attempted)
+## 2. Cross-compile the five dependencies (not yet attempted)
 
-Same three libraries, same order, as Android's Stage 2
-(`docs/android-build.md`) — freetype 2.13.3, then libzip 1.10.1, then Poppler
-24.02.0, freetype first since Poppler depends on it. The NDK's
+Same five libraries, same order, as Android's Stage 2
+(`docs/android-build.md`) — freetype 2.13.3, then libzip 1.10.1, then
+libjpeg-turbo 3.2.0, then openjpeg 2.5.4, then Poppler 24.02.0 built with
+`-DENABLE_DCTDECODER=libjpeg -DENABLE_LIBOPENJPEG=openjpeg2` (freetype,
+libjpeg-turbo, and openjpeg all need to be installed before Poppler, since
+Poppler depends on all three). The NDK's
 `android.toolchain.cmake` toolchain file becomes plain
 `-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator` (or `iphoneos`
 for device) `-DCMAKE_OSX_ARCHITECTURES=x86_64` (or `arm64`), Poppler still

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Cross-compiles freetype, libzip, and Poppler-Qt6 for a single Android ABI
-# into one prefix, for MNEMOSYNE_ANDROID_DEPS_PREFIX (see top-level
-# CMakeLists.txt and docs/android-build.md, which this script is a
-# runnable, parameterized version of -- the exact recipe, versions, and
-# flags were worked out and verified there first).
+# Cross-compiles freetype, libzip, libjpeg-turbo, openjpeg, and Poppler-Qt6
+# for a single Android ABI into one prefix, for
+# MNEMOSYNE_ANDROID_DEPS_PREFIX (see top-level CMakeLists.txt and
+# docs/android-build.md, which this script is a runnable, parameterized
+# version of -- the exact recipe, versions, and flags were worked out and
+# verified there first).
 #
 # Neither Poppler-Qt6 nor libzip have prebuilt Android packages, unlike
 # every desktop platform Mnemosyne supports, so this is what CI's android
@@ -21,6 +22,8 @@ QT_ANDROID_KIT="${4:?usage: $0 <install-prefix> <android-abi> <android-platform>
 
 FREETYPE_VERSION=2.13.3
 LIBZIP_VERSION=1.10.1
+JPEGTURBO_VERSION=3.2.0
+OPENJPEG_VERSION=2.5.4
 POPPLER_VERSION=24.02.0
 
 WORK_DIR="$(mktemp -d)"
@@ -35,11 +38,15 @@ curl -fsSL "https://download.savannah.gnu.org/releases/freetype/freetype-$FREETY
     -o "$WORK_DIR/freetype.tar.xz"
 curl -fsSL "https://libzip.org/download/libzip-$LIBZIP_VERSION.tar.xz" \
     -o "$WORK_DIR/libzip.tar.xz"
+curl -fsSL "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/$JPEGTURBO_VERSION/libjpeg-turbo-$JPEGTURBO_VERSION.tar.gz" \
+    -o "$WORK_DIR/jpeg.tar.gz"
+curl -fsSL "https://github.com/uclouvain/openjpeg/archive/refs/tags/v$OPENJPEG_VERSION.tar.gz" \
+    -o "$WORK_DIR/openjpeg.tar.gz"
 curl -fsSL "https://poppler.freedesktop.org/poppler-$POPPLER_VERSION.tar.xz" \
     -o "$WORK_DIR/poppler.tar.xz"
 
-for f in freetype libzip poppler; do
-    tar -xf "$WORK_DIR/$f.tar.xz" -C "$WORK_DIR"
+for f in freetype.tar.xz libzip.tar.xz jpeg.tar.gz openjpeg.tar.gz poppler.tar.xz; do
+    tar -xf "$WORK_DIR/$f" -C "$WORK_DIR"
 done
 
 echo "==> Building freetype $FREETYPE_VERSION"
@@ -65,11 +72,48 @@ cmake -S "$WORK_DIR/libzip-$LIBZIP_VERSION" -B "$WORK_DIR/build-libzip" -G Ninja
 cmake --build "$WORK_DIR/build-libzip"
 cmake --install "$WORK_DIR/build-libzip"
 
+echo "==> Building libjpeg-turbo $JPEGTURBO_VERSION"
+# WITH_SIMD=OFF: the x86_64 SIMD kernels need NASM, which isn't part of the
+# NDK toolchain and isn't installed by any other step here -- not worth
+# adding an assembler dependency for two cross-compile targets just to
+# speed up JPEG decode in a document reader. ENABLE_SHARED/STATIC mirrors
+# freetype/libzip above (shared .so, bundled via QT_ANDROID_EXTRA_LIBS).
+# WITH_TOOLS/WITH_TESTS=OFF: just the library, same as everything else
+# disabled in this recipe -- also sidesteps an iOS-only CMake bug (see
+# build-ios-deps.sh) in the same code path, harmless to disable here too.
+cmake -S "$WORK_DIR/libjpeg-turbo-$JPEGTURBO_VERSION" -B "$WORK_DIR/build-jpeg" -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+    -DANDROID_ABI="$ABI" -DANDROID_PLATFORM="$PLATFORM" \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+    -DENABLE_SHARED=ON -DENABLE_STATIC=OFF \
+    -DWITH_SIMD=OFF -DWITH_TURBOJPEG=OFF -DWITH_TOOLS=OFF -DWITH_TESTS=OFF
+cmake --build "$WORK_DIR/build-jpeg"
+cmake --install "$WORK_DIR/build-jpeg"
+
+echo "==> Building openjpeg $OPENJPEG_VERSION"
+# Real-world PDFs (this recipe was extended after a book turned out to use
+# JPX/JPEG2000, not plain JPEG, for its embedded images) need this --
+# ENABLE_LIBOPENJPEG=none below was originally assumed to be the rarer case
+# and left disabled alongside DCTDECODER, but it wasn't. BUILD_CODEC=OFF:
+# only the opj_compress/opj_decompress command-line tools need it, not the
+# library Poppler links against. Shared like freetype/libzip/libjpeg-turbo
+# above.
+cmake -S "$WORK_DIR/openjpeg-$OPENJPEG_VERSION" -B "$WORK_DIR/build-openjpeg" -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+    -DANDROID_ABI="$ABI" -DANDROID_PLATFORM="$PLATFORM" \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+    -DBUILD_SHARED_LIBS=ON -DBUILD_STATIC_LIBS=OFF \
+    -DBUILD_CODEC=OFF -DBUILD_DOC=OFF -DBUILD_TESTING=OFF
+cmake --build "$WORK_DIR/build-openjpeg"
+cmake --install "$WORK_DIR/build-openjpeg"
+
 echo "==> Building poppler $POPPLER_VERSION (Qt6 frontend only)"
-# freetype must already be installed at $PREFIX before this configure step
-# (poppler's own find_package(Freetype) needs it) -- both CMAKE_PREFIX_PATH
-# and CMAKE_FIND_ROOT_PATH point at $PREFIX, since the NDK toolchain file
-# restricts find_package/find_library to CMAKE_FIND_ROOT_PATH only.
+# freetype, libjpeg-turbo, and openjpeg must already be installed at
+# $PREFIX before this configure step (poppler's own find_package(Freetype)/
+# find_package(JPEG)/find_package(OpenJPEG) need them) -- both
+# CMAKE_PREFIX_PATH and CMAKE_FIND_ROOT_PATH point at $PREFIX, since the
+# NDK toolchain file restricts find_package/find_library to
+# CMAKE_FIND_ROOT_PATH only.
 "$QT_ANDROID_KIT/bin/qt-cmake" -S "$WORK_DIR/poppler-$POPPLER_VERSION" -B "$WORK_DIR/build-poppler" -G Ninja \
     -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
@@ -79,7 +123,7 @@ echo "==> Building poppler $POPPLER_VERSION (Qt6 frontend only)"
     -DBUILD_QT6_TESTS=OFF -DBUILD_GTK_TESTS=OFF -DBUILD_CPP_TESTS=OFF -DBUILD_MANUAL_TESTS=OFF \
     -DENABLE_CPP=OFF -DENABLE_GLIB=OFF -DENABLE_GOBJECT_INTROSPECTION=OFF \
     -DENABLE_UTILS=OFF -DENABLE_BOOST=OFF \
-    -DENABLE_LIBOPENJPEG=none -DENABLE_DCTDECODER=none -DENABLE_LCMS=OFF \
+    -DENABLE_LIBOPENJPEG=openjpeg2 -DENABLE_DCTDECODER=libjpeg -DENABLE_LCMS=OFF \
     -DENABLE_LIBCURL=OFF -DENABLE_LIBTIFF=OFF -DENABLE_NSS3=OFF -DENABLE_GPGME=OFF \
     -DRUN_GPERF_IF_PRESENT=OFF
 cmake --build "$WORK_DIR/build-poppler"
