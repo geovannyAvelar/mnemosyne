@@ -94,7 +94,11 @@ Flickable {
         // a gap to center within.
         width: root.pointSize.width * root.documentModel.zoom
         height: root.pointSize.height * root.documentModel.zoom
-        source: "image://pdfpage/" + root.index + "-" + root.renderScale.toFixed(2)
+        // "-dark" suffix asks PdfPageImageProvider to invert the rendered
+        // page's colors (see there) -- part of the URL so toggling dark
+        // mode naturally busts this Image's own cache: true cache instead
+        // of needing an explicit reload.
+        source: "image://pdfpage/" + root.index + "-" + root.renderScale.toFixed(2) + (themeSettings.dark ? "-dark" : "")
         asynchronous: true
         cache: true
         smooth: true

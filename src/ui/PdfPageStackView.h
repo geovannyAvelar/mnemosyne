@@ -97,6 +97,15 @@ public:
     void setZoom(qreal zoom);
     qreal zoom() const { return m_zoom; }
 
+    // Dark-mode reading: inverts every rendered page's colors at paint time
+    // (see paintEvent()) rather than re-rendering or caching a second
+    // inverted QImage per page -- cheap enough to redo every frame, and
+    // means toggling it needs no re-render or cache invalidation, just a
+    // repaint. Highlights/search-match overlays are painted after the
+    // invert and so keep their normal (non-inverted) colors.
+    void setInvertColors(bool enabled);
+    bool invertColors() const { return m_invertColors; }
+
     int pageCount() const { return m_pageSizePoints.size(); }
 
     // Page geometry in this widget's own local pixel coordinates at the
@@ -198,6 +207,7 @@ private:
     QVector<qreal> m_pageOffsetY; // cumulative top offset per page, at current zoom
     qreal m_zoom = 1.0;
     qreal m_maxPageWidthPx = 0.0;
+    bool m_invertColors = false;
 
     QSharedPointer<PdfPageRenderContext> m_renderContext = QSharedPointer<PdfPageRenderContext>::create();
     QHash<int, qreal> m_pendingRenderZoom; // pageIndex -> zoom of its current in-flight render task, if any

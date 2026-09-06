@@ -15,10 +15,11 @@
 class PdfPageImageResponse : public QQuickImageResponse, public QRunnable
 {
 public:
-    PdfPageImageResponse(PdfPageImageProvider *provider, int pageIndex, qreal scale)
+    PdfPageImageResponse(PdfPageImageProvider *provider, int pageIndex, qreal scale, bool invertColors)
         : m_provider(provider)
         , m_pageIndex(pageIndex)
         , m_scale(scale)
+        , m_invertColors(invertColors)
     {
         // QQuickImageResponse's contract is that the response deletes
         // itself once finished() has been emitted and consumed; disable
@@ -49,6 +50,12 @@ public:
         }
         if (m_image.isNull()) {
             m_errorString = QStringLiteral("Page %1 not available").arg(m_pageIndex);
+        } else if (m_invertColors) {
+            // Full RGB invert (alpha untouched) -- same "mirror the page"
+            // negative Acrobat's dark mode applies, not a hue-preserving
+            // "smart invert": simplest to implement, and matches desktop's
+            // CompositionMode_Difference-against-white in PdfPageStackView.
+            m_image.invertPixels(QImage::InvertRgb);
         }
         emit finished();
     }
@@ -57,6 +64,7 @@ private:
     PdfPageImageProvider *m_provider;
     int m_pageIndex;
     qreal m_scale;
+    bool m_invertColors;
     QImage m_image;
     QString m_errorString;
 };
@@ -69,11 +77,17 @@ void PdfPageImageProvider::setDocument(IDocument *document)
 
 QQuickImageResponse *PdfPageImageProvider::requestImageResponse(const QString &id, const QSize & /*requestedSize*/)
 {
-    const int separatorIndex = id.lastIndexOf(QLatin1Char('-'));
-    const int pageIndex = separatorIndex >= 0 ? id.left(separatorIndex).toInt() : id.toInt();
-    const qreal scale = separatorIndex >= 0 ? id.mid(separatorIndex + 1).toDouble() : 1.0;
+    QString coreId = id;
+    const bool invertColors = coreId.endsWith(QLatin1String("-dark"));
+    if (invertColors) {
+        coreId.chop(5); // "-dark"
+    }
 
-    auto *response = new PdfPageImageResponse(this, pageIndex, scale);
+    const int separatorIndex = coreId.lastIndexOf(QLatin1Char('-'));
+    const int pageIndex = separatorIndex >= 0 ? coreId.left(separatorIndex).toInt() : coreId.toInt();
+    const qreal scale = separatorIndex >= 0 ? coreId.mid(separatorIndex + 1).toDouble() : 1.0;
+
+    auto *response = new PdfPageImageResponse(this, pageIndex, scale, invertColors);
     QThreadPool::globalInstance()->start(response);
     return response;
 }

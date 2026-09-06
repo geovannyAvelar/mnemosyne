@@ -155,6 +155,11 @@ bool PdfView::hasPendingSyncPrompt() const
     return !m_syncPromptBar->isHidden();
 }
 
+void PdfView::setDarkMode(bool enabled)
+{
+    m_pageStackView->setInvertColors(enabled);
+}
+
 QVector<SearchResult> PdfView::search(const QString &query) const
 {
     return searchFile(m_filePath, query);

@@ -10,8 +10,12 @@ class IDocument;
 // way desktop PdfView's synchronous IPage::renderToImage() call does.
 //
 // image id format: "<pageIndex>-<scale>", e.g. "3-1.5" for page index 3 at
-// 1.5x. Registered once in main_android.cpp under the "pdfpage" scheme, so
-// QML requests pages via "image://pdfpage/<pageIndex>-<scale>".
+// 1.5x, plus an optional "-dark" suffix (e.g. "3-1.5-dark") requesting the
+// page rendered with its colors inverted for dark-mode reading -- mirrors
+// desktop PdfPageStackView::setInvertColors(), just applied to the QImage
+// once here instead of per-paint there. Registered once in
+// main_android.cpp under the "pdfpage" scheme, so QML requests pages via
+// "image://pdfpage/<pageIndex>-<scale>[-dark]".
 class PdfPageImageProvider : public QQuickAsyncImageProvider
 {
 public:

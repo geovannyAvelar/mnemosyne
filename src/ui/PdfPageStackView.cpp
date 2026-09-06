@@ -425,6 +425,15 @@ void PdfPageStackView::refreshLiveSelectionRects()
     update();
 }
 
+void PdfPageStackView::setInvertColors(bool enabled)
+{
+    if (m_invertColors == enabled) {
+        return;
+    }
+    m_invertColors = enabled;
+    update();
+}
+
 void PdfPageStackView::paintEvent(QPaintEvent *event)
 {
     QPainter painter(this);
@@ -440,7 +449,18 @@ void PdfPageStackView::paintEvent(QPaintEvent *event)
     for (int i = firstIndex; i <= lastIndex; ++i) {
         const auto imageIt = m_pageImages.constFind(i);
         if (imageIt != m_pageImages.constEnd()) {
-            painter.drawImage(QPointF(pageXOffset(i), pageOffsetY(i)), imageIt.value());
+            const QPointF pageOrigin(pageXOffset(i), pageOffsetY(i));
+            painter.drawImage(pageOrigin, imageIt.value());
+            if (m_invertColors) {
+                // CompositionMode_Difference against white computes
+                // |white - src| per channel, i.e. 255-c -- a full color
+                // invert, without needing a second inverted QImage cached
+                // per page (see setInvertColors()).
+                painter.save();
+                painter.setCompositionMode(QPainter::CompositionMode_Difference);
+                painter.fillRect(QRectF(pageOrigin, imageIt.value().size()), Qt::white);
+                painter.restore();
+            }
         }
         // else: not yet materialized -- the placeholder fill above already
         // covers this page's footprint.
