@@ -34,8 +34,12 @@ TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake"
 mkdir -p "$PREFIX"
 
 echo "==> Downloading sources"
+# download.savannah.gnu.org has been intermittently 5xx-ing; fall back to the
+# SourceForge mirror (same tarball, same freetype-$FREETYPE_VERSION/ layout).
 curl -fsSL "https://download.savannah.gnu.org/releases/freetype/freetype-$FREETYPE_VERSION.tar.xz" \
-    -o "$WORK_DIR/freetype.tar.xz"
+    -o "$WORK_DIR/freetype.tar.xz" \
+    || curl -fsSL "https://sourceforge.net/projects/freetype/files/freetype2/$FREETYPE_VERSION/freetype-$FREETYPE_VERSION.tar.xz/download" \
+        -o "$WORK_DIR/freetype.tar.xz"
 curl -fsSL "https://libzip.org/download/libzip-$LIBZIP_VERSION.tar.xz" \
     -o "$WORK_DIR/libzip.tar.xz"
 curl -fsSL "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/$JPEGTURBO_VERSION/libjpeg-turbo-$JPEGTURBO_VERSION.tar.gz" \
