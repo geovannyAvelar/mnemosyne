@@ -102,12 +102,28 @@ PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget 
     updateNavigationState();
     m_pageStackView->setCurrentPageHint(m_currentPage);
 
-    // Unlike the old per-canvas QVBoxLayout (whose layout, and thus each
-    // canvas's y(), wasn't realized until the widget was actually shown),
-    // PdfPageStackView's offsets are plain analytic math -- valid the
-    // instant setZoom() above returns, so the initial scroll-to-saved-page
-    // can happen synchronously here instead of deferred a tick.
-    m_scrollArea->verticalScrollBar()->setValue(int(m_pageStackView->pageOffsetY(m_currentPage)));
+    // PdfPageStackView's offsets are plain analytic math -- valid the instant
+    // setZoom() above returns -- but the scrollbar's own range isn't: this
+    // constructor runs before PdfView is shown (MainWindow::openPath adds it
+    // to the tab widget afterward), and QScrollArea only grows its
+    // scrollbar's range in response to a real QResizeEvent on m_pageStackView,
+    // which a not-yet-shown widget doesn't deliver synchronously from
+    // resize() the way the comment this replaces assumed. Setting the value
+    // here landed against the still-default (near-zero) range and got
+    // silently clamped back to ~0 -- the reader opened with the correct page
+    // number in the toolbar (m_currentPage, tracked independently) but the
+    // viewport actually sitting near page 0, unmaterialized and blank, and
+    // the first scroll's onScrolled() would then "correct" m_currentPage
+    // back down to wherever the viewport really was, clobbering the restored
+    // position. Deferring to the next event-loop tick lets the widget's
+    // initial show/resize (and thus the scrollbar range update) happen first.
+    QPointer<PdfView> self = this;
+    const int targetPage = m_currentPage;
+    QTimer::singleShot(0, this, [self, targetPage] {
+        if (self) {
+            self->m_scrollArea->verticalScrollBar()->setValue(int(self->m_pageStackView->pageOffsetY(targetPage)));
+        }
+    });
 }
 
 PdfView::~PdfView()
