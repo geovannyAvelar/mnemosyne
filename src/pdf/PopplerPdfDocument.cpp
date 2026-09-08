@@ -229,8 +229,17 @@ void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QStri
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }
-    if (auto *text = dynamic_cast<Poppler::FormFieldText *>(fields[fieldIndex].get())) {
-        text->setText(value);
+    Poppler::FormField *field = fields[fieldIndex].get();
+    // type()-then-static_cast, not dynamic_cast -- see formFields()'s own
+    // use of the same pattern. dynamic_cast across the poppler-qt6 shared
+    // library boundary silently returned nullptr for a field that
+    // genuinely was a FormFieldText on at least one Poppler build seen in
+    // CI (Homebrew's, on macOS), almost certainly an RTTI/typeinfo
+    // visibility mismatch between that prebuilt library and this binary --
+    // a known class of cross-shared-library dynamic_cast pitfall. type()
+    // is a plain virtual call, unaffected by that.
+    if (field->type() == Poppler::FormField::FormText) {
+        static_cast<Poppler::FormFieldText *>(field)->setText(value);
     }
 }
 
@@ -240,8 +249,9 @@ void PopplerPdfDocument::setFieldChecked(int pageIndex, int fieldIndex, bool che
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }
-    if (auto *button = dynamic_cast<Poppler::FormFieldButton *>(fields[fieldIndex].get())) {
-        button->setState(checked);
+    Poppler::FormField *field = fields[fieldIndex].get();
+    if (field->type() == Poppler::FormField::FormButton) {
+        static_cast<Poppler::FormFieldButton *>(field)->setState(checked);
     }
 }
 
@@ -251,8 +261,10 @@ void PopplerPdfDocument::setFieldChoiceIndex(int pageIndex, int fieldIndex, int 
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }
-    if (auto *choice = dynamic_cast<Poppler::FormFieldChoice *>(fields[fieldIndex].get())) {
-        choice->setCurrentChoices(choiceIndex < 0 ? QList<int>() : QList<int>{choiceIndex});
+    Poppler::FormField *field = fields[fieldIndex].get();
+    if (field->type() == Poppler::FormField::FormChoice) {
+        static_cast<Poppler::FormFieldChoice *>(field)->setCurrentChoices(choiceIndex < 0 ? QList<int>()
+                                                                                           : QList<int>{choiceIndex});
     }
 }
 
