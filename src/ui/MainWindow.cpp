@@ -19,6 +19,7 @@
 #include "txt/TxtDocument.h"
 #include "ui/BookInfoDock.h"
 #include "ui/FormFieldsDock.h"
+#include "ui/ReadingStatsDock.h"
 #include "ui/ComicView.h"
 #include "ui/EpubView.h"
 #ifdef MNEMOSYNE_ENABLE_HTML
@@ -241,6 +242,12 @@ void MainWindow::closeEvent(QCloseEvent *event)
             view->flushProgress();
         }
     }
+    // Same reasoning as above, for the active tab's reading session (see
+    // ReadingSessionTracker) -- otherwise the stretch of reading between the
+    // last tab switch and quitting is silently dropped from the stats.
+    if (m_currentView && m_sessionTracker.isActive()) {
+        m_sessionTracker.stop(m_currentView->currentPosition());
+    }
     QMainWindow::closeEvent(event);
 }
 
@@ -289,6 +296,10 @@ void MainWindow::setupDocks()
     m_formFieldsDock = new FormFieldsDock(this);
     addDockWidget(Qt::LeftDockWidgetArea, m_formFieldsDock);
     tabifyDockWidget(m_tocDock, m_formFieldsDock);
+
+    m_readingStatsDock = new ReadingStatsDock(this);
+    addDockWidget(Qt::LeftDockWidgetArea, m_readingStatsDock);
+    tabifyDockWidget(m_tocDock, m_readingStatsDock);
 
     m_searchWatcher = new QFutureWatcher<QVector<SearchResult>>(this);
 
@@ -348,6 +359,7 @@ void MainWindow::setupDocks()
     m_searchDock->setTitleBarWidget(new QWidget(m_searchDock));
     m_bookInfoDock->setTitleBarWidget(new QWidget(m_bookInfoDock));
     m_formFieldsDock->setTitleBarWidget(new QWidget(m_formFieldsDock));
+    m_readingStatsDock->setTitleBarWidget(new QWidget(m_readingStatsDock));
 
     m_tocDock->raise(); // Contents is the more useful default tab on opening a book
 
@@ -537,6 +549,7 @@ void MainWindow::toggleSidebar()
         m_tocDock->hide();
         m_notesDock->hide();
         m_searchDock->hide();
+        m_readingStatsDock->hide();
         m_bookInfoDock->hide(); // regardless of content -- refreshBookInfoDock() reconciles on show
         m_formFieldsDock->hide(); // ditto, via refreshFormFieldsDock()
         QSettings().setValue(QStringLiteral("sidebarVisible"), false);
@@ -565,6 +578,7 @@ void MainWindow::showSidebar()
     m_tocDock->show();
     m_notesDock->show();
     m_searchDock->show();
+    m_readingStatsDock->show();
     m_tocDock->raise();
     // If the dock group was last hidden while a dock other than m_tocDock
     // was the raised/active tab (e.g. via focusSearch()), Qt can fail to
@@ -583,6 +597,7 @@ void MainWindow::showSidebar()
     // group is visible again, rather than force it open unconditionally.
     refreshBookInfoDock();
     refreshFormFieldsDock();
+    m_readingStatsDock->refresh();
 }
 
 void MainWindow::setupMenus()
@@ -634,6 +649,7 @@ void MainWindow::setupMenus()
     viewMenu->addAction(m_searchDock->toggleViewAction());
     viewMenu->addAction(m_bookInfoDock->toggleViewAction());
     viewMenu->addAction(m_formFieldsDock->toggleViewAction());
+    viewMenu->addAction(m_readingStatsDock->toggleViewAction());
     viewMenu->addSeparator();
 
     m_darkModeAction = viewMenu->addAction(tr("&Dark Mode"));
@@ -878,6 +894,7 @@ void MainWindow::openPath(const QString &filePath)
 void MainWindow::onTabChanged(int index)
 {
     QWidget *widget = m_tabWidget->widget(index);
+    IReaderView *outgoingView = m_currentView; // captured before reassignment below -- see updateReadingSession()
 
     if (!widget || widget == m_libraryView) {
         m_currentView = nullptr;
@@ -889,6 +906,7 @@ void MainWindow::onTabChanged(int index)
         m_searchDock->clear();
         m_bookInfoDock->clear();
         m_formFieldsDock->clear();
+        updateReadingSession(outgoingView, nullptr, QString());
         setWindowTitle(tr("Mnemosyne"));
         if (widget == m_libraryView) {
             m_libraryView->refresh();
@@ -903,6 +921,7 @@ void MainWindow::onTabChanged(int index)
     m_currentFilePath = m_tabFilePaths.value(widget);
     m_currentIsbn = m_tabIsbn.value(widget);
     m_currentLocalInfo = m_tabLocalInfo.value(widget);
+    updateReadingSession(outgoingView, m_currentView, m_currentFilePath);
 
     if (m_currentView) {
         m_tocDock->setTableOfContents(m_currentView->tableOfContents());
@@ -915,6 +934,21 @@ void MainWindow::onTabChanged(int index)
 #ifdef Q_OS_MACOS
     updateTouchBar(widget);
 #endif
+}
+
+void MainWindow::updateReadingSession(IReaderView *outgoingView, IReaderView *incomingView,
+                                       const QString &incomingFilePath)
+{
+    if (outgoingView && m_sessionTracker.isActive()) {
+        m_sessionTracker.stop(outgoingView->currentPosition());
+        m_readingStatsDock->refresh();
+    }
+    if (incomingView) {
+        const QString bookHash = FileIdentity::contentHash(incomingFilePath);
+        if (!bookHash.isEmpty()) {
+            m_sessionTracker.start(bookHash, incomingView->currentPosition());
+        }
+    }
 }
 
 #ifdef Q_OS_MACOS

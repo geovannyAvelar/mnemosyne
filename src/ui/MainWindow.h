@@ -5,6 +5,7 @@
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
 #include "app/PluginHost.h" // PluginHost::PluginExporter
 #endif
+#include "app/ReadingSessionTracker.h"
 #include "core/Document.h"
 #include "core/ReaderView.h" // SearchResult
 
@@ -19,6 +20,7 @@ class FormFieldsDock;
 class IReaderView;
 class LibraryView;
 class NotesDock;
+class ReadingStatsDock;
 class SearchDock;
 class TocDock;
 class QAction;
@@ -81,6 +83,11 @@ private:
     // tab type (same as refreshNotesDock() does for a non-highlightable one).
     void refreshFormFieldsDock();
     void saveFilledFormAs();
+    // Ends the outgoing tab's reading session (if any) and starts one for
+    // the incoming tab (if it's a real document, not Library) -- see
+    // ReadingSessionTracker's own header comment for why both halves are
+    // needed around a tab switch. Called from onTabChanged().
+    void updateReadingSession(IReaderView *outgoingView, IReaderView *incomingView, const QString &incomingFilePath);
     QVector<HighlightExporter::ExportEntry> buildExportEntries() const;
     // Every RecentFiles entry with at least one highlight, most-recently-
     // opened first (same order RecentFiles::list() already returns) --
@@ -109,6 +116,12 @@ private:
     SearchDock *m_searchDock = nullptr;
     BookInfoDock *m_bookInfoDock = nullptr;
     FormFieldsDock *m_formFieldsDock = nullptr;
+    ReadingStatsDock *m_readingStatsDock = nullptr;
+    // The one open reading session at a time -- see its own header comment.
+    // Started/stopped from onTabChanged() (switching the outgoing tab's
+    // session off before the incoming one's goes on) and flushed from
+    // closeEvent() so the last stretch of reading isn't lost on quit.
+    ReadingSessionTracker m_sessionTracker;
     BookMetadataClient *m_bookMetadataClient = nullptr;
     QMenu *m_openRecentMenu = nullptr;
     QMenu *m_syncMenu = nullptr;

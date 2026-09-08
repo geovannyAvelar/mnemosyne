@@ -52,12 +52,20 @@ ApplicationWindow {
                 }
             }
             onSettingsRequested: stackView.push(settingsScreenComponent)
+            onStatsRequested: stackView.push(statsScreenComponent)
         }
     }
 
     Component {
         id: settingsScreenComponent
         SettingsScreen {
+            onBackRequested: stackView.pop()
+        }
+    }
+
+    Component {
+        id: statsScreenComponent
+        StatsScreen {
             onBackRequested: stackView.pop()
         }
     }

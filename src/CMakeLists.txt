@@ -28,6 +28,10 @@ set(MNEMOSYNE_CORE_SOURCES
     app/CollectionStore.cpp
     app/TagStore.h
     app/TagStore.cpp
+    app/ReadingStatsStore.h
+    app/ReadingStatsStore.cpp
+    app/ReadingSessionTracker.h
+    app/ReadingSessionTracker.cpp
     app/SingleInstanceGuard.h
     app/SingleInstanceGuard.cpp
     app/BookMetadataClient.h
@@ -209,6 +213,8 @@ set(MNEMOSYNE_QUICK_SOURCES
     quick/EpubReaderModel.cpp
     quick/HighlightsModel.h
     quick/HighlightsModel.cpp
+    quick/ReadingStatsModel.h
+    quick/ReadingStatsModel.cpp
     quick/PdfSelectionController.h
     quick/PdfSelectionController.cpp
     quick/SyncController.h
@@ -264,6 +270,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/BookInfoDock.cpp
     ui/FormFieldsDock.h
     ui/FormFieldsDock.cpp
+    ui/ReadingStatsDock.h
+    ui/ReadingStatsDock.cpp
     ui/NoteDialog.h
     ui/NoteDialog.cpp
     ui/NotePopup.h
@@ -438,6 +446,7 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/components/BookOrganizeSheet.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
+        ${CMAKE_SOURCE_DIR}/qml/StatsScreen.qml
     )
     foreach(_qml_file ${MNEMOSYNE_ANDROID_QML_FILES})
         # Relative to qml/, not just the basename, so
@@ -553,6 +562,7 @@ elseif(IOS)
         ${CMAKE_SOURCE_DIR}/qml/components/BookOrganizeSheet.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
+        ${CMAKE_SOURCE_DIR}/qml/StatsScreen.qml
     )
     foreach(_qml_file ${MNEMOSYNE_IOS_QML_FILES})
         file(RELATIVE_PATH _qml_alias ${CMAKE_SOURCE_DIR}/qml ${_qml_file})

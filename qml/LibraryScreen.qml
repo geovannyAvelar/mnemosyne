@@ -9,6 +9,7 @@ Item {
 
     signal fileActivated(string filePath, string title, string format)
     signal settingsRequested()
+    signal statsRequested()
 
     // Shelves/tags (see app/CollectionStore.h, app/TagStore.h) filter the
     // grid below via libraryModel's own collectionFilter/tagFilter
@@ -77,6 +78,12 @@ Item {
             }
 
             Item { Layout.fillWidth: true }
+
+            Button {
+                text: "📊"
+                flat: true
+                onClicked: root.statsRequested()
+            }
 
             Button {
                 text: "⚙"

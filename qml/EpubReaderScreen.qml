@@ -30,7 +30,14 @@ Item {
 
     required property var documentModel
 
-    Component.onDestruction: documentModel.close()
+    // Must read currentSpineIndex before close() below resets it. See
+    // app/ReadingSessionTracker.h -- start() pairs with this from
+    // Component.onCompleted below, the mobile equivalent of desktop
+    // MainWindow's own start()/stop() pair around a tab switch.
+    Component.onDestruction: {
+        readingSessionTracker.stop(documentModel.currentSpineIndex)
+        documentModel.close()
+    }
 
     Connections {
         target: highlightsModel
@@ -138,6 +145,7 @@ Item {
     Component.onCompleted: {
         highlightsModel.bookHash = root.documentModel.bookHash
         loadCurrentChapter()
+        readingSessionTracker.start(root.documentModel.bookHash, root.documentModel.currentSpineIndex)
     }
 
     // Highlight action, separate from chapter navigation below — combining

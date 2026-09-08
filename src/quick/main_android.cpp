@@ -5,9 +5,11 @@
 #include "PdfDocumentModel.h"
 #include "PdfPageImageProvider.h"
 #include "PdfSelectionController.h"
+#include "ReadingStatsModel.h"
 #include "SmokeTestBridge.h"
 #include "SyncController.h"
 #include "ThemeSettings.h"
+#include "app/ReadingSessionTracker.h"
 
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
@@ -37,6 +39,8 @@ int main(int argc, char *argv[])
     PdfSelectionController pdfSelectionController(&pdfDocumentModel);
     SyncController syncController;
     ThemeSettings themeSettings;
+    ReadingStatsModel readingStatsModel;
+    ReadingSessionTracker readingSessionTracker;
 
     QQmlContext *context = engine.rootContext();
     context->setContextProperty("smokeTestBridge", &smokeTestBridge);
@@ -48,6 +52,8 @@ int main(int argc, char *argv[])
     context->setContextProperty("pdfSelectionController", &pdfSelectionController);
     context->setContextProperty("syncController", &syncController);
     context->setContextProperty("themeSettings", &themeSettings);
+    context->setContextProperty("readingStatsModel", &readingStatsModel);
+    context->setContextProperty("readingSessionTracker", &readingSessionTracker);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);

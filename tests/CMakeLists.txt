@@ -43,6 +43,12 @@ target_link_libraries(app_persistence_test PRIVATE mnemosynecore Qt6::Test)
 
 add_test(NAME AppPersistenceTest COMMAND app_persistence_test)
 
+qt_add_executable(reading_stats_test ReadingStatsTest.cpp)
+
+target_link_libraries(reading_stats_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME ReadingStatsTest COMMAND reading_stats_test)
+
 qt_add_executable(single_instance_guard_test SingleInstanceGuardTest.cpp)
 
 target_link_libraries(single_instance_guard_test PRIVATE mnemosynecore Qt6::Test)
@@ -213,6 +219,12 @@ qt_add_executable(content_uri_cache_test ContentUriCacheTest.cpp)
 target_link_libraries(content_uri_cache_test PRIVATE mnemosynequick Qt6::Test)
 
 add_test(NAME ContentUriCacheTest COMMAND content_uri_cache_test)
+
+qt_add_executable(reading_stats_model_test ReadingStatsModelTest.cpp)
+
+target_link_libraries(reading_stats_model_test PRIVATE mnemosynequick Qt6::Test)
+
+add_test(NAME ReadingStatsModelTest COMMAND reading_stats_model_test)
 
 qt_add_executable(library_model_test LibraryModelTest.cpp)
 

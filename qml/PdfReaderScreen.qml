@@ -55,12 +55,21 @@ Item {
         root.documentModel.zoom = 1.0
         pageList.committedZoom = 1.0
         pageList.positionViewAtIndex(root.documentModel.currentPage, ListView.Beginning)
+        // See app/ReadingSessionTracker.h -- ends automatically (from this
+        // component's own onDestruction below) whenever this screen leaves
+        // the StackView, the mobile equivalent of desktop MainWindow's own
+        // start()/stop() pair around a tab switch.
+        readingSessionTracker.start(root.documentModel.bookHash, root.documentModel.currentPage)
     }
 
     // Frees the Poppler document and blocks until any in-flight page
     // render finishes (see PdfPageImageProvider::setDocument) as soon as
     // this screen leaves the StackView, not just when the app closes.
-    Component.onDestruction: documentModel.close()
+    Component.onDestruction: {
+        // Must read currentPage before close() below resets it.
+        readingSessionTracker.stop(documentModel.currentPage)
+        documentModel.close()
+    }
 
     Connections {
         target: root.documentModel
