@@ -31,6 +31,12 @@ target_compile_definitions(mobi_document_test PRIVATE FIXTURES_DIR="${CMAKE_CURR
 
 add_test(NAME MobiDocumentTest COMMAND mobi_document_test)
 
+qt_add_executable(embedded_image_html_test EmbeddedImageHtmlTest.cpp)
+
+target_link_libraries(embedded_image_html_test PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME EmbeddedImageHtmlTest COMMAND embedded_image_html_test)
+
 qt_add_executable(app_persistence_test AppPersistenceTest.cpp)
 
 target_link_libraries(app_persistence_test PRIVATE mnemosynecore Qt6::Test)

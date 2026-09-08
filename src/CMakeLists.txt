@@ -18,6 +18,8 @@ set(MNEMOSYNE_CORE_SOURCES
     core/PdfSelectionModel.cpp
     core/HtmlAttrUtil.h
     core/HtmlAttrUtil.cpp
+    core/EmbeddedImageHtml.h
+    core/EmbeddedImageHtml.cpp
     app/RecentFiles.h
     app/RecentFiles.cpp
     app/SingleInstanceGuard.h

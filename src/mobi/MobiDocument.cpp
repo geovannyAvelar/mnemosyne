@@ -1,9 +1,12 @@
 #include "MobiDocument.h"
 
+#include "core/EmbeddedImageHtml.h"
+
 #include <mobi.h>
 
 #include <QFileInfo>
 #include <QHash>
+#include <QImage>
 #include <QObject>
 #include <QRegularExpression>
 
@@ -11,6 +14,12 @@
 #include <cstdlib>
 
 namespace {
+
+// See embedMobiImages()'s doc comment: an image wider than this gets
+// explicit pixel width/height attributes scaling it down to fit, since
+// QTextDocument doesn't honor CSS percentage sizing at all. Matches
+// EpubDocument's identical cap (chapterHtml()'s own image-embedding pass).
+constexpr int kMaxEmbeddedImageWidth = 720;
 
 // NCX index tag ids, straight from the Mobipocket/KF8 index format itself
 // (mirrored from libmobi's INDX_TAG_NCX_* constants in its internal,
@@ -97,6 +106,77 @@ QImage extractCover(const MOBIData *m)
         return {};
     }
     return QImage::fromData(record->data, static_cast<int>(record->size));
+}
+
+// A markup part's <img> references an image resource by a "fid" string, in
+// one of two formats depending on which generation produced the file:
+// Mobipocket/KF7 as a bare attribute (<img recindex="00001">), KF8 as part
+// of the src URL (<img src="kindle:embed:0001?mime=image/jpeg">) -- both a
+// 1-based index into the *original file's* resource records in physical
+// order (see EmbeddedImageHtml::mobiImageReference(), which extracts
+// whichever one is present, leading zeros and all -- mobi_get_resource_by_fid()
+// parses either padded or unpadded digit strings itself).
+//
+// Deliberately NOT a fallback to mobi_get_resource_by_uid() treating the
+// same string as a raw MOBIPart::uid: verified empirically against a real
+// multi-resource file (a public-domain sample, not committed as a test
+// fixture -- see EmbeddedImageHtmlTest.cpp's own doc comment for why no
+// fixture exists) that fid numbering has gaps relative to rawml->resources'
+// list position (e.g. fid 2 resolved to nothing even though a 2nd resource
+// existed at fid 3 -- some record in the file's original recindex sequence
+// wasn't reconstructed into this list at all, most likely a FLIS/FCIS/EOF
+// record consuming a slot), and MOBIPart::uid values in that same list were
+// 0, 2, 3, 4 -- i.e. completely unrelated to fid position. Treating a fid
+// string as a uid on a failed fid lookup wouldn't be a safety net, it would
+// silently embed the wrong image.
+MOBIPart *resolveImageResource(const MOBIRawml *rawml, const QString &ref)
+{
+    const QByteArray refUtf8 = ref.toUtf8();
+    return mobi_get_resource_by_fid(rawml, refUtf8.constData());
+}
+
+bool isImageResourceType(MOBIFiletype type)
+{
+    return type == T_JPG || type == T_GIF || type == T_PNG || type == T_BMP;
+}
+
+// Mirrors EpubDocument::chapterHtml()'s image-embedding pass: rewrites
+// every <img> that references an image resource (see resolveImageResource()
+// above) to a self-contained data: URI (EmbeddedImageHtml::
+// rewriteImgTagWithDataUri()), so QTextBrowser (which has no concept of
+// this archive's resources -- it only resolves real filesystem/Qt-resource
+// paths) can render it with no custom resource loader needed. A <img>
+// whose resource isn't found, or isn't one of the image types (a
+// font/audio/video resource referenced by a mistagged tag, or a plain
+// broken reference), is left untouched -- QTextBrowser then renders it
+// exactly like a plain EPUB <img> with no src: silently absent.
+QString embedMobiImages(const QString &html, const MOBIRawml *rawml)
+{
+    static const QRegularExpression imgRe(QStringLiteral("<img\\b[^>]*>"), QRegularExpression::CaseInsensitiveOption);
+
+    QString transformed;
+    transformed.reserve(html.size());
+    int lastPos = 0;
+    auto it = imgRe.globalMatch(html);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        QString tag = m.captured(0);
+
+        const QString ref = EmbeddedImageHtml::mobiImageReference(tag);
+        MOBIPart *resource = ref.isEmpty() ? nullptr : resolveImageResource(rawml, ref);
+        if (resource && isImageResourceType(resource->type) && resource->data && resource->size > 0) {
+            const QByteArray imgData(reinterpret_cast<const char *>(resource->data), static_cast<int>(resource->size));
+            const MOBIFileMeta meta = mobi_get_filemeta_by_type(resource->type);
+            tag = EmbeddedImageHtml::rewriteImgTagWithDataUri(tag, imgData, QString::fromLatin1(meta.mime_type),
+                                                               kMaxEmbeddedImageWidth);
+        }
+
+        transformed += html.mid(lastPos, m.capturedStart() - lastPos);
+        transformed += tag;
+        lastPos = m.capturedEnd();
+    }
+    transformed += html.mid(lastPos);
+    return transformed;
 }
 
 // CP1252 matches Latin-1 one-for-one except for 0x80-0x9F, which CP1252
@@ -281,12 +361,17 @@ std::unique_ptr<MobiDocument> MobiDocument::load(const QString &filePath, QStrin
     document->m_cover = extractCover(m);
 
     // rawml->markup is the linked list of reconstructed chapter-like HTML
-    // parts (as opposed to ->flow for CSS and ->resources for images/OPF).
+    // parts (as opposed to ->flow for CSS and ->resources for images/fonts).
+    // Images are embedded (see embedMobiImages()) once here at load time,
+    // not lazily per-access -- unlike EpubDocument, every part's HTML is
+    // already held in memory for the document's whole lifetime regardless
+    // (m_partHtml), so there's no separate "loaded" moment to defer to.
     QHash<size_t, int> partIndexByUid;
     for (MOBIPart *part = rawml->markup; part; part = part->next) {
         partIndexByUid.insert(part->uid, document->m_partHtml.size());
-        document->m_partHtml.append(
-            QString::fromUtf8(reinterpret_cast<const char *>(part->data), static_cast<int>(part->size)));
+        const QString rawHtml =
+            QString::fromUtf8(reinterpret_cast<const char *>(part->data), static_cast<int>(part->size));
+        document->m_partHtml.append(embedMobiImages(rawHtml, rawml));
     }
 
     document->m_toc = buildTableOfContents(rawml->ncx, partIndexByUid);
