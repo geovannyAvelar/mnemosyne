@@ -92,6 +92,36 @@ Flickable {
         function onModelReset() { root.refreshHighlights() }
     }
 
+    // The note-bearing highlight NotePopup is currently showing for, or
+    // null when it's closed -- one of the entries out of pageHighlights
+    // (so it carries "row"/"pageRect"/"note" straight through). Tapping a
+    // highlight with a non-empty note opens this instead of toggling the
+    // top/bottom bars (see the MouseArea below); tapping anywhere else
+    // while it's open closes it instead of also toggling the bars, the
+    // usual "first tap dismisses the popup" popup convention.
+    property var activeNoteHighlight: null
+
+    // px/py are in this page's content-space coordinates (same space
+    // pageHighlights' Rectangle delegates above are drawn in) -- i.e.
+    // already the coordinates a tap inside pageImage arrives in, not
+    // page-space points. Returns the first note-bearing highlight whose
+    // rect contains the point, or null.
+    function findNoteHighlightAt(px, py) {
+        for (const h of root.pageHighlights) {
+            if (!h.note) {
+                continue
+            }
+            const rx = h.pageRect.x * root.renderScale
+            const ry = h.pageRect.y * root.renderScale
+            const rw = h.pageRect.width * root.renderScale
+            const rh = h.pageRect.height * root.renderScale
+            if (px >= rx && px <= rx + rw && py >= ry && py <= ry + rh) {
+                return h
+            }
+        }
+        return null
+    }
+
     Image {
         id: pageImage
         // No horizontal centering: this sits in Flickable content space
@@ -224,7 +254,32 @@ Flickable {
         // gets input priority — a hit-test candidate declared earlier in
         // the same parent lost out to later siblings in earlier testing.
         anchors.fill: parent
-        onClicked: root.tapped()
+        onClicked: (mouse) => {
+            if (root.activeNoteHighlight !== null) {
+                root.activeNoteHighlight = null
+                return
+            }
+            const hit = root.findNoteHighlightAt(mouse.x, mouse.y)
+            if (hit !== null) {
+                root.activeNoteHighlight = hit
+            } else {
+                root.tapped()
+            }
+        }
+    }
+
+    NotePopup {
+        visible: root.activeNoteHighlight !== null
+        parent: pageImage
+        noteText: root.activeNoteHighlight !== null ? root.activeNoteHighlight.note : ""
+        x: root.activeNoteHighlight !== null ? root.activeNoteHighlight.pageRect.x * root.renderScale : 0
+        y: root.activeNoteHighlight !== null
+           ? Math.max(0, root.activeNoteHighlight.pageRect.y * root.renderScale - height - 8) : 0
+        onRemoveRequested: {
+            highlightsModel.removeHighlightAt(root.activeNoteHighlight.row)
+            root.activeNoteHighlight = null
+        }
+        onCloseRequested: root.activeNoteHighlight = null
     }
 
     // Only the FIRST page a (possibly multi-page) selection spans shows the
@@ -278,5 +333,9 @@ Flickable {
         if (pdfSelectionController.selectionPageIndices.indexOf(root.index) >= 0) {
             pdfSelectionController.clearSelection()
         }
+        // Same reasoning, for NotePopup: don't leave it open referencing a
+        // "row" from a delegate ListView just recycled for a different page
+        // index.
+        root.activeNoteHighlight = null
     }
 }

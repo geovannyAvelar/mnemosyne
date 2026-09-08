@@ -28,6 +28,9 @@ private slots:
     void setBookHashPullsRemoteHighlightsAndResetsModel();
     void setBookHashWithNoRemoteDataLeavesModelAsIs();
 
+    void highlightsForTargetFiltersByPageAndIncludesNote();
+    void highlightsForTargetRowMatchesRemoveHighlightAt();
+
 private:
     std::unique_ptr<QTemporaryDir> m_syncDir;
 };
@@ -84,6 +87,66 @@ void HighlightsModelTest::setBookHashWithNoRemoteDataLeavesModelAsIs()
 
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.data(model.index(0, 0), HighlightsModel::TextRole).toString(), QStringLiteral("local only"));
+}
+
+void HighlightsModelTest::highlightsForTargetFiltersByPageAndIncludesNote()
+{
+    // See qml/components/PdfContinuousPageItem.qml's tap-to-view-note hit
+    // test (NotePopup) -- it filters this Q_INVOKABLE's own return value by
+    // the "note" field, so that field has to actually be populated, not
+    // just "row"/"pageRect"/"text" (the fields SelectionToolbar's highlight
+    // rendering already exercised before this was added).
+    const QString bookHash = QStringLiteral("book-mobile-notes");
+    HighlightStore::addHighlight(
+        bookHash, Highlight{0, QRectF(1, 2, 30, 40), QStringLiteral("page 0, no note"), QDateTime::currentDateTime()});
+    HighlightStore::addHighlight(
+        bookHash, Highlight{0, QRectF(5, 6, 30, 40), QStringLiteral("page 0, with note"), QDateTime::currentDateTime()});
+    HighlightStore::addHighlight(
+        bookHash, Highlight{1, QRectF(0, 0, 30, 40), QStringLiteral("page 1"), QDateTime::currentDateTime()});
+    HighlightStore::setNote(bookHash, 1, QStringLiteral("a note on the second page-0 highlight"));
+
+    HighlightsModel model;
+    model.setBookHash(bookHash);
+
+    const QVariantList page0 = model.highlightsForTarget(0);
+    QCOMPARE(page0.size(), 2);
+
+    bool sawNoted = false;
+    for (const QVariant &entry : page0) {
+        const QVariantMap map = entry.toMap();
+        if (map["text"].toString() == QStringLiteral("page 0, with note")) {
+            QCOMPARE(map["note"].toString(), QStringLiteral("a note on the second page-0 highlight"));
+            sawNoted = true;
+        } else {
+            QVERIFY(map["note"].toString().isEmpty());
+        }
+    }
+    QVERIFY(sawNoted);
+
+    QCOMPARE(model.highlightsForTarget(1).size(), 1);
+    QVERIFY(model.highlightsForTarget(2).isEmpty()); // no highlights on this page
+}
+
+void HighlightsModelTest::highlightsForTargetRowMatchesRemoveHighlightAt()
+{
+    const QString bookHash = QStringLiteral("book-mobile-remove");
+    HighlightStore::addHighlight(bookHash,
+                                  Highlight{0, QRectF(), QStringLiteral("keep me"), QDateTime::currentDateTime()});
+    HighlightStore::addHighlight(bookHash,
+                                  Highlight{0, QRectF(), QStringLiteral("remove me"), QDateTime::currentDateTime()});
+
+    HighlightsModel model;
+    model.setBookHash(bookHash);
+
+    const QVariantList page0 = model.highlightsForTarget(0);
+    QCOMPARE(page0.size(), 2);
+    const QVariantMap toRemove = page0[1].toMap();
+    QCOMPARE(toRemove["text"].toString(), QStringLiteral("remove me"));
+
+    model.removeHighlightAt(toRemove["row"].toInt());
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0, 0), HighlightsModel::TextRole).toString(), QStringLiteral("keep me"));
 }
 
 QTEST_MAIN(HighlightsModelTest)

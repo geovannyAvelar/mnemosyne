@@ -83,6 +83,7 @@ QVariantList HighlightsModel::highlightsForTarget(int targetIndex) const
         entry["row"] = i; // for removeHighlightAt
         entry["pageRect"] = highlight.pageRect;
         entry["text"] = highlight.text;
+        entry["note"] = highlight.note; // empty for a plain highlight -- see NotePopup.qml's tap hit-test
         result.append(entry);
     }
     return result;

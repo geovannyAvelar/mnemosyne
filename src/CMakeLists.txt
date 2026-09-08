@@ -430,6 +430,7 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/components/PdfContinuousPageItem.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SelectionToolbar.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SyncPromptBar.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/NotePopup.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
     )
@@ -543,6 +544,7 @@ elseif(IOS)
         ${CMAKE_SOURCE_DIR}/qml/components/PdfContinuousPageItem.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SelectionToolbar.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SyncPromptBar.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/NotePopup.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
     )
