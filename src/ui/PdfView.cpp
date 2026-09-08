@@ -4,6 +4,7 @@
 #include "core/SearchUtil.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/NoteDialog.h"
+#include "ui/NotePopup.h"
 #include "ui/PdfPageStackView.h"
 #include "ui/ReadingProgressController.h"
 #include "ui/SyncPromptBar.h"
@@ -286,6 +287,7 @@ void PdfView::setupUi()
 
     m_pageStackView = new PdfPageStackView(this);
     connect(m_pageStackView, &PdfPageStackView::contextMenuRequested, this, &PdfView::showCanvasContextMenu);
+    connect(m_pageStackView, &PdfPageStackView::clicked, this, &PdfView::showNotePopupIfClickedOnNote);
 
     // Applied after m_pageStackView exists (the toggled() handler above
     // dereferences it) -- restores last session's choice, matching what the
@@ -523,6 +525,37 @@ void PdfView::showCanvasContextMenu(const QPoint &globalPos, int pageIndex, cons
     }
 
     menu.exec(globalPos);
+}
+
+void PdfView::showNotePopupIfClickedOnNote(int pageIndex, const QPointF &pagePoint, const QPoint &globalPos)
+{
+    const int highlightIndex = m_highlightController.indexAtPagePoint(pagePoint, pageIndex);
+    if (highlightIndex < 0) {
+        return;
+    }
+    const QString note = m_highlightController.highlights()[highlightIndex].note;
+    if (note.isEmpty()) {
+        return; // a plain highlight with no note -- nothing to show here
+    }
+
+    NotePopup::show(
+        this, globalPos, note,
+        [this, highlightIndex] {
+            const std::optional<NoteDialog::Result> result =
+                NoteDialog::show(this, m_highlightController.highlights()[highlightIndex].note,
+                                  m_highlightController.highlights()[highlightIndex].color);
+            if (!result) {
+                return;
+            }
+            m_highlightController.setNote(highlightIndex, result->note, result->color);
+            m_pageStackView->setHighlights(m_highlightController.highlights());
+            emit highlightsChanged();
+        },
+        [this, highlightIndex] {
+            m_highlightController.removeHighlight(highlightIndex);
+            m_pageStackView->setHighlights(m_highlightController.highlights());
+            emit highlightsChanged();
+        });
 }
 
 void PdfView::flushProgress()

@@ -254,6 +254,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/BookInfoDock.cpp
     ui/NoteDialog.h
     ui/NoteDialog.cpp
+    ui/NotePopup.h
+    ui/NotePopup.cpp
     ui/LibraryView.h
     ui/LibraryView.cpp
     ui/ThumbnailProvider.h

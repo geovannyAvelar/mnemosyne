@@ -76,6 +76,10 @@ private:
     void setZoom(qreal newZoom);
     void updateNavigationState();
     void showCanvasContextMenu(const QPoint &globalPos, int pageIndex, const QPointF &pagePoint);
+    // A plain click (no drag) landed at pagePoint on pageIndex -- shows a
+    // NotePopup if it hit an existing highlight that has a note. See
+    // PdfPageStackView::clicked()'s own doc comment.
+    void showNotePopupIfClickedOnNote(int pageIndex, const QPointF &pagePoint, const QPoint &globalPos);
 
     std::unique_ptr<IDocument> m_document;
     QString m_filePath;

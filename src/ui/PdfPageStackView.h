@@ -177,6 +177,14 @@ signals:
     // HighlightStore, which this widget doesn't know about).
     void contextMenuRequested(const QPoint &globalPos, int pageIndex, const QPointF &pagePoint);
 
+    // Fired from mouseReleaseEvent() for a plain click -- a press/release
+    // with no meaningful drag between them (see kMinSelectionPixels) -- so
+    // PdfView can hit-test it against m_highlightController (which, like
+    // contextMenuRequested's HighlightStore access above, this widget has
+    // no knowledge of) and show a note popup if it landed on a highlight
+    // that has one. Not fired for a drag that commits a text selection.
+    void clicked(int pageIndex, const QPointF &pagePoint, const QPoint &globalPos);
+
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;

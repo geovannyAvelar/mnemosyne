@@ -567,6 +567,8 @@ void PdfPageStackView::mouseReleaseEvent(QMouseEvent *event)
         m_selectionModel.updateSelection(pageIndex, toPagePoint(m_dragFocusPixel, pageIndex), words);
     } else {
         m_selectionModel.clearSelection();
+        const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+        emit clicked(pageIndex, toPagePoint(event->pos(), pageIndex), mapToGlobal(event->pos()));
     }
     refreshLiveSelectionRects();
 }
