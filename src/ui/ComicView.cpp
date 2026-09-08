@@ -7,11 +7,13 @@
 #endif
 #include "app/ProgressSyncLog.h"
 #include "app/ReadingProgressStore.h"
+#include "ui/ComicReadingSettings.h"
 #include "ui/PdfPageCanvas.h"
 #include "ui/SyncPromptBar.h"
 
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPainter>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
@@ -34,6 +36,8 @@ ComicView::ComicView(std::unique_ptr<CbzDocument> document, QString filePath, QW
     : QWidget(parent)
     , m_document(std::move(document))
     , m_filePath(std::move(filePath))
+    , m_doublePage(ComicReadingSettings::doublePageMode())
+    , m_rightToLeft(ComicReadingSettings::rightToLeft())
 {
     setupUi();
     restoreProgressAndCheckSync(); // sets m_currentPage/m_zoom before the first render, so there's no visible jump
@@ -92,6 +96,19 @@ void ComicView::setupUi()
     connect(zoomOutButton, &QPushButton::clicked, this, &ComicView::zoomOut);
     connect(zoomInButton, &QPushButton::clicked, this, &ComicView::zoomIn);
 
+    m_doublePageButton = new QPushButton(tr("Two-Page"), toolbar);
+    m_doublePageButton->setCheckable(true);
+    m_doublePageButton->setChecked(m_doublePage);
+    m_doublePageButton->setToolTip(tr("Show two pages side by side"));
+    connect(m_doublePageButton, &QPushButton::toggled, this, &ComicView::setDoublePageMode);
+
+    m_rightToLeftButton = new QPushButton(tr("R→L"), toolbar);
+    m_rightToLeftButton->setCheckable(true);
+    m_rightToLeftButton->setChecked(m_rightToLeft);
+    m_rightToLeftButton->setEnabled(m_doublePage);
+    m_rightToLeftButton->setToolTip(tr("Right-to-left (manga) reading order"));
+    connect(m_rightToLeftButton, &QPushButton::toggled, this, &ComicView::setRightToLeft);
+
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_pageSpinBox);
     toolbarLayout->addWidget(m_pageCountLabel);
@@ -99,6 +116,8 @@ void ComicView::setupUi()
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
+    toolbarLayout->addWidget(m_doublePageButton);
+    toolbarLayout->addWidget(m_rightToLeftButton);
 
     m_canvas = new PdfPageCanvas(this);
 
@@ -125,6 +144,9 @@ void ComicView::goToPage(int index)
         return;
     }
     index = std::clamp(index, 0, m_document->pageCount() - 1);
+    if (m_doublePage) {
+        index -= index % 2; // snap down to the pair's starting (even) index
+    }
     if (index == m_currentPage) {
         updateNavigationState();
         return;
@@ -137,12 +159,38 @@ void ComicView::goToPage(int index)
 
 void ComicView::nextPage()
 {
-    goToPage(m_currentPage + 1);
+    goToPage(m_currentPage + (m_doublePage ? 2 : 1));
 }
 
 void ComicView::previousPage()
 {
-    goToPage(m_currentPage - 1);
+    goToPage(m_currentPage - (m_doublePage ? 2 : 1));
+}
+
+void ComicView::setDoublePageMode(bool enabled)
+{
+    if (m_doublePage == enabled) {
+        return;
+    }
+    m_doublePage = enabled;
+    ComicReadingSettings::setDoublePageMode(enabled);
+    m_rightToLeftButton->setEnabled(enabled);
+    // goToPage() itself snaps to the pair's starting index under the new
+    // mode, but takes a shortcut (no re-render) when that index turns out
+    // to equal m_currentPage already -- wrong here, since the *composed*
+    // image (one page vs. a spread) still needs to change either way.
+    goToPage(m_currentPage);
+    renderCurrentPage();
+}
+
+void ComicView::setRightToLeft(bool enabled)
+{
+    if (m_rightToLeft == enabled) {
+        return;
+    }
+    m_rightToLeft = enabled;
+    ComicReadingSettings::setRightToLeft(enabled);
+    renderCurrentPage();
 }
 
 void ComicView::zoomIn()
@@ -165,13 +213,49 @@ void ComicView::renderCurrentPage()
         return;
     }
 
-    std::unique_ptr<IPage> page = m_document->page(m_currentPage);
-    if (!page) {
+    std::unique_ptr<IPage> firstPage = m_document->page(m_currentPage);
+    if (!firstPage) {
+        return;
+    }
+    const QImage firstImage = firstPage->renderToImage(m_zoom);
+
+    // Single page: not in double-page mode, or m_currentPage is the last
+    // page of an odd-paged comic with no partner left to pair it with.
+    const bool hasPartner = m_doublePage && m_currentPage + 1 < m_document->pageCount();
+    if (!hasPartner) {
+        m_canvas->setPage(firstImage, m_zoom);
         return;
     }
 
-    const QImage image = page->renderToImage(m_zoom);
-    m_canvas->setPage(image, m_zoom);
+    std::unique_ptr<IPage> secondPage = m_document->page(m_currentPage + 1);
+    const QImage secondImage = secondPage ? secondPage->renderToImage(m_zoom) : QImage();
+    if (secondImage.isNull()) {
+        m_canvas->setPage(firstImage, m_zoom);
+        return;
+    }
+
+    // Right-to-left (manga): the lower-index page -- the one read first --
+    // goes on the right, the higher-index one on the left; the reverse of
+    // normal left-to-right order.
+    const QImage &leftImage = m_rightToLeft ? secondImage : firstImage;
+    const QImage &rightImage = m_rightToLeft ? firstImage : secondImage;
+
+    // Pages aren't guaranteed the same height (a variant cover, a scan at a
+    // different resolution) -- top-aligned side by side into one canvas
+    // tall enough for the taller of the two, with a thin gap so the spread
+    // doesn't read as a single unbroken image.
+    constexpr int kGapPx = 4;
+    const int width = leftImage.width() + kGapPx + rightImage.width();
+    const int height = std::max(leftImage.height(), rightImage.height());
+
+    QImage spread(width, height, QImage::Format_ARGB32_Premultiplied);
+    spread.fill(Qt::white);
+    QPainter painter(&spread);
+    painter.drawImage(0, 0, leftImage);
+    painter.drawImage(leftImage.width() + kGapPx, 0, rightImage);
+    painter.end();
+
+    m_canvas->setPage(spread, m_zoom);
 }
 
 void ComicView::updateNavigationState()

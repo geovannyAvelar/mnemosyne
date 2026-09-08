@@ -260,6 +260,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/NotePopup.cpp
     ui/TextReaderTypography.h
     ui/TextReaderTypography.cpp
+    ui/ComicReadingSettings.h
+    ui/ComicReadingSettings.cpp
     ui/TypographyPopup.h
     ui/TypographyPopup.cpp
     ui/LibraryView.h

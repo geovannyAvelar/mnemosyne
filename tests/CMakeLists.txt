@@ -95,6 +95,13 @@ target_link_libraries(text_reader_typography_test PRIVATE mnemosynedesktopui Qt6
 
 add_test(NAME TextReaderTypographyTest COMMAND text_reader_typography_test)
 
+qt_add_executable(comic_view_test ComicViewTest.cpp)
+
+target_link_libraries(comic_view_test PRIVATE mnemosynedesktopui Qt6::Test)
+target_compile_definitions(comic_view_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME ComicViewTest COMMAND comic_view_test)
+
 if(MNEMOSYNE_ENABLE_HTML)
     qt_add_executable(html_view_test HtmlViewTest.cpp)
 
