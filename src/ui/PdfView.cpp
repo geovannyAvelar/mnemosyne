@@ -19,6 +19,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSettings>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -257,19 +258,22 @@ void PdfView::setupUi()
     connect(zoomOutButton, &QPushButton::clicked, this, &PdfView::zoomOut);
     connect(zoomInButton, &QPushButton::clicked, this, &PdfView::zoomIn);
 
-    // Per-document page color inversion -- distinct from the app-wide Dark
-    // Mode menu action (which only restyles the UI chrome/EPUB-MOBI-TXT-
-    // Markdown text; see MainWindow::setDarkModeEnabled()). PDF pages are
-    // rasterized by Poppler with a fixed white background baked in, so
-    // there's no stylesheet to swap -- inverting the rendered image (see
-    // PdfPageStackView::setInvertColors()) is the only way to darken one,
-    // and unlike app Dark Mode it's a per-view toggle the reader controls
-    // directly rather than something that follows the app theme.
+    // Page color inversion -- distinct from the app-wide Dark Mode menu
+    // action (which only restyles the UI chrome/EPUB-MOBI-TXT-Markdown
+    // text; see MainWindow::setDarkModeEnabled()). PDF pages are rasterized
+    // by Poppler with a fixed white background baked in, so there's no
+    // stylesheet to swap -- inverting the rendered image (see
+    // PdfPageStackView::setInvertColors()) is the only way to darken one.
+    // Persisted under its own "pdfPageInvertColors" QSettings key (shared
+    // with the Qt Quick side's ThemeSettings::pdfPageDark), separate from
+    // "darkMode" so it doesn't follow the app theme.
     auto *pageDarkButton = new QPushButton(tr("Invert"), toolbar);
     pageDarkButton->setCheckable(true);
     pageDarkButton->setToolTip(tr("Invert this page's colors (dark background)"));
-    connect(pageDarkButton, &QPushButton::toggled, this,
-            [this](bool checked) { m_pageStackView->setInvertColors(checked); });
+    connect(pageDarkButton, &QPushButton::toggled, this, [this](bool checked) {
+        m_pageStackView->setInvertColors(checked);
+        QSettings().setValue(QStringLiteral("pdfPageInvertColors"), checked);
+    });
 
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_pageSpinBox);
@@ -282,6 +286,11 @@ void PdfView::setupUi()
 
     m_pageStackView = new PdfPageStackView(this);
     connect(m_pageStackView, &PdfPageStackView::contextMenuRequested, this, &PdfView::showCanvasContextMenu);
+
+    // Applied after m_pageStackView exists (the toggled() handler above
+    // dereferences it) -- restores last session's choice, matching what the
+    // "Synced position/zoom" restore above does for page/zoom.
+    pageDarkButton->setChecked(QSettings().value(QStringLiteral("pdfPageInvertColors"), false).toBool());
 
     m_scrollArea = new QScrollArea(this);
     m_scrollArea->setWidget(m_pageStackView);

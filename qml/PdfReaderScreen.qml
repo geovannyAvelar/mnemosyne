@@ -28,16 +28,17 @@ Item {
     // hidden.
     property bool controlsVisible: true
 
-    // Per-document page color inversion -- distinct from the app-wide Dark
-    // Mode setting (themeSettings.dark, toggled from SettingsScreen), which
-    // only restyles UI chrome/EPUB-MOBI-TXT-Markdown text. PDF pages are
+    // Page color inversion -- distinct from the app-wide Dark Mode setting
+    // (themeSettings.dark, toggled from SettingsScreen), which only
+    // restyles UI chrome/EPUB-MOBI-TXT-Markdown text. PDF pages are
     // rasterized by Poppler with a fixed white background baked in, so
     // there's no stylesheet to swap -- inverting the rendered image (see
     // PdfPageImageProvider's "-dark" id suffix) is the only way to darken
-    // one, and unlike app Dark Mode it's a per-session toggle the reader
-    // controls directly via the zoom bar's button rather than something
-    // that follows the app theme.
-    property bool pageDarkMode: false
+    // one. Bound (not copied) to themeSettings.pdfPageDark so it stays live
+    // if changed elsewhere and persists across restarts under its own
+    // "pdfPageInvertColors" QSettings key -- same mechanism as "dark", just
+    // a separate key so it doesn't follow the app theme.
+    property bool pageDarkMode: themeSettings.pdfPageDark
 
     function toggleControls() {
         root.controlsVisible = !root.controlsVisible
@@ -305,7 +306,7 @@ Item {
                     flat: true
                     checkable: true
                     checked: root.pageDarkMode
-                    onToggled: root.pageDarkMode = checked
+                    onToggled: themeSettings.pdfPageDark = checked
                 }
             }
 
