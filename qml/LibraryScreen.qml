@@ -2,11 +2,34 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
+import "components"
+
 Item {
     id: root
 
     signal fileActivated(string filePath, string title, string format)
     signal settingsRequested()
+
+    // Shelves/tags (see app/CollectionStore.h, app/TagStore.h) filter the
+    // grid below via libraryModel's own collectionFilter/tagFilter
+    // properties -- these two just cache what to show as filter chips
+    // (allCollections()/allTags() are plain Q_INVOKABLEs, not NOTIFYing
+    // properties a Repeater could bind to directly). Refreshed on load and
+    // whenever BookOrganizeSheet closes, since that's the only place a
+    // shelf gets created or a tag gets typed for the first time.
+    property var _shelfNames: []
+    property var _tagNames: []
+    function refreshFilterChips() {
+        root._shelfNames = libraryModel.allCollections()
+        root._tagNames = libraryModel.allTags()
+    }
+
+    BookOrganizeSheet {
+        id: organizeSheet
+        parent: root
+        libraryModel: libraryModel
+        onClosed: root.refreshFilterChips()
+    }
 
     property string _errorMessage: ""
     function showError(message) {
@@ -103,6 +126,74 @@ Item {
             }
         }
 
+        // Shelves and tags both filter the same grid below (AND'd together
+        // when both are set) via libraryModel.collectionFilter/tagFilter --
+        // "All"/"All Tags" (empty string) is always the first chip in each
+        // row.
+        ListView {
+            Layout.fillWidth: true
+            visible: root._shelfNames.length > 0
+            implicitHeight: 32
+            orientation: ListView.Horizontal
+            spacing: 6
+            model: [""].concat(root._shelfNames)
+            delegate: Rectangle {
+                required property string modelData
+                readonly property bool isSelected: libraryModel.collectionFilter === modelData
+                height: 28
+                width: chipLabel.implicitWidth + 20
+                radius: height / 2
+                color: isSelected ? Theme.accent : Theme.panel
+                border.color: Theme.border
+                border.width: isSelected ? 0 : 1
+
+                Text {
+                    id: chipLabel
+                    anchors.centerIn: parent
+                    text: modelData.length > 0 ? modelData : qsTr("All")
+                    color: parent.isSelected ? Theme.accentText : Theme.text
+                    font.pixelSize: 12
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: libraryModel.collectionFilter = parent.modelData
+                }
+            }
+        }
+
+        ListView {
+            Layout.fillWidth: true
+            visible: root._tagNames.length > 0
+            implicitHeight: 32
+            orientation: ListView.Horizontal
+            spacing: 6
+            model: [""].concat(root._tagNames)
+            delegate: Rectangle {
+                required property string modelData
+                readonly property bool isSelected: libraryModel.tagFilter === modelData
+                height: 28
+                width: tagChipLabel.implicitWidth + 20
+                radius: height / 2
+                color: isSelected ? Theme.accent : Theme.panel
+                border.color: Theme.border
+                border.width: isSelected ? 0 : 1
+
+                Text {
+                    id: tagChipLabel
+                    anchors.centerIn: parent
+                    text: modelData.length > 0 ? modelData : qsTr("All Tags")
+                    color: parent.isSelected ? Theme.accentText : Theme.text
+                    font.pixelSize: 12
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: libraryModel.tagFilter = parent.modelData
+                }
+            }
+        }
+
         Text {
             text: qsTr("RECENT DOCUMENTS")
             color: Theme.mutedText
@@ -112,7 +203,8 @@ Item {
 
         Text {
             visible: libraryGrid.count === 0
-            text: qsTr("No recent documents yet.")
+            text: libraryModel.collectionFilter.length === 0 && libraryModel.tagFilter.length === 0
+                  ? qsTr("No recent documents yet.") : qsTr("No books match this filter.")
             color: Theme.mutedText
             font.pixelSize: 14
         }
@@ -141,6 +233,31 @@ Item {
                     MouseArea {
                         anchors.fill: parent
                         onClicked: root.fileActivated(model.filePath, model.title, model.format)
+                    }
+
+                    // Opens BookOrganizeSheet for this card's book -- a
+                    // dedicated small button rather than a long-press,
+                    // since Library has no other gesture affordance to
+                    // establish that convention (unlike e.g.
+                    // PdfContinuousPageItem's long-press-to-select, already
+                    // meaningful there). Hidden for a pre-hash Recent entry
+                    // (empty contentHash -- see LibraryModel::ContentHashRole's
+                    // doc comment): there's nothing stable to key a shelf/tag
+                    // assignment on until it's re-opened and re-recorded.
+                    Button {
+                        visible: model.contentHash.length > 0
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.margins: 4
+                        text: "⋯"
+                        flat: true
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        onClicked: {
+                            organizeSheet.bookHash = model.contentHash
+                            organizeSheet.reload()
+                            organizeSheet.open()
+                        }
                     }
 
                     ColumnLayout {
@@ -178,5 +295,8 @@ Item {
         }
     }
 
-    Component.onCompleted: libraryModel.refresh()
+    Component.onCompleted: {
+        libraryModel.refresh()
+        root.refreshFilterChips()
+    }
 }

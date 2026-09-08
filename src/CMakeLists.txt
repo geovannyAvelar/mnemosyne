@@ -24,6 +24,10 @@ set(MNEMOSYNE_CORE_SOURCES
     core/EmbeddedImageHtml.cpp
     app/RecentFiles.h
     app/RecentFiles.cpp
+    app/CollectionStore.h
+    app/CollectionStore.cpp
+    app/TagStore.h
+    app/TagStore.cpp
     app/SingleInstanceGuard.h
     app/SingleInstanceGuard.cpp
     app/BookMetadataClient.h
@@ -431,6 +435,7 @@ if(ANDROID)
         ${CMAKE_SOURCE_DIR}/qml/components/SelectionToolbar.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SyncPromptBar.qml
         ${CMAKE_SOURCE_DIR}/qml/components/NotePopup.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/BookOrganizeSheet.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
     )
@@ -545,6 +550,7 @@ elseif(IOS)
         ${CMAKE_SOURCE_DIR}/qml/components/SelectionToolbar.qml
         ${CMAKE_SOURCE_DIR}/qml/components/SyncPromptBar.qml
         ${CMAKE_SOURCE_DIR}/qml/components/NotePopup.qml
+        ${CMAKE_SOURCE_DIR}/qml/components/BookOrganizeSheet.qml
         ${CMAKE_SOURCE_DIR}/qml/EpubReaderScreen.qml
         ${CMAKE_SOURCE_DIR}/qml/SettingsScreen.qml
     )

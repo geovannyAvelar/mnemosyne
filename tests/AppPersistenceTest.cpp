@@ -1,6 +1,8 @@
+#include "app/CollectionStore.h"
 #include "app/HighlightStore.h"
 #include "app/InkStore.h"
 #include "app/RecentFiles.h"
+#include "app/TagStore.h"
 
 #include <QCoreApplication>
 #include <QSettings>
@@ -39,6 +41,22 @@ private slots:
     void clearPageRemovesOnlyThatPagesStrokes();
     void addInkStrokeAssignsStableUniqueId();
     void inkStrokeWithFewerThanTwoPointsIsDropped();
+
+    void createCollectionIsIdempotent();
+    void createCollectionWithBlankNameReturnsEmpty();
+    void addBookToCollectionCreatesItIfMissing();
+    void addBookToCollectionIsIdempotent();
+    void removeBookFromCollectionLeavesCollectionExisting();
+    void booksInCollectionReflectsMembership();
+    void renameCollectionUpdatesMembership();
+    void renameCollectionMergesIntoExistingTarget();
+    void deleteCollectionRemovesItAndMembership();
+
+    void setTagsForBookReplacesWholeSet();
+    void setTagsForBookTrimsBlanksAndDuplicates();
+    void allTagsReflectsEveryBooksTags();
+    void booksWithTagReflectsAssignment();
+    void tagsAreIsolatedPerBook();
 };
 
 void AppPersistenceTest::initTestCase()
@@ -307,6 +325,133 @@ void AppPersistenceTest::inkStrokeWithFewerThanTwoPointsIsDropped()
     const QString book = "/tmp/book.pdf";
     InkStore::addStroke(book, InkStroke{0, {QPointF(5, 5)}, Qt::black, 2.0, QString()});
     QVERIFY(InkStore::strokesFor(book).isEmpty());
+}
+
+void AppPersistenceTest::createCollectionIsIdempotent()
+{
+    QCOMPARE(CollectionStore::createCollection(QStringLiteral("  Sci-Fi  ")), QStringLiteral("Sci-Fi"));
+    QCOMPARE(CollectionStore::createCollection(QStringLiteral("Sci-Fi")), QStringLiteral("Sci-Fi"));
+    QCOMPARE(CollectionStore::allCollections(), QStringList{QStringLiteral("Sci-Fi")});
+}
+
+void AppPersistenceTest::createCollectionWithBlankNameReturnsEmpty()
+{
+    QVERIFY(CollectionStore::createCollection(QStringLiteral("   ")).isEmpty());
+    QVERIFY(CollectionStore::allCollections().isEmpty());
+}
+
+void AppPersistenceTest::addBookToCollectionCreatesItIfMissing()
+{
+    CollectionStore::addBookToCollection(QStringLiteral("book-1"), QStringLiteral("To Read"));
+    QCOMPARE(CollectionStore::allCollections(), QStringList{QStringLiteral("To Read")});
+    QCOMPARE(CollectionStore::collectionsForBook(QStringLiteral("book-1")), QStringList{QStringLiteral("To Read")});
+}
+
+void AppPersistenceTest::addBookToCollectionIsIdempotent()
+{
+    CollectionStore::addBookToCollection(QStringLiteral("book-1"), QStringLiteral("To Read"));
+    CollectionStore::addBookToCollection(QStringLiteral("book-1"), QStringLiteral("To Read"));
+    QCOMPARE(CollectionStore::booksInCollection(QStringLiteral("To Read")).size(), 1);
+}
+
+void AppPersistenceTest::removeBookFromCollectionLeavesCollectionExisting()
+{
+    CollectionStore::addBookToCollection(QStringLiteral("book-1"), QStringLiteral("To Read"));
+    CollectionStore::removeBookFromCollection(QStringLiteral("book-1"), QStringLiteral("To Read"));
+
+    QVERIFY(CollectionStore::collectionsForBook(QStringLiteral("book-1")).isEmpty());
+    // Still exists as an empty shelf -- only deleteCollection() removes it.
+    QCOMPARE(CollectionStore::allCollections(), QStringList{QStringLiteral("To Read")});
+}
+
+void AppPersistenceTest::booksInCollectionReflectsMembership()
+{
+    CollectionStore::addBookToCollection(QStringLiteral("book-1"), QStringLiteral("Favorites"));
+    CollectionStore::addBookToCollection(QStringLiteral("book-2"), QStringLiteral("Favorites"));
+    CollectionStore::addBookToCollection(QStringLiteral("book-3"), QStringLiteral("Other"));
+
+    const QStringList favorites = CollectionStore::booksInCollection(QStringLiteral("Favorites"));
+    QCOMPARE(favorites.size(), 2);
+    QVERIFY(favorites.contains(QStringLiteral("book-1")));
+    QVERIFY(favorites.contains(QStringLiteral("book-2")));
+}
+
+void AppPersistenceTest::renameCollectionUpdatesMembership()
+{
+    CollectionStore::addBookToCollection(QStringLiteral("book-1"), QStringLiteral("To Read"));
+    CollectionStore::renameCollection(QStringLiteral("To Read"), QStringLiteral("Backlog"));
+
+    QCOMPARE(CollectionStore::allCollections(), QStringList{QStringLiteral("Backlog")});
+    QCOMPARE(CollectionStore::collectionsForBook(QStringLiteral("book-1")), QStringList{QStringLiteral("Backlog")});
+}
+
+void AppPersistenceTest::renameCollectionMergesIntoExistingTarget()
+{
+    CollectionStore::addBookToCollection(QStringLiteral("book-1"), QStringLiteral("Sci-Fi"));
+    CollectionStore::addBookToCollection(QStringLiteral("book-2"), QStringLiteral("Scifi"));
+    CollectionStore::addBookToCollection(QStringLiteral("book-2"), QStringLiteral("Sci-Fi")); // already in both
+
+    CollectionStore::renameCollection(QStringLiteral("Scifi"), QStringLiteral("Sci-Fi"));
+
+    QCOMPARE(CollectionStore::allCollections(), QStringList{QStringLiteral("Sci-Fi")});
+    const QStringList members = CollectionStore::booksInCollection(QStringLiteral("Sci-Fi"));
+    QCOMPARE(members.size(), 2); // book-2 not duplicated despite being in both before the merge
+    QVERIFY(members.contains(QStringLiteral("book-1")));
+    QVERIFY(members.contains(QStringLiteral("book-2")));
+}
+
+void AppPersistenceTest::deleteCollectionRemovesItAndMembership()
+{
+    CollectionStore::addBookToCollection(QStringLiteral("book-1"), QStringLiteral("To Read"));
+    CollectionStore::deleteCollection(QStringLiteral("To Read"));
+
+    QVERIFY(CollectionStore::allCollections().isEmpty());
+    QVERIFY(CollectionStore::collectionsForBook(QStringLiteral("book-1")).isEmpty());
+}
+
+void AppPersistenceTest::setTagsForBookReplacesWholeSet()
+{
+    TagStore::setTagsForBook(QStringLiteral("book-1"), {QStringLiteral("fiction"), QStringLiteral("favorite")});
+    QCOMPARE(TagStore::tagsForBook(QStringLiteral("book-1")).size(), 2);
+
+    TagStore::setTagsForBook(QStringLiteral("book-1"), {QStringLiteral("nonfiction")});
+    QCOMPARE(TagStore::tagsForBook(QStringLiteral("book-1")), QStringList{QStringLiteral("nonfiction")});
+}
+
+void AppPersistenceTest::setTagsForBookTrimsBlanksAndDuplicates()
+{
+    TagStore::setTagsForBook(QStringLiteral("book-1"),
+                              {QStringLiteral("  fiction  "), QStringLiteral(""), QStringLiteral("fiction")});
+    QCOMPARE(TagStore::tagsForBook(QStringLiteral("book-1")), QStringList{QStringLiteral("fiction")});
+}
+
+void AppPersistenceTest::allTagsReflectsEveryBooksTags()
+{
+    TagStore::setTagsForBook(QStringLiteral("book-1"), {QStringLiteral("fiction")});
+    TagStore::setTagsForBook(QStringLiteral("book-2"), {QStringLiteral("Nonfiction"), QStringLiteral("fiction")});
+
+    const QStringList all = TagStore::allTags();
+    QCOMPARE(all.size(), 2);
+    QVERIFY(all.contains(QStringLiteral("fiction")));
+    QVERIFY(all.contains(QStringLiteral("Nonfiction")));
+}
+
+void AppPersistenceTest::booksWithTagReflectsAssignment()
+{
+    TagStore::setTagsForBook(QStringLiteral("book-1"), {QStringLiteral("fiction")});
+    TagStore::setTagsForBook(QStringLiteral("book-2"), {QStringLiteral("fiction")});
+    TagStore::setTagsForBook(QStringLiteral("book-3"), {QStringLiteral("reference")});
+
+    const QStringList tagged = TagStore::booksWithTag(QStringLiteral("fiction"));
+    QCOMPARE(tagged.size(), 2);
+    QVERIFY(tagged.contains(QStringLiteral("book-1")));
+    QVERIFY(tagged.contains(QStringLiteral("book-2")));
+}
+
+void AppPersistenceTest::tagsAreIsolatedPerBook()
+{
+    TagStore::setTagsForBook(QStringLiteral("book-1"), {QStringLiteral("fiction")});
+    QVERIFY(TagStore::tagsForBook(QStringLiteral("book-2")).isEmpty());
 }
 
 QTEST_MAIN(AppPersistenceTest)
