@@ -53,6 +53,13 @@ Flickable {
     // panning this page horizontally at the same time as it zooms.
     property bool zoomGestureActive: false
 
+    // Per-document page color inversion, set by PdfReaderScreen from its own
+    // pageDarkMode toggle -- deliberately NOT themeSettings.dark (the
+    // app-wide Dark Mode setting), which only restyles UI chrome elsewhere
+    // and has no effect on rendered PDF pages. See that property's doc
+    // comment for why.
+    property bool pageDarkMode: false
+
     width: ListView.view ? ListView.view.width : 0
     height: pointSize.height * documentModel.zoom
     flickableDirection: Flickable.HorizontalFlick
@@ -98,7 +105,7 @@ Flickable {
         // page's colors (see there) -- part of the URL so toggling dark
         // mode naturally busts this Image's own cache: true cache instead
         // of needing an explicit reload.
-        source: "image://pdfpage/" + root.index + "-" + root.renderScale.toFixed(2) + (themeSettings.dark ? "-dark" : "")
+        source: "image://pdfpage/" + root.index + "-" + root.renderScale.toFixed(2) + (root.pageDarkMode ? "-dark" : "")
         asynchronous: true
         cache: true
         smooth: true

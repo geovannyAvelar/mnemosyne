@@ -46,13 +46,6 @@ public:
     QString selectedText() const;
     bool hasPendingSyncPrompt() const;
 
-    // Mirrors EpubView/MarkdownView/TxtView/MobiView's setDarkMode(), but
-    // inverts the rendered page images rather than restyling text -- PDF
-    // pages are rasterized by Poppler with a fixed white background baked
-    // in, so there's no stylesheet to swap. See
-    // PdfPageStackView::setInvertColors().
-    void setDarkMode(bool enabled);
-
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;

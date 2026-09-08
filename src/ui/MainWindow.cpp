@@ -707,7 +707,6 @@ void MainWindow::openPath(const QString &filePath)
         std::unique_ptr<IDocument> document = openDocument(filePath, &errorMessage);
         if (document) {
             auto *pdfView = new PdfView(std::move(document), filePath, m_tabWidget);
-            pdfView->setDarkMode(m_darkModeAction->isChecked());
             connect(pdfView, &PdfView::highlightsChanged, this, &MainWindow::refreshNotesDock);
             widget = pdfView;
             view = pdfView;
@@ -922,9 +921,7 @@ void MainWindow::setDarkModeEnabled(bool enabled)
 
     for (int i = 0; i < m_tabWidget->count(); ++i) {
         QWidget *tab = m_tabWidget->widget(i);
-        if (auto *pdfView = dynamic_cast<PdfView *>(tab)) {
-            pdfView->setDarkMode(enabled);
-        } else if (auto *epubView = dynamic_cast<EpubView *>(tab)) {
+        if (auto *epubView = dynamic_cast<EpubView *>(tab)) {
             epubView->setDarkMode(enabled);
         } else if (auto *markdownView = dynamic_cast<MarkdownView *>(tab)) {
             markdownView->setDarkMode(enabled);

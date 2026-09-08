@@ -171,11 +171,6 @@ bool PdfView::hasPendingSyncPrompt() const
     return !m_syncPromptBar->isHidden();
 }
 
-void PdfView::setDarkMode(bool enabled)
-{
-    m_pageStackView->setInvertColors(enabled);
-}
-
 QVector<SearchResult> PdfView::search(const QString &query) const
 {
     return searchFile(m_filePath, query);
@@ -262,6 +257,20 @@ void PdfView::setupUi()
     connect(zoomOutButton, &QPushButton::clicked, this, &PdfView::zoomOut);
     connect(zoomInButton, &QPushButton::clicked, this, &PdfView::zoomIn);
 
+    // Per-document page color inversion -- distinct from the app-wide Dark
+    // Mode menu action (which only restyles the UI chrome/EPUB-MOBI-TXT-
+    // Markdown text; see MainWindow::setDarkModeEnabled()). PDF pages are
+    // rasterized by Poppler with a fixed white background baked in, so
+    // there's no stylesheet to swap -- inverting the rendered image (see
+    // PdfPageStackView::setInvertColors()) is the only way to darken one,
+    // and unlike app Dark Mode it's a per-view toggle the reader controls
+    // directly rather than something that follows the app theme.
+    auto *pageDarkButton = new QPushButton(tr("Invert"), toolbar);
+    pageDarkButton->setCheckable(true);
+    pageDarkButton->setToolTip(tr("Invert this page's colors (dark background)"));
+    connect(pageDarkButton, &QPushButton::toggled, this,
+            [this](bool checked) { m_pageStackView->setInvertColors(checked); });
+
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_pageSpinBox);
     toolbarLayout->addWidget(m_pageCountLabel);
@@ -269,6 +278,7 @@ void PdfView::setupUi()
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
+    toolbarLayout->addWidget(pageDarkButton);
 
     m_pageStackView = new PdfPageStackView(this);
     connect(m_pageStackView, &PdfPageStackView::contextMenuRequested, this, &PdfView::showCanvasContextMenu);
