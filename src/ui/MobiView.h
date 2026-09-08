@@ -64,6 +64,9 @@ private:
     void renderCurrentPart();
     void updateNavigationState();
     void applyPageColors();
+    // See EpubView::applyTypography()/showTypographyPopup() -- same shape.
+    void applyTypography();
+    void showTypographyPopup(const QPoint &globalPos);
     void applyHighlightsToBrowser();
     void addHighlightForSelection();
     void addNoteForSelection();

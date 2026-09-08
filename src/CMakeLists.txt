@@ -258,6 +258,10 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/NoteDialog.cpp
     ui/NotePopup.h
     ui/NotePopup.cpp
+    ui/TextReaderTypography.h
+    ui/TextReaderTypography.cpp
+    ui/TypographyPopup.h
+    ui/TypographyPopup.cpp
     ui/LibraryView.h
     ui/LibraryView.cpp
     ui/ThumbnailProvider.h

@@ -15,6 +15,8 @@
 #include "core/SearchUtil.h"
 #include "ui/NoteDialog.h"
 #include "ui/SyncPromptBar.h"
+#include "ui/TextReaderTypography.h"
+#include "ui/TypographyPopup.h"
 
 #include <QDateTime>
 #include <QHBoxLayout>
@@ -60,6 +62,7 @@ MarkdownView::MarkdownView(std::unique_ptr<MarkdownDocument> document, QString f
 {
     setupUi();
     render();
+    applyTypography(); // needs content already set -- see its own doc comment
     restoreProgressAndCheckSync(); // needs the browser's document already populated to resolve heading blocks
 }
 
@@ -151,9 +154,15 @@ void MarkdownView::setupUi()
     connect(zoomOutButton, &QPushButton::clicked, this, &MarkdownView::zoomOut);
     connect(zoomInButton, &QPushButton::clicked, this, &MarkdownView::zoomIn);
 
+    auto *typographyButton = new QPushButton(tr("Aa"), toolbar);
+    connect(typographyButton, &QPushButton::clicked, this, [this, typographyButton] {
+        showTypographyPopup(typographyButton->mapToGlobal(QPoint(0, typographyButton->height())));
+    });
+
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
+    toolbarLayout->addWidget(typographyButton);
 
     m_browser = new QTextBrowser(this);
     m_browser->setOpenExternalLinks(false);
@@ -185,18 +194,64 @@ void MarkdownView::applyPageColors()
     }
 }
 
+void MarkdownView::applyTypography()
+{
+    // Needs content already loaded (render() called first): the line-height
+    // pass below is a cursor sweep over existing blocks, and setMarkdown()
+    // (inside render()) was found, empirically, to reset documentMargin
+    // back to Qt's own default -- so re-applying that here, after, is what
+    // actually makes it stick rather than getting silently clobbered.
+    QTextDocument *document = m_browser->document();
+    document->setDocumentMargin(TextReaderTypography::marginPx());
+
+    // Font-family/color from TextReaderTypography::bodyCss() (set via
+    // render()'s setDefaultStyleSheet(), like plugin CSS already was) does
+    // carry through Qt's Markdown-to-richtext conversion -- but line-height
+    // in that same stylesheet does not (confirmed empirically: applying it
+    // via CSS alone had zero visible effect on setMarkdown()-imported
+    // content, unlike EPUB/MOBI's full setHtml() pipeline). Applied
+    // directly via QTextBlockFormat instead -- the same mechanism
+    // TxtView's plain-text view already needs for the same reason.
+    QTextCursor cursor(document);
+    cursor.select(QTextCursor::Document);
+    QTextBlockFormat blockFormat;
+    blockFormat.setLineHeight(TextReaderTypography::lineSpacingPercent(), QTextBlockFormat::ProportionalHeight);
+    cursor.mergeBlockFormat(blockFormat);
+}
+
+void MarkdownView::showTypographyPopup(const QPoint &globalPos)
+{
+    TypographyPopup::show(this, globalPos, TextReaderTypography::fontFamily(),
+                           TextReaderTypography::lineSpacingPercent(), TextReaderTypography::marginPx(),
+                           [this](const QString &family, int lineSpacingPercent, int marginPx) {
+                               TextReaderTypography::setFontFamily(family);
+                               TextReaderTypography::setLineSpacingPercent(lineSpacingPercent);
+                               TextReaderTypography::setMarginPx(marginPx);
+                               // Font-family is set via render()'s default-
+                               // stylesheet call, which only takes effect
+                               // on the next setMarkdown() -- re-render
+                               // first, then re-apply margin/line-height
+                               // (see applyTypography()'s own doc comment
+                               // for why that order, not the reverse).
+                               render();
+                               applyTypography();
+                           });
+}
+
 void MarkdownView::render()
 {
     if (!m_document) {
         return;
     }
-#ifdef MNEMOSYNE_ENABLE_PLUGINS
     // Unlike EPUB/MOBI's HTML <style> injection, Markdown goes through Qt's
     // own Markdown-to-richtext conversion below, which honors a document-
     // level CSS stylesheet -- but only if it's set before setMarkdown() is
     // called, not after.
-    m_browser->document()->setDefaultStyleSheet(PluginHost::cssForFormat(QStringLiteral("markdown")));
+    QString styleSheet = TextReaderTypography::bodyCss();
+#ifdef MNEMOSYNE_ENABLE_PLUGINS
+    styleSheet += PluginHost::cssForFormat(QStringLiteral("markdown"));
 #endif
+    m_browser->document()->setDefaultStyleSheet(styleSheet);
     m_browser->document()->setMarkdown(m_document->markdownText());
     applyHighlightsToBrowser();
 }

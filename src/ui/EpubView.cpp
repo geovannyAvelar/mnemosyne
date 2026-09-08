@@ -15,6 +15,8 @@
 #include "core/SearchUtil.h"
 #include "ui/NoteDialog.h"
 #include "ui/SyncPromptBar.h"
+#include "ui/TextReaderTypography.h"
+#include "ui/TypographyPopup.h"
 
 #include <QDateTime>
 #include <QDesktopServices>
@@ -213,12 +215,18 @@ void EpubView::setupUi()
     connect(zoomOutButton, &QPushButton::clicked, this, &EpubView::zoomOut);
     connect(zoomInButton, &QPushButton::clicked, this, &EpubView::zoomIn);
 
+    auto *typographyButton = new QPushButton(tr("Aa"), toolbar);
+    connect(typographyButton, &QPushButton::clicked, this, [this, typographyButton] {
+        showTypographyPopup(typographyButton->mapToGlobal(QPoint(0, typographyButton->height())));
+    });
+
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_chapterLabel);
     toolbarLayout->addWidget(nextButton);
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
+    toolbarLayout->addWidget(typographyButton);
 
     m_browser = new QTextBrowser(this);
     m_browser->setOpenExternalLinks(false);
@@ -227,6 +235,7 @@ void EpubView::setupUi()
     connect(m_browser, &QTextBrowser::customContextMenuRequested, this, &EpubView::showBrowserContextMenu);
     connect(m_browser, &QTextBrowser::anchorClicked, this, &EpubView::onVideoLinkActivated);
     applyPageColors();
+    applyTypography();
     m_browser->viewport()->installEventFilter(this); // Ctrl+wheel zoom
     connect(m_browser->verticalScrollBar(), &QScrollBar::valueChanged, this, &EpubView::onScrolled);
 
@@ -239,6 +248,28 @@ void EpubView::setupUi()
     m_progressSaveTimer = new QTimer(this);
     m_progressSaveTimer->setSingleShot(true);
     connect(m_progressSaveTimer, &QTimer::timeout, this, &EpubView::saveProgressNow);
+}
+
+void EpubView::applyTypography()
+{
+    m_browser->document()->setDocumentMargin(TextReaderTypography::marginPx());
+}
+
+void EpubView::showTypographyPopup(const QPoint &globalPos)
+{
+    TypographyPopup::show(this, globalPos, TextReaderTypography::fontFamily(),
+                           TextReaderTypography::lineSpacingPercent(), TextReaderTypography::marginPx(),
+                           [this](const QString &family, int lineSpacingPercent, int marginPx) {
+                               TextReaderTypography::setFontFamily(family);
+                               TextReaderTypography::setLineSpacingPercent(lineSpacingPercent);
+                               TextReaderTypography::setMarginPx(marginPx);
+                               applyTypography();
+                               // Font-family/line-height are baked into each
+                               // chapter's HTML by chapterHtmlFragment(), so
+                               // (like setDarkMode()) this needs a reload to
+                               // actually pick up the change.
+                               loadWindowStartingAt(m_currentChapter);
+                           });
 }
 
 void EpubView::applyPageColors()
@@ -267,6 +298,7 @@ QString EpubView::chapterHtmlFragment(int spineIndex) const
     // PluginHost::cssForFormat) comes after dark mode's, in the same block,
     // so a plugin can override it too.
     QString styleOverride = m_darkMode ? QStringLiteral("body,p,div,span{color:#ddd;}") : QString();
+    styleOverride += TextReaderTypography::bodyCss();
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
     styleOverride += PluginHost::cssForFormat(QStringLiteral("epub"));
 #endif

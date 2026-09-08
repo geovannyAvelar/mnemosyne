@@ -60,6 +60,15 @@ signals:
 private:
     void setupUi();
     void applyPageColors();
+    // Applies font-family/line-spacing/margin in place over whatever's
+    // already loaded -- see the .cpp's own doc comment for why plain text
+    // needs a different mechanism than EpubView::applyTypography()'s CSS
+    // injection. Called once after the initial setPlainText() (needs
+    // content already present, for the line-height cursor pass) and again
+    // whenever the "Aa" popup changes anything -- no reload needed either
+    // time, unlike the other three views.
+    void applyTypography();
+    void showTypographyPopup(const QPoint &globalPos);
     void applyHighlightsToBrowser();
     void addHighlightForSelection();
     void addNoteForSelection();

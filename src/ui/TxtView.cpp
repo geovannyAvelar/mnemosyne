@@ -11,6 +11,8 @@
 #include "app/ReadingProgressStore.h"
 #include "ui/NoteDialog.h"
 #include "ui/SyncPromptBar.h"
+#include "ui/TextReaderTypography.h"
+#include "ui/TypographyPopup.h"
 
 #include <QDateTime>
 #include <QHBoxLayout>
@@ -56,6 +58,7 @@ TxtView::TxtView(std::unique_ptr<TxtDocument> document, QString filePath, QWidge
 {
     setupUi();
     m_browser->setPlainText(m_document ? m_document->text() : QString());
+    applyTypography(); // needs content already set -- see its own doc comment
     applyHighlightsToBrowser();
     restoreProgressAndCheckSync(); // needs the browser's content already set, to resolve a character offset
 }
@@ -172,9 +175,15 @@ void TxtView::setupUi()
     connect(zoomOutButton, &QPushButton::clicked, this, &TxtView::zoomOut);
     connect(zoomInButton, &QPushButton::clicked, this, &TxtView::zoomIn);
 
+    auto *typographyButton = new QPushButton(tr("Aa"), toolbar);
+    connect(typographyButton, &QPushButton::clicked, this, [this, typographyButton] {
+        showTypographyPopup(typographyButton->mapToGlobal(QPoint(0, typographyButton->height())));
+    });
+
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
+    toolbarLayout->addWidget(typographyButton);
 
     m_browser = new QTextBrowser(this);
     m_browser->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -193,6 +202,46 @@ void TxtView::setupUi()
     m_progressSaveTimer = new QTimer(this);
     m_progressSaveTimer->setSingleShot(true);
     connect(m_progressSaveTimer, &QTimer::timeout, this, &TxtView::saveProgressNow);
+}
+
+void TxtView::applyTypography()
+{
+    // Plain text (setPlainText(), not setHtml()/setMarkdown()) never goes
+    // through Qt's CSS parser at all, unlike EPUB/MOBI/Markdown -- so
+    // TextReaderTypography::bodyCss() doesn't apply here. Font-family and
+    // line-height instead go through QTextDocument's own direct (non-CSS)
+    // APIs, both of which -- unlike the HTML-based views' per-render CSS
+    // injection -- can just be reapplied in place over whatever's already
+    // loaded, with no need to reload/reset the content itself.
+    QTextDocument *document = m_browser->document();
+    document->setDocumentMargin(TextReaderTypography::marginPx());
+
+    // defaultFont() first, not a fresh QFont(): only the family should
+    // change here -- the point size must stay whatever zoomIn()/zoomOut()
+    // last set it to (Qt's own zoom scales this same defaultFont() in
+    // place), or picking a font would silently reset the reader's zoom.
+    QFont font = document->defaultFont();
+    const QString family = TextReaderTypography::fontFamily();
+    font.setFamily(family.isEmpty() ? QFont().family() : family);
+    document->setDefaultFont(font);
+
+    QTextCursor cursor(document);
+    cursor.select(QTextCursor::Document);
+    QTextBlockFormat blockFormat;
+    blockFormat.setLineHeight(TextReaderTypography::lineSpacingPercent(), QTextBlockFormat::ProportionalHeight);
+    cursor.mergeBlockFormat(blockFormat);
+}
+
+void TxtView::showTypographyPopup(const QPoint &globalPos)
+{
+    TypographyPopup::show(this, globalPos, TextReaderTypography::fontFamily(),
+                           TextReaderTypography::lineSpacingPercent(), TextReaderTypography::marginPx(),
+                           [this](const QString &family, int lineSpacingPercent, int marginPx) {
+                               TextReaderTypography::setFontFamily(family);
+                               TextReaderTypography::setLineSpacingPercent(lineSpacingPercent);
+                               TextReaderTypography::setMarginPx(marginPx);
+                               applyTypography();
+                           });
 }
 
 void TxtView::applyPageColors()

@@ -15,6 +15,8 @@
 #include "core/SearchUtil.h"
 #include "ui/NoteDialog.h"
 #include "ui/SyncPromptBar.h"
+#include "ui/TextReaderTypography.h"
+#include "ui/TypographyPopup.h"
 
 #include <QDateTime>
 #include <QHBoxLayout>
@@ -163,12 +165,18 @@ void MobiView::setupUi()
     connect(zoomOutButton, &QPushButton::clicked, this, &MobiView::zoomOut);
     connect(zoomInButton, &QPushButton::clicked, this, &MobiView::zoomIn);
 
+    auto *typographyButton = new QPushButton(tr("Aa"), toolbar);
+    connect(typographyButton, &QPushButton::clicked, this, [this, typographyButton] {
+        showTypographyPopup(typographyButton->mapToGlobal(QPoint(0, typographyButton->height())));
+    });
+
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_partLabel);
     toolbarLayout->addWidget(nextButton);
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
+    toolbarLayout->addWidget(typographyButton);
 
     m_browser = new QTextBrowser(this);
     m_browser->setOpenExternalLinks(false);
@@ -176,6 +184,7 @@ void MobiView::setupUi()
     m_browser->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_browser, &QTextBrowser::customContextMenuRequested, this, &MobiView::showBrowserContextMenu);
     applyPageColors();
+    applyTypography();
     m_browser->viewport()->installEventFilter(this); // scrolling past the top/bottom edge turns the part; Ctrl+wheel zooms
 
     m_syncPromptBar = new SyncPromptBar(this);
@@ -196,6 +205,28 @@ void MobiView::applyPageColors()
     } else {
         m_browser->setStyleSheet(QStringLiteral("QTextBrowser { background-color: white; color: black; }"));
     }
+}
+
+void MobiView::applyTypography()
+{
+    m_browser->document()->setDocumentMargin(TextReaderTypography::marginPx());
+}
+
+void MobiView::showTypographyPopup(const QPoint &globalPos)
+{
+    TypographyPopup::show(this, globalPos, TextReaderTypography::fontFamily(),
+                           TextReaderTypography::lineSpacingPercent(), TextReaderTypography::marginPx(),
+                           [this](const QString &family, int lineSpacingPercent, int marginPx) {
+                               TextReaderTypography::setFontFamily(family);
+                               TextReaderTypography::setLineSpacingPercent(lineSpacingPercent);
+                               TextReaderTypography::setMarginPx(marginPx);
+                               applyTypography();
+                               // Font-family/line-height are baked into the
+                               // part's HTML by renderCurrentPart(), so
+                               // (like dark mode) this needs a re-render to
+                               // actually pick up the change.
+                               renderCurrentPart();
+                           });
 }
 
 void MobiView::goToPart(int partIndex)
@@ -236,6 +267,7 @@ void MobiView::renderCurrentPart()
     // the document's own CSS in document order, rather than just being
     // appended to the string, and why plugin CSS shares the same block.
     QString styleOverride = m_darkMode ? QStringLiteral("body,p,div,span{color:#ddd;}") : QString();
+    styleOverride += TextReaderTypography::bodyCss();
 #ifdef MNEMOSYNE_ENABLE_PLUGINS
     styleOverride += PluginHost::cssForFormat(QStringLiteral("mobi"));
 #endif

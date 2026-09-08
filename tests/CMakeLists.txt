@@ -89,6 +89,12 @@ target_compile_definitions(poppler_pdf_document_test PRIVATE FIXTURES_DIR="${CMA
 
 add_test(NAME PopplerPdfDocumentTest COMMAND poppler_pdf_document_test)
 
+qt_add_executable(text_reader_typography_test TextReaderTypographyTest.cpp)
+
+target_link_libraries(text_reader_typography_test PRIVATE mnemosynedesktopui Qt6::Test)
+
+add_test(NAME TextReaderTypographyTest COMMAND text_reader_typography_test)
+
 if(MNEMOSYNE_ENABLE_HTML)
     qt_add_executable(html_view_test HtmlViewTest.cpp)
 

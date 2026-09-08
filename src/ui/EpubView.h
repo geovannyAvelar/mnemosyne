@@ -95,6 +95,14 @@ private:
 
     void updateNavigationState();
     void applyPageColors();
+    // Applies TextReaderTypography's current margin as viewport margins --
+    // safe to call any time, including before any chapter is loaded (unlike
+    // font-family/line-height, which are baked into each chapter's HTML by
+    // chapterHtmlFragment() and so need a reload to change -- see
+    // showTypographyPopup()). Called once at startup and again whenever the
+    // "Aa" popup changes anything.
+    void applyTypography();
+    void showTypographyPopup(const QPoint &globalPos);
     void applyHighlightsToBrowser();
     void addHighlightForSelection();
     void addNoteForSelection();
