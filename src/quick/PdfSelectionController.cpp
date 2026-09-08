@@ -8,10 +8,19 @@ PdfSelectionController::PdfSelectionController(PdfDocumentModel *documentModel, 
 {
 }
 
-QVariantList PdfSelectionController::selectionRects() const
+QVariantList PdfSelectionController::selectionPageIndices() const
+{
+    QVariantList indices;
+    for (int pageIndex : m_model.selectionPageIndices()) {
+        indices.append(pageIndex);
+    }
+    return indices;
+}
+
+QVariantList PdfSelectionController::selectionRectsForPage(int pageIndex) const
 {
     QVariantList rects;
-    const QVector<QRectF> modelRects = m_model.selectionRects();
+    const QVector<QRectF> modelRects = m_model.selectionRectsForPage(pageIndex);
     rects.reserve(modelRects.size());
     for (const QRectF &rect : modelRects) {
         rects.append(rect);
@@ -25,9 +34,15 @@ void PdfSelectionController::beginSelection(int pageIndex, qreal pageX, qreal pa
     emit selectionChanged();
 }
 
-void PdfSelectionController::updateSelection(qreal pageX, qreal pageY)
+void PdfSelectionController::updateSelection(int pageIndex, qreal pageX, qreal pageY)
 {
-    m_model.updateSelection(QPointF(pageX, pageY));
+    // wordsForPage() re-extracts via Poppler on every call (see there) --
+    // skip it once this page is already known to the model, so dragging
+    // back and forth within one page doesn't re-extract its words on every
+    // single touch-move tick, only the first time the drag reaches it.
+    const QVector<TextWord> words =
+        m_model.hasWordsForPage(pageIndex) ? QVector<TextWord>() : m_documentModel->wordsForPage(pageIndex);
+    m_model.updateSelection(pageIndex, QPointF(pageX, pageY), words);
     emit selectionChanged();
 }
 

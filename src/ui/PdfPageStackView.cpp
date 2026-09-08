@@ -125,6 +125,7 @@ void PdfPageStackView::setDocument(IDocument *document)
 
     m_document = document;
     m_pageSizePoints.clear();
+    m_onDemandWordCache.clear();
     if (!m_document) {
         return;
     }
@@ -302,23 +303,20 @@ void PdfPageStackView::evictPage(int index)
     if (index < 0 || !m_pageWords.contains(index)) {
         return;
     }
-    if (index == m_selectionModel.selectionPageIndex()) {
-        m_selectionModel.clearSelection();
-        m_committedSelection = false;
-        m_liveSelectionRects.clear();
-    }
-    if (index == m_dragPageIndex) {
-        // The page holding an in-progress drag just scrolled far enough
-        // away to be evicted -- drop the drag rather than let a later
-        // move/release operate against a stale/missing word list.
-        m_dragging = false;
-        m_dragPageIndex = -1;
-        m_liveSelectionRects.clear();
-    }
+    // Deliberately doesn't touch m_selectionModel or an in-progress drag,
+    // even if `index` is part of the current selection: the model keeps its
+    // own snapshot of every touched page's words (see PdfSelectionModel),
+    // entirely independent of this render/materialize cache, and
+    // m_liveSelectionRectsByPage's pixel rects for `index` stay valid too --
+    // paintEvent() only ever reads whichever pages are currently visible
+    // anyway, so a stale entry for a since-scrolled-away page is inert, just
+    // tidied up below rather than left to grow unboundedly over a long
+    // reading session.
     m_pageWords.remove(index);
     m_pageImages.remove(index);
     m_pageHighlightRects.remove(index);
     m_pageSearchRects.remove(index);
+    m_liveSelectionRectsByPage.remove(index);
 
     QMutexLocker locker(&m_renderContext->mutex);
     m_renderContext->pageCache.remove(index);
@@ -394,8 +392,7 @@ void PdfPageStackView::clearSelection()
 {
     m_dragging = false;
     m_committedSelection = false;
-    m_dragPageIndex = -1;
-    m_liveSelectionRects.clear();
+    m_liveSelectionRectsByPage.clear();
     m_selectionModel.clearSelection();
     update();
 }
@@ -409,17 +406,45 @@ QPointF PdfPageStackView::toPagePoint(const QPoint &viewportPos, int pageIndex) 
                     (viewportPos.y() - pageOffsetY(pageIndex)) / m_zoom);
 }
 
+QVector<TextWord> PdfPageStackView::wordsForPage(int index)
+{
+    if (!m_document || index < 0 || index >= m_pageSizePoints.size()) {
+        return {};
+    }
+    const auto materialized = m_pageWords.constFind(index);
+    if (materialized != m_pageWords.constEnd()) {
+        return materialized.value();
+    }
+    const auto cached = m_onDemandWordCache.constFind(index);
+    if (cached != m_onDemandWordCache.constEnd()) {
+        return cached.value();
+    }
+
+    QVector<TextWord> words;
+    {
+        QMutexLocker locker(&m_renderContext->mutex);
+        const std::unique_ptr<IPage> page = m_document->page(index);
+        if (page) {
+            words = page->words();
+        }
+    }
+    m_onDemandWordCache.insert(index, words);
+    return words;
+}
+
 void PdfPageStackView::refreshLiveSelectionRects()
 {
-    m_liveSelectionRects.clear();
-    if (m_dragPageIndex >= 0 && m_selectionModel.selectionPageIndex() == m_dragPageIndex) {
-        const int offsetX = int(pageXOffset(m_dragPageIndex));
-        const int offsetY = int(pageOffsetY(m_dragPageIndex));
-        for (const QRectF &pageRect : m_selectionModel.selectionRects()) {
+    m_liveSelectionRectsByPage.clear();
+    for (int pageIndex : m_selectionModel.selectionPageIndices()) {
+        const int offsetX = int(pageXOffset(pageIndex));
+        const int offsetY = int(pageOffsetY(pageIndex));
+        QVector<QRect> rects;
+        for (const QRectF &pageRect : m_selectionModel.selectionRectsForPage(pageIndex)) {
             QRect pixelRect = pageRectToPixelRect(pageRect, m_zoom);
             pixelRect.translate(offsetX, offsetY);
-            m_liveSelectionRects.append(pixelRect);
+            rects.append(pixelRect);
         }
+        m_liveSelectionRectsByPage.insert(pageIndex, rects);
     }
     emit selectionChanged();
     update();
@@ -475,11 +500,12 @@ void PdfPageStackView::paintEvent(QPaintEvent *event)
             painter.fillRect(rect, QColor(255, 214, 0, 170));
         }
         // No outline, unlike a boxed-off region: a plain fill per word
-        // reads as normal text selection, as in any text field.
-        if (i == m_dragPageIndex) {
-            for (const QRect &rect : m_liveSelectionRects) {
-                painter.fillRect(rect, QColor(60, 130, 230, 90));
-            }
+        // reads as normal text selection, as in any text field. Every page
+        // the current selection spans gets its own entry here (see
+        // refreshLiveSelectionRects()), not just whichever page the drag
+        // started on.
+        for (const QRect &rect : m_liveSelectionRectsByPage.value(i)) {
+            painter.fillRect(rect, QColor(60, 130, 230, 90));
         }
     }
 }
@@ -490,13 +516,12 @@ void PdfPageStackView::mousePressEvent(QMouseEvent *event)
         return;
     }
     setFocus();
-    m_dragPageIndex = pageIndexAtOffsetY(event->pos().y());
     m_dragging = true;
     m_committedSelection = false;
     m_dragAnchorPixel = event->pos();
     m_dragFocusPixel = event->pos();
-    m_selectionModel.beginSelection(m_dragPageIndex, toPagePoint(m_dragAnchorPixel, m_dragPageIndex),
-                                     m_pageWords.value(m_dragPageIndex));
+    const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+    m_selectionModel.beginSelection(pageIndex, toPagePoint(m_dragAnchorPixel, pageIndex), wordsForPage(pageIndex));
     refreshLiveSelectionRects();
 }
 
@@ -506,7 +531,18 @@ void PdfPageStackView::mouseMoveEvent(QMouseEvent *event)
         return;
     }
     m_dragFocusPixel = event->pos();
-    m_selectionModel.updateSelection(toPagePoint(m_dragFocusPixel, m_dragPageIndex));
+    // Qt keeps delivering move events to this widget for the whole drag
+    // once it's pressed, even once the cursor leaves this widget's own
+    // visible viewport bounds (past the QScrollArea's edge, or above/below
+    // the window) -- so pageIndexAtOffsetY() here can, and does, resolve to
+    // a page other than whichever one the drag started on.
+    const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+    // Skip the words fetch once this page is already known to the model --
+    // otherwise a drag held still over one page would re-extract its words
+    // on every single mouse-move event instead of just the first.
+    const QVector<TextWord> words =
+        m_selectionModel.hasWordsForPage(pageIndex) ? QVector<TextWord>() : wordsForPage(pageIndex);
+    m_selectionModel.updateSelection(pageIndex, toPagePoint(m_dragFocusPixel, pageIndex), words);
     refreshLiveSelectionRects();
 }
 
@@ -525,7 +561,10 @@ void PdfPageStackView::mouseReleaseEvent(QMouseEvent *event)
     const QRect rect = QRect(m_dragAnchorPixel, m_dragFocusPixel).normalized();
     m_committedSelection = rect.width() >= kMinSelectionPixels || rect.height() >= kMinSelectionPixels;
     if (m_committedSelection) {
-        m_selectionModel.updateSelection(toPagePoint(m_dragFocusPixel, m_dragPageIndex));
+        const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+        const QVector<TextWord> words =
+            m_selectionModel.hasWordsForPage(pageIndex) ? QVector<TextWord>() : wordsForPage(pageIndex);
+        m_selectionModel.updateSelection(pageIndex, toPagePoint(m_dragFocusPixel, pageIndex), words);
     } else {
         m_selectionModel.clearSelection();
     }

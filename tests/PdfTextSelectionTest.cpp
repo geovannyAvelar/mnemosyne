@@ -1,6 +1,7 @@
 #include "app/FileIdentity.h"
 #include "app/HighlightStore.h"
 #include "core/Highlight.h"
+#include "core/TextSelectionUtil.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/PdfPageStackView.h"
 #include "ui/PdfView.h"
@@ -55,6 +56,7 @@ private slots:
     void copySelectionPutsSelectedTextOnClipboard();
     void selectionMovesLiveDuringDragBeforeRelease();
     void addedHighlightCoversFullWordSnappedSelection();
+    void dragSelectionSpansMultiplePages();
     void materializedPageEventuallyGetsRenderedImage();
     void destroyingViewWhileRenderingInFlightDoesNotCrash();
 
@@ -222,6 +224,75 @@ void PdfTextSelectionTest::addedHighlightCoversFullWordSnappedSelection()
         QVERIFY2(highlights[0].pageRect.contains(words[i].boundingBox),
                  qPrintable(QStringLiteral("word %1's box isn't fully covered by the saved highlight").arg(i)));
     }
+}
+
+void PdfTextSelectionTest::dragSelectionSpansMultiplePages()
+{
+    QString error;
+    auto doc = PopplerPdfDocument::load(fixturePath("test_multipage.pdf"), &error);
+    Q_ASSERT_X(doc, "test", qPrintable(error));
+    auto view = std::make_unique<PdfView>(std::move(doc), fixturePath("test_multipage.pdf"));
+    view->resize(900, 700);
+    view->show();
+    QVERIFY(QTest::qWaitForWindowExposed(view.get()));
+
+    auto *stackView = view->findChild<PdfPageStackView *>();
+    QVERIFY(stackView);
+
+    // Independently re-derive page 0's and page 1's own word lists via a
+    // fresh Poppler load (same pattern wordCenterPixel() uses) rather than
+    // hardcoding expected text, so this stays valid if the fixture's
+    // wording changes.
+    QString probeError;
+    auto probeDoc = PopplerPdfDocument::load(fixturePath("test_multipage.pdf"), &probeError);
+    Q_ASSERT_X(probeDoc, "test", qPrintable(probeError));
+    std::unique_ptr<IPage> page0 = probeDoc->page(0);
+    std::unique_ptr<IPage> page1 = probeDoc->page(1);
+    QVERIFY(page0 && page1);
+    const QVector<TextWord> page0Words = page0->words();
+    const QVector<TextWord> page1Words = page1->words();
+    QVERIFY(!page0Words.isEmpty());
+    QVERIFY(!page1Words.isEmpty());
+
+    constexpr qreal zoom = 1.5;
+    const QPointF startCenter = page0Words.first().boundingBox.center();
+    const QPointF endCenter = page1Words.first().boundingBox.center();
+    const QPoint start = toViewportPoint(
+        stackView, 0, QPoint(static_cast<int>(startCenter.x() * zoom), static_cast<int>(startCenter.y() * zoom)));
+    const QPoint end = toViewportPoint(
+        stackView, 1, QPoint(static_cast<int>(endCenter.x() * zoom), static_cast<int>(endCenter.y() * zoom)));
+
+    // A single drag whose start/end land on different pages: mousePress on
+    // page 0's first word, mouseMove/mouseRelease on page 1's first word --
+    // exercises exactly the "past the page boundary" path (each event
+    // resolves the page under the cursor fresh; see
+    // PdfPageStackView::mouseMoveEvent()) rather than a scripted sequence
+    // of same-page moves.
+    sendDrag(stackView, start, end);
+
+    const QVector<int> pages = stackView->selectionPageIndices();
+    QCOMPARE(pages.size(), 2);
+    QCOMPARE(pages[0], 0);
+    QCOMPARE(pages[1], 1);
+
+    // Page 0's portion runs from its first word to the end of the page;
+    // page 1's from its start to the snapped word -- exactly what a
+    // single-page selectWordRange() already gives, applied per page.
+    const TextSelectionResult expectedPage0 = wordRangeSelection(page0Words, 0, page0Words.size() - 1);
+    const TextSelectionResult expectedPage1 = wordRangeSelection(page1Words, 0, 0);
+    QCOMPARE(stackView->selectedTextForPage(0), expectedPage0.text);
+    QCOMPARE(stackView->selectedTextForPage(1), expectedPage1.text);
+    QCOMPARE(view->selectedText(), expectedPage0.text + QStringLiteral("\n") + expectedPage1.text);
+
+    // Highlighting a cross-page selection becomes one Highlight per page it
+    // spans (see PdfView::addHighlightForSelection()), not one highlight
+    // with a single rect spanning two different pages' coordinate spaces.
+    view->addHighlightForSelection();
+    const QString bookHash = FileIdentity::contentHash(fixturePath("test_multipage.pdf"));
+    const QVector<Highlight> highlights = HighlightStore::highlightsFor(bookHash);
+    QCOMPARE(highlights.size(), 2);
+    QVERIFY((highlights[0].targetIndex == 0 && highlights[1].targetIndex == 1)
+            || (highlights[0].targetIndex == 1 && highlights[1].targetIndex == 0));
 }
 
 void PdfTextSelectionTest::materializedPageEventuallyGetsRenderedImage()

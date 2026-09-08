@@ -146,11 +146,16 @@ Flickable {
         }
 
         // Live selection — pdfSelectionController is shared across every
-        // delegate (only one page can have an active selection at a time),
-        // so each delegate only renders it when the selection belongs to
-        // this page (see PdfSelectionController::selectionPageIndex).
+        // delegate, and a selection can span more than one page (see
+        // PdfSelectionController's own doc comment), so each delegate asks
+        // for just its own page's rects rather than assuming there's a
+        // single active page. selectionPageIndices (a real NOTIFYing
+        // property) is read here purely so this binding re-evaluates on
+        // every selectionChanged -- selectionRectsForPage() itself is a
+        // plain Q_INVOKABLE with no change notification of its own.
         Repeater {
-            model: pdfSelectionController.selectionPageIndex === root.index ? pdfSelectionController.selectionRects : []
+            model: pdfSelectionController.selectionPageIndices.indexOf(root.index) >= 0
+                   ? pdfSelectionController.selectionRectsForPage(root.index) : []
             delegate: Rectangle {
                 required property var modelData
                 x: modelData.x * root.renderScale
@@ -170,9 +175,37 @@ Flickable {
                 pdfSelectionController.beginSelection(root.index, point.position.x / root.renderScale, point.position.y / root.renderScale)
             }
             onPointChanged: {
-                if (point.pressed && pdfSelectionController.selectionPageIndex === root.index) {
-                    pdfSelectionController.updateSelection(point.position.x / root.renderScale, point.position.y / root.renderScale)
+                if (!point.pressed || pdfSelectionController.selectionPageIndices.length === 0) {
+                    return
                 }
+                // The drag may have moved past this delegate's own page
+                // (down into the next page, or up into the previous one) --
+                // TapHandler keeps delivering pointChanged to whichever
+                // delegate's handler actually grabbed the gesture (this
+                // one, the page the long-press started on) even once the
+                // finger is no longer over it, the same way a desktop mouse
+                // grab does (see PdfPageStackView::mouseMoveEvent()), just
+                // reporting a `position` that's since run outside this
+                // Item's own bounds. Map that through the shared ListView's
+                // content coordinate space to find which page the finger is
+                // *actually* over now, then re-express the point in that
+                // page's own local (page-space) coordinates -- mapToItem/
+                // mapFromItem resolve this correctly even across another
+                // delegate's own Flickable pan, since they walk the real
+                // scene graph transforms rather than doing flat geometry.
+                const list = root.ListView.view
+                const contentPoint = pageImage.mapToItem(list.contentItem, point.position.x, point.position.y)
+                const targetIndex = list.indexAt(contentPoint.x, contentPoint.y)
+                if (targetIndex < 0) {
+                    return
+                }
+                const targetItem = list.itemAtIndex(targetIndex)
+                if (!targetItem) {
+                    return
+                }
+                const localPoint = list.contentItem.mapToItem(targetItem, contentPoint.x, contentPoint.y)
+                pdfSelectionController.updateSelection(targetIndex, localPoint.x / targetItem.renderScale,
+                                                        localPoint.y / targetItem.renderScale)
             }
         }
     }
@@ -194,43 +227,55 @@ Flickable {
         onClicked: root.tapped()
     }
 
+    // Only the FIRST page a (possibly multi-page) selection spans shows the
+    // toolbar -- one floating Copy/Highlight affordance for the whole
+    // selection, anchored near where it starts, not one per spanned page.
+    readonly property bool isFirstSelectedPage: pdfSelectionController.selectionPageIndices.length > 0
+                                                 && pdfSelectionController.selectionPageIndices[0] === root.index
+
     SelectionToolbar {
-        visible: pdfSelectionController.selectionPageIndex === root.index && pdfSelectionController.selectedText.length > 0
+        visible: root.isFirstSelectedPage && pdfSelectionController.selectedText.length > 0
         parent: pageImage
         x: {
-            const rects = pdfSelectionController.selectionRects
+            const rects = pdfSelectionController.selectionRectsForPage(root.index)
             return rects.length > 0 ? rects[0].x * root.renderScale : 0
         }
         y: {
-            const rects = pdfSelectionController.selectionRects
+            const rects = pdfSelectionController.selectionRectsForPage(root.index)
             return rects.length > 0 ? Math.max(0, rects[0].y * root.renderScale - height - 8) : 0
         }
         onHighlightRequested: {
-            const rects = pdfSelectionController.selectionRects
-            if (rects.length === 0) {
-                return
+            // One Highlight per page the selection spans, each with that
+            // page's own bounding rect and text slice -- mirrors desktop's
+            // PdfView::addHighlightForSelection() (see there for why a
+            // single rect/text pair can't represent a cross-page span).
+            for (const pageIndex of pdfSelectionController.selectionPageIndices) {
+                const rects = pdfSelectionController.selectionRectsForPage(pageIndex)
+                if (rects.length === 0) {
+                    continue
+                }
+                var r = rects[0]
+                for (var i = 1; i < rects.length; i++) {
+                    const b = rects[i]
+                    const x1 = Math.min(r.x, b.x)
+                    const y1 = Math.min(r.y, b.y)
+                    const x2 = Math.max(r.x + r.width, b.x + b.width)
+                    const y2 = Math.max(r.y + r.height, b.y + b.height)
+                    r = Qt.rect(x1, y1, x2 - x1, y2 - y1)
+                }
+                highlightsModel.addHighlight(pageIndex, r, pdfSelectionController.selectionTextForPage(pageIndex))
             }
-            var r = rects[0]
-            for (var i = 1; i < rects.length; i++) {
-                const b = rects[i]
-                const x1 = Math.min(r.x, b.x)
-                const y1 = Math.min(r.y, b.y)
-                const x2 = Math.max(r.x + r.width, b.x + b.width)
-                const y2 = Math.max(r.y + r.height, b.y + b.height)
-                r = Qt.rect(x1, y1, x2 - x1, y2 - y1)
-            }
-            highlightsModel.addHighlight(root.index, r, pdfSelectionController.selectedText)
             pdfSelectionController.clearSelection()
         }
     }
 
-    // Recycled/destroyed while its page still had the active selection
-    // (e.g. scrolled far enough off-screen for ListView to reuse this
-    // delegate for a different index) — clear it rather than leave a
-    // selection "stuck" pointing at a page index no longer backed by this
+    // Recycled/destroyed while its page was still part of the active
+    // selection (e.g. scrolled far enough off-screen for ListView to reuse
+    // this delegate for a different index) — clear it rather than leave a
+    // selection "stuck" referencing a page index no longer backed by this
     // Item's own gesture state.
     Component.onDestruction: {
-        if (pdfSelectionController.selectionPageIndex === root.index) {
+        if (pdfSelectionController.selectionPageIndices.indexOf(root.index) >= 0) {
             pdfSelectionController.clearSelection()
         }
     }

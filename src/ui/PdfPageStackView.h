@@ -135,10 +135,18 @@ public:
 
     // Live text selection, resolved from mouse drags via the shared
     // core/PdfSelectionModel -- the same state machine Qt Quick's
-    // PdfSelectionController uses for touch long-press-drag selection.
+    // PdfSelectionController uses for touch long-press-drag selection. A
+    // drag isn't confined to the page it started on: dragging past a
+    // page's top/bottom edge continues the selection onto the next page,
+    // so these are all page-plural -- see PdfSelectionModel's own doc
+    // comment for how a multi-page range is resolved.
     QString selectedText() const { return m_selectionModel.selectedText(); }
-    int selectedPageIndex() const { return m_selectionModel.selectionPageIndex(); }
-    QRectF selectedBoundingPageRect() const { return m_selectionModel.selectionBoundingRect(); }
+    QVector<int> selectionPageIndices() const { return m_selectionModel.selectionPageIndices(); }
+    QRectF selectedBoundingPageRectForPage(int pageIndex) const
+    {
+        return m_selectionModel.selectionBoundingRectForPage(pageIndex);
+    }
+    QString selectedTextForPage(int pageIndex) const { return m_selectionModel.selectionTextForPage(pageIndex); }
     // Whether the *last completed* drag was big enough to count as a
     // deliberate selection (kMinSelectionPixels) -- distinct from
     // selectedText() being non-empty, which is also true mid-drag before
@@ -194,13 +202,20 @@ private:
     // longer matches m_zoom (a page can be re-requested at a new zoom while
     // an older-zoom render for it is still in flight).
     void onPageRendered(int index, qreal zoom, const QImage &image);
-    // Re-derives m_liveSelectionRects (pixel space) from m_selectionModel's
-    // current page-space rects, emits selectionChanged(), and repaints.
-    // Called after every mouse-handler touch of the model.
+    // Re-derives m_liveSelectionRectsByPage (pixel space, per page) from
+    // m_selectionModel's current page-space rects, emits selectionChanged(),
+    // and repaints. Called after every mouse-handler touch of the model.
     void refreshLiveSelectionRects();
     // Converts a viewport-local pixel point to a page-space point (points,
     // zoom-independent) within the given page.
     QPointF toPagePoint(const QPoint &viewportPos, int pageIndex) const;
+    // Words for `index`, from the materialized cache (m_pageWords) if
+    // present, else fetched on demand and cached in m_onDemandWordCache --
+    // a drag can reach a page well outside the materialize-for-render
+    // radius (see kMaterializeRadius), and extracting a page's words is
+    // cheap (no rasterization) compared to what materializePage() actually
+    // guards against re-doing on every call.
+    QVector<TextWord> wordsForPage(int index);
 
     IDocument *m_document = nullptr; // non-owning; PdfView owns the real thing
     QVector<QSizeF> m_pageSizePoints;
@@ -216,22 +231,32 @@ private:
     QHash<int, QVector<TextWord>> m_pageWords; // also doubles as "is this page materialized"
     QHash<int, QVector<HighlightMark>> m_pageHighlightRects;
     QHash<int, QVector<QRect>> m_pageSearchRects;
+    // Words fetched on demand for a page a selection drag reached that
+    // wasn't (and may never be) materialized for rendering -- see
+    // wordsForPage(). Grows for the document's lifetime rather than being
+    // evicted alongside render state: word lists are small (no image data),
+    // and re-parsing the same page's content stream again on a later drag
+    // that revisits it isn't worth the bookkeeping to avoid. Cleared only
+    // by setDocument() (a new document invalidates every cached word list).
+    QHash<int, QVector<TextWord>> m_onDemandWordCache;
 
     QVector<Highlight> m_highlights;
     QString m_searchTerm;
 
-    // Live selection drag state -- a drag is locked to whichever page it
-    // started on for its whole gesture (see mousePressEvent), reproducing
-    // the old per-canvas model's implicit behavior: Qt auto-grabs the mouse
-    // to the pressed widget, so a drag that visually crosses into an
-    // adjacent canvas's area still delivered move/release events to the
-    // original canvas.
-    int m_dragPageIndex = -1;
+    // Live selection drag state. Unlike the old per-canvas model, a drag is
+    // NOT locked to whichever page it started on: mouseMoveEvent()/
+    // mouseReleaseEvent() re-resolve the page under the cursor on every
+    // event (Qt keeps delivering these to this widget for the whole
+    // gesture once it's pressed, even past this widget's own visible
+    // viewport, the same mechanism that makes edge-of-viewport
+    // auto-scroll-while-selecting possible in other Qt widgets), so the
+    // selection can grow onto adjacent pages as the drag crosses their
+    // boundary.
     QPoint m_dragAnchorPixel;
     QPoint m_dragFocusPixel;
     bool m_dragging = false;
     bool m_committedSelection = false;
-    QVector<QRect> m_liveSelectionRects; // pixel space, for m_dragPageIndex only
+    QHash<int, QVector<QRect>> m_liveSelectionRectsByPage; // pixel space, keyed by page index
 
     PdfSelectionModel m_selectionModel;
 };

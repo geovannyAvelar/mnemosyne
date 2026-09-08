@@ -37,32 +37,21 @@ int nearestWordIndex(const QVector<TextWord> &words, const QPointF &point)
     return bestIndex;
 }
 
-TextSelectionResult selectWordRange(const QVector<TextWord> &words, const QPointF &anchorPoint,
-                                     const QPointF &focusPoint)
+TextSelectionResult wordRangeSelection(const QVector<TextWord> &words, int startIndex, int endIndex)
 {
     TextSelectionResult result;
-
-    if (words.isEmpty()) {
+    if (words.isEmpty() || startIndex < 0 || endIndex < 0 || startIndex > endIndex || endIndex >= words.size()) {
         return result;
-    }
-
-    int anchorIndex = nearestWordIndex(words, anchorPoint);
-    int focusIndex = nearestWordIndex(words, focusPoint);
-    if (anchorIndex < 0 || focusIndex < 0) {
-        return result;
-    }
-    if (anchorIndex > focusIndex) {
-        std::swap(anchorIndex, focusIndex);
     }
 
     QString text;
     QVector<QRectF> wordRects;
-    for (int i = anchorIndex; i <= focusIndex; ++i) {
+    for (int i = startIndex; i <= endIndex; ++i) {
         const TextWord &word = words[i];
         wordRects.append(word.boundingBox);
         text += word.text;
 
-        if (i < focusIndex) {
+        if (i < endIndex) {
             const TextWord &next = words[i + 1];
             const qreal verticalGap = std::abs(next.boundingBox.center().y() - word.boundingBox.center().y());
             if (verticalGap > word.boundingBox.height() / 2.0) {
@@ -76,4 +65,22 @@ TextSelectionResult selectWordRange(const QVector<TextWord> &words, const QPoint
     result.text = text;
     result.wordRects = wordRects;
     return result;
+}
+
+TextSelectionResult selectWordRange(const QVector<TextWord> &words, const QPointF &anchorPoint,
+                                     const QPointF &focusPoint)
+{
+    if (words.isEmpty()) {
+        return {};
+    }
+
+    int anchorIndex = nearestWordIndex(words, anchorPoint);
+    int focusIndex = nearestWordIndex(words, focusPoint);
+    if (anchorIndex < 0 || focusIndex < 0) {
+        return {};
+    }
+    if (anchorIndex > focusIndex) {
+        std::swap(anchorIndex, focusIndex);
+    }
+    return wordRangeSelection(words, anchorIndex, focusIndex);
 }

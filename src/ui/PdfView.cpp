@@ -425,13 +425,25 @@ void PdfView::refreshHighlights()
 
 void PdfView::addHighlightForSelection()
 {
-    const int pageIndex = m_pageStackView->selectedPageIndex();
-    const QString text = m_pageStackView->selectedText();
-    if (pageIndex < 0 || text.isEmpty() || !m_pageStackView->hasSelection()) {
+    // A selection spanning several pages becomes one Highlight per page it
+    // touches, each with that page's own rect and text slice -- there's no
+    // single-rect way to represent "highlighted across a page break", and
+    // this way every page's portion stays independently editable/removable
+    // (see PdfHighlightController::indexAtPagePoint(), which hit-tests by
+    // page + point same as it always did).
+    const QVector<int> pageIndices = m_pageStackView->selectionPageIndices();
+    if (pageIndices.isEmpty() || !m_pageStackView->hasSelection()) {
         return;
     }
 
-    m_highlightController.addHighlight(pageIndex, m_pageStackView->selectedBoundingPageRect(), text);
+    for (int pageIndex : pageIndices) {
+        const QString pageText = m_pageStackView->selectedTextForPage(pageIndex);
+        if (pageText.isEmpty()) {
+            continue;
+        }
+        m_highlightController.addHighlight(pageIndex, m_pageStackView->selectedBoundingPageRectForPage(pageIndex),
+                                            pageText);
+    }
     m_pageStackView->clearSelection();
     m_pageStackView->setHighlights(m_highlightController.highlights());
     emit highlightsChanged();
@@ -439,9 +451,19 @@ void PdfView::addHighlightForSelection()
 
 void PdfView::addNoteForSelection()
 {
-    const int pageIndex = m_pageStackView->selectedPageIndex();
-    const QString text = m_pageStackView->selectedText();
-    if (pageIndex < 0 || text.isEmpty() || !m_pageStackView->hasSelection()) {
+    // Unlike plain Highlight above, a note is one dialog / one comment, so a
+    // cross-page selection can't become "one note per page" the same way --
+    // it attaches to just the first page the selection spans, with that
+    // page's own rect and text (not the full cross-page text: pairing a
+    // note's highlighted rect with text from a page it isn't actually on
+    // would misrepresent what's highlighted).
+    const QVector<int> pageIndices = m_pageStackView->selectionPageIndices();
+    if (pageIndices.isEmpty() || !m_pageStackView->hasSelection()) {
+        return;
+    }
+    const int pageIndex = pageIndices.first();
+    const QString text = m_pageStackView->selectedTextForPage(pageIndex);
+    if (text.isEmpty()) {
         return;
     }
 
@@ -450,8 +472,8 @@ void PdfView::addNoteForSelection()
         return;
     }
 
-    m_highlightController.addNote(pageIndex, m_pageStackView->selectedBoundingPageRect(), text, result->note,
-                                   result->color);
+    m_highlightController.addNote(pageIndex, m_pageStackView->selectedBoundingPageRectForPage(pageIndex), text,
+                                   result->note, result->color);
     m_pageStackView->clearSelection();
     m_pageStackView->setHighlights(m_highlightController.highlights());
     emit highlightsChanged();
@@ -460,7 +482,7 @@ void PdfView::addNoteForSelection()
 void PdfView::showCanvasContextMenu(const QPoint &globalPos, int pageIndex, const QPointF &pagePoint)
 {
     const bool hasSelectionHere =
-        pageIndex == m_pageStackView->selectedPageIndex() && m_pageStackView->hasSelection();
+        m_pageStackView->selectionPageIndices().contains(pageIndex) && m_pageStackView->hasSelection();
 
     QMenu menu(this);
 
