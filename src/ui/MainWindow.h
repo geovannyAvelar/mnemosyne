@@ -15,6 +15,7 @@
 #include <QVector>
 
 class BookInfoDock;
+class FormFieldsDock;
 class IReaderView;
 class LibraryView;
 class NotesDock;
@@ -76,6 +77,10 @@ private:
     void populateSyncMenu();
     void refreshNotesDock();
     void refreshBookInfoDock();
+    // Only meaningful for a PdfView tab -- clears the dock for every other
+    // tab type (same as refreshNotesDock() does for a non-highlightable one).
+    void refreshFormFieldsDock();
+    void saveFilledFormAs();
     QVector<HighlightExporter::ExportEntry> buildExportEntries() const;
     // Every RecentFiles entry with at least one highlight, most-recently-
     // opened first (same order RecentFiles::list() already returns) --
@@ -103,6 +108,7 @@ private:
     NotesDock *m_notesDock = nullptr;
     SearchDock *m_searchDock = nullptr;
     BookInfoDock *m_bookInfoDock = nullptr;
+    FormFieldsDock *m_formFieldsDock = nullptr;
     BookMetadataClient *m_bookMetadataClient = nullptr;
     QMenu *m_openRecentMenu = nullptr;
     QMenu *m_syncMenu = nullptr;

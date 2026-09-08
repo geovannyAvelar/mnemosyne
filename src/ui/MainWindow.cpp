@@ -18,6 +18,7 @@
 #include "mobi/MobiDocument.h"
 #include "txt/TxtDocument.h"
 #include "ui/BookInfoDock.h"
+#include "ui/FormFieldsDock.h"
 #include "ui/ComicView.h"
 #include "ui/EpubView.h"
 #ifdef MNEMOSYNE_ENABLE_HTML
@@ -46,6 +47,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDebug>
+#include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QEvent>
@@ -284,6 +286,10 @@ void MainWindow::setupDocks()
     addDockWidget(Qt::LeftDockWidgetArea, m_bookInfoDock);
     tabifyDockWidget(m_tocDock, m_bookInfoDock);
 
+    m_formFieldsDock = new FormFieldsDock(this);
+    addDockWidget(Qt::LeftDockWidgetArea, m_formFieldsDock);
+    tabifyDockWidget(m_tocDock, m_formFieldsDock);
+
     m_searchWatcher = new QFutureWatcher<QVector<SearchResult>>(this);
 
     m_bookMetadataClient = new BookMetadataClient(this);
@@ -341,6 +347,7 @@ void MainWindow::setupDocks()
     m_notesDock->setTitleBarWidget(new QWidget(m_notesDock));
     m_searchDock->setTitleBarWidget(new QWidget(m_searchDock));
     m_bookInfoDock->setTitleBarWidget(new QWidget(m_bookInfoDock));
+    m_formFieldsDock->setTitleBarWidget(new QWidget(m_formFieldsDock));
 
     m_tocDock->raise(); // Contents is the more useful default tab on opening a book
 
@@ -462,6 +469,26 @@ void MainWindow::setupDocks()
             m_currentView->goToTocNode(node);
         }
     });
+
+    connect(m_formFieldsDock, &FormFieldsDock::textFieldEdited, this,
+            [this](int pageIndex, int fieldIndex, const QString &value) {
+                if (auto *pdfView = dynamic_cast<PdfView *>(m_currentView)) {
+                    pdfView->setFormFieldText(pageIndex, fieldIndex, value);
+                }
+            });
+    connect(m_formFieldsDock, &FormFieldsDock::checkBoxToggled, this,
+            [this](int pageIndex, int fieldIndex, bool checked) {
+                if (auto *pdfView = dynamic_cast<PdfView *>(m_currentView)) {
+                    pdfView->setFormFieldChecked(pageIndex, fieldIndex, checked);
+                }
+            });
+    connect(m_formFieldsDock, &FormFieldsDock::choiceSelected, this,
+            [this](int pageIndex, int fieldIndex, int choiceIndex) {
+                if (auto *pdfView = dynamic_cast<PdfView *>(m_currentView)) {
+                    pdfView->setFormFieldChoiceIndex(pageIndex, fieldIndex, choiceIndex);
+                }
+            });
+    connect(m_formFieldsDock, &FormFieldsDock::saveAsRequested, this, &MainWindow::saveFilledFormAs);
 }
 
 void MainWindow::setupSidebarToggle()
@@ -511,6 +538,7 @@ void MainWindow::toggleSidebar()
         m_notesDock->hide();
         m_searchDock->hide();
         m_bookInfoDock->hide(); // regardless of content -- refreshBookInfoDock() reconciles on show
+        m_formFieldsDock->hide(); // ditto, via refreshFormFieldsDock()
         QSettings().setValue(QStringLiteral("sidebarVisible"), false);
         m_sidebarToggleAction->setToolTip(tr("Show Sidebar"));
     } else {
@@ -554,6 +582,7 @@ void MainWindow::showSidebar()
     // had content (see there); recompute for the current tab now that the
     // group is visible again, rather than force it open unconditionally.
     refreshBookInfoDock();
+    refreshFormFieldsDock();
 }
 
 void MainWindow::setupMenus()
@@ -604,6 +633,7 @@ void MainWindow::setupMenus()
     viewMenu->addAction(m_notesDock->toggleViewAction());
     viewMenu->addAction(m_searchDock->toggleViewAction());
     viewMenu->addAction(m_bookInfoDock->toggleViewAction());
+    viewMenu->addAction(m_formFieldsDock->toggleViewAction());
     viewMenu->addSeparator();
 
     m_darkModeAction = viewMenu->addAction(tr("&Dark Mode"));
@@ -858,6 +888,7 @@ void MainWindow::onTabChanged(int index)
         m_notesDock->clear();
         m_searchDock->clear();
         m_bookInfoDock->clear();
+        m_formFieldsDock->clear();
         setWindowTitle(tr("Mnemosyne"));
         if (widget == m_libraryView) {
             m_libraryView->refresh();
@@ -878,6 +909,7 @@ void MainWindow::onTabChanged(int index)
         refreshNotesDock();
         m_searchDock->clear();
         refreshBookInfoDock();
+        refreshFormFieldsDock();
         setWindowTitle(tr("%1 — Mnemosyne").arg(m_currentView->documentTitle()));
     }
 #ifdef Q_OS_MACOS
@@ -929,6 +961,38 @@ void MainWindow::refreshBookInfoDock()
 
     if (shouldLookUp) {
         m_bookMetadataClient->lookup(m_currentIsbn);
+    }
+}
+
+void MainWindow::refreshFormFieldsDock()
+{
+    // Same "don't pop the sidebar group back open" guard as
+    // refreshBookInfoDock() above.
+    if (m_tocDock->isHidden()) {
+        return;
+    }
+
+    auto *pdfView = dynamic_cast<PdfView *>(m_currentView);
+    m_formFieldsDock->setFields(pdfView ? pdfView->formFields() : QVector<PdfFormField>());
+}
+
+void MainWindow::saveFilledFormAs()
+{
+    auto *pdfView = dynamic_cast<PdfView *>(m_currentView);
+    if (!pdfView) {
+        return;
+    }
+
+    const QString suggestedName = QFileInfo(m_currentFilePath).completeBaseName() + QStringLiteral("-filled.pdf");
+    const QString suggestedPath = QDir(QFileInfo(m_currentFilePath).absolutePath()).filePath(suggestedName);
+    const QString outputPath =
+        QFileDialog::getSaveFileName(this, tr("Save Filled Form As"), suggestedPath, tr("PDF Files (*.pdf)"));
+    if (outputPath.isEmpty()) {
+        return;
+    }
+
+    if (!pdfView->saveFilledFormAs(outputPath)) {
+        QMessageBox::warning(this, tr("Save Filled Form"), tr("Failed to save the filled form to:\n%1").arg(outputPath));
     }
 }
 

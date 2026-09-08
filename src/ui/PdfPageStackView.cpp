@@ -6,6 +6,7 @@
 #include <QMouseEvent>
 #include <QMutexLocker>
 #include <QPainter>
+#include <QPen>
 #include <QRunnable>
 #include <QThreadPool>
 
@@ -316,6 +317,7 @@ void PdfPageStackView::evictPage(int index)
     m_pageImages.remove(index);
     m_pageHighlightRects.remove(index);
     m_pageSearchRects.remove(index);
+    m_pageInkMarks.remove(index);
     m_liveSelectionRectsByPage.remove(index);
 
     QMutexLocker locker(&m_renderContext->mutex);
@@ -329,6 +331,43 @@ void PdfPageStackView::setHighlights(const QVector<Highlight> &highlights)
     for (int i : materializedIndices) {
         applyOverlaysToPage(i);
     }
+}
+
+void PdfPageStackView::setInkStrokes(const QVector<InkStroke> &strokes)
+{
+    m_inkStrokes = strokes;
+    const QVector<int> materializedIndices = m_pageWords.keys();
+    for (int i : materializedIndices) {
+        applyOverlaysToPage(i);
+    }
+}
+
+void PdfPageStackView::setDrawMode(bool enabled)
+{
+    if (m_drawMode == enabled) {
+        return;
+    }
+    m_drawMode = enabled;
+    if (!m_drawMode && m_isDrawingStroke) {
+        // Mode toggled off mid-drag -- drop the in-progress stroke rather
+        // than silently committing a possibly-incomplete one.
+        m_isDrawingStroke = false;
+        m_drawingPageIndex = -1;
+        m_currentStrokePoints.clear();
+        update();
+    }
+}
+
+QPolygonF PdfPageStackView::strokeToPixelPolygon(const InkStroke &stroke) const
+{
+    QPolygonF polygon;
+    polygon.reserve(stroke.points.size());
+    const qreal offsetX = pageXOffset(stroke.targetIndex);
+    const qreal offsetY = pageOffsetY(stroke.targetIndex);
+    for (const QPointF &p : stroke.points) {
+        polygon.append(QPointF(p.x() * m_zoom + offsetX, p.y() * m_zoom + offsetY));
+    }
+    return polygon;
 }
 
 void PdfPageStackView::setSearchTerm(const QString &term)
@@ -357,6 +396,14 @@ void PdfPageStackView::applyOverlaysToPage(int index)
         }
     }
     m_pageHighlightRects.insert(index, marks);
+
+    QVector<InkMark> inkMarks;
+    for (const InkStroke &stroke : m_inkStrokes) {
+        if (stroke.targetIndex == index) {
+            inkMarks.append({strokeToPixelPolygon(stroke), stroke.color, stroke.width * m_zoom});
+        }
+    }
+    m_pageInkMarks.insert(index, inkMarks);
 
     QVector<QRect> searchRects;
     if (!m_searchTerm.isEmpty()) {
@@ -507,6 +554,25 @@ void PdfPageStackView::paintEvent(QPaintEvent *event)
         for (const QRect &rect : m_liveSelectionRectsByPage.value(i)) {
             painter.fillRect(rect, QColor(60, 130, 230, 90));
         }
+
+        for (const InkMark &mark : m_pageInkMarks.value(i)) {
+            painter.save();
+            painter.setPen(QPen(mark.color, mark.widthPx, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter.drawPolyline(mark.polygon);
+            painter.restore();
+        }
+        if (m_isDrawingStroke && m_drawingPageIndex == i && m_currentStrokePoints.size() >= 2) {
+            InkStroke live;
+            live.targetIndex = i;
+            live.points = m_currentStrokePoints;
+            live.color = m_drawColor;
+            live.width = m_drawWidth;
+            const InkMark liveMark{strokeToPixelPolygon(live), live.color, live.width * m_zoom};
+            painter.save();
+            painter.setPen(QPen(liveMark.color, liveMark.widthPx, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+            painter.drawPolyline(liveMark.polygon);
+            painter.restore();
+        }
     }
 }
 
@@ -516,6 +582,16 @@ void PdfPageStackView::mousePressEvent(QMouseEvent *event)
         return;
     }
     setFocus();
+
+    if (m_drawMode) {
+        m_isDrawingStroke = true;
+        m_drawingPageIndex = pageIndexAtOffsetY(event->pos().y());
+        m_currentStrokePoints.clear();
+        m_currentStrokePoints.append(toPagePoint(event->pos(), m_drawingPageIndex));
+        update();
+        return;
+    }
+
     m_dragging = true;
     m_committedSelection = false;
     m_dragAnchorPixel = event->pos();
@@ -527,6 +603,14 @@ void PdfPageStackView::mousePressEvent(QMouseEvent *event)
 
 void PdfPageStackView::mouseMoveEvent(QMouseEvent *event)
 {
+    if (m_isDrawingStroke) {
+        // Points stay in the page whose stack index the stroke began on --
+        // toPagePoint() with m_drawingPageIndex keeps the stroke correct even
+        // if the drag momentarily crosses into a neighboring page's band.
+        m_currentStrokePoints.append(toPagePoint(event->pos(), m_drawingPageIndex));
+        update();
+        return;
+    }
     if (!m_dragging) {
         return;
     }
@@ -548,6 +632,19 @@ void PdfPageStackView::mouseMoveEvent(QMouseEvent *event)
 
 void PdfPageStackView::mouseReleaseEvent(QMouseEvent *event)
 {
+    if (m_isDrawingStroke) {
+        if (event->button() != Qt::LeftButton) {
+            return;
+        }
+        m_isDrawingStroke = false;
+        if (m_currentStrokePoints.size() >= 2) {
+            emit inkStrokeDrawn(m_drawingPageIndex, m_currentStrokePoints);
+        }
+        m_drawingPageIndex = -1;
+        m_currentStrokePoints.clear();
+        update();
+        return;
+    }
     if (!m_dragging || event->button() != Qt::LeftButton) {
         return;
     }

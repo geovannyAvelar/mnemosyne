@@ -1,5 +1,7 @@
 #include "PopplerPdfDocument.h"
 
+#include <poppler-form.h>
+
 #include <QFileInfo>
 #include <QObject>
 
@@ -142,4 +144,117 @@ QString PopplerPdfDocument::title() const
 {
     const QString info = m_doc->info(QStringLiteral("Title"));
     return info.isEmpty() ? m_fallbackTitle : info;
+}
+
+QVector<PdfFormField> PopplerPdfDocument::formFields() const
+{
+    QVector<PdfFormField> result;
+    const int pages = m_doc->numPages();
+    for (int p = 0; p < pages; ++p) {
+        const std::unique_ptr<Poppler::Page> page = m_doc->page(p);
+        if (!page) {
+            continue;
+        }
+        const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
+        for (int i = 0; i < static_cast<int>(fields.size()); ++i) {
+            Poppler::FormField *field = fields[i].get();
+
+            PdfFormField info;
+            info.pageIndex = p;
+            info.fieldIndex = i;
+            info.name = field->fullyQualifiedName();
+            info.readOnly = field->isReadOnly();
+
+            switch (field->type()) {
+            case Poppler::FormField::FormText: {
+                auto *text = static_cast<Poppler::FormFieldText *>(field);
+                info.type = PdfFormField::Type::Text;
+                info.textValue = text->text();
+                break;
+            }
+            case Poppler::FormField::FormButton: {
+                auto *button = static_cast<Poppler::FormFieldButton *>(field);
+                if (button->buttonType() == Poppler::FormFieldButton::Push) {
+                    continue; // no value to show/edit -- see this method's doc comment
+                }
+                info.type = button->buttonType() == Poppler::FormFieldButton::Radio ? PdfFormField::Type::RadioButton
+                                                                                     : PdfFormField::Type::CheckBox;
+                info.checked = button->state();
+                break;
+            }
+            case Poppler::FormField::FormChoice: {
+                auto *choice = static_cast<Poppler::FormFieldChoice *>(field);
+                info.type =
+                    choice->choiceType() == Poppler::FormFieldChoice::ListBox ? PdfFormField::Type::ListBox
+                                                                               : PdfFormField::Type::ComboBox;
+                info.choices = choice->choices();
+                const QList<int> current = choice->currentChoices();
+                info.currentChoiceIndex = current.isEmpty() ? -1 : current.first();
+                break;
+            }
+            case Poppler::FormField::FormSignature:
+            default:
+                continue; // no editable value here either
+            }
+
+            result.append(info);
+        }
+    }
+    return result;
+}
+
+void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QString &value)
+{
+    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    if (!page) {
+        return;
+    }
+    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
+    if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
+        return;
+    }
+    if (auto *text = dynamic_cast<Poppler::FormFieldText *>(fields[fieldIndex].get())) {
+        text->setText(value);
+    }
+}
+
+void PopplerPdfDocument::setFieldChecked(int pageIndex, int fieldIndex, bool checked)
+{
+    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    if (!page) {
+        return;
+    }
+    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
+    if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
+        return;
+    }
+    if (auto *button = dynamic_cast<Poppler::FormFieldButton *>(fields[fieldIndex].get())) {
+        button->setState(checked);
+    }
+}
+
+void PopplerPdfDocument::setFieldChoiceIndex(int pageIndex, int fieldIndex, int choiceIndex)
+{
+    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    if (!page) {
+        return;
+    }
+    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
+    if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
+        return;
+    }
+    if (auto *choice = dynamic_cast<Poppler::FormFieldChoice *>(fields[fieldIndex].get())) {
+        choice->setCurrentChoices(choiceIndex < 0 ? QList<int>() : QList<int>{choiceIndex});
+    }
+}
+
+bool PopplerPdfDocument::saveFilledFormAs(const QString &outputPath) const
+{
+    const std::unique_ptr<Poppler::PDFConverter> converter = m_doc->pdfConverter();
+    if (!converter) {
+        return false;
+    }
+    converter->setOutputFileName(outputPath);
+    converter->setPDFOptions(Poppler::PDFConverter::WithChanges);
+    return converter->convert();
 }

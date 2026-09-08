@@ -1,4 +1,5 @@
 #include "app/HighlightStore.h"
+#include "app/InkStore.h"
 #include "app/RecentFiles.h"
 
 #include <QCoreApplication>
@@ -31,6 +32,13 @@ private slots:
     void highlightColorRoundTrips();
 
     void addHighlightAssignsStableUniqueId();
+
+    void inkStrokeRoundTripsPointsColorWidth();
+    void inkStrokesAreOrderedByDrawOrder();
+    void inkStrokesAreIsolatedPerFile();
+    void clearPageRemovesOnlyThatPagesStrokes();
+    void addInkStrokeAssignsStableUniqueId();
+    void inkStrokeWithFewerThanTwoPointsIsDropped();
 };
 
 void AppPersistenceTest::initTestCase()
@@ -216,6 +224,89 @@ void AppPersistenceTest::addHighlightAssignsStableUniqueId()
     const QVector<Highlight> again = HighlightStore::highlightsFor(book);
     QCOMPARE(again[0].id, highlights[0].id);
     QCOMPARE(again[1].id, highlights[1].id);
+}
+
+void AppPersistenceTest::inkStrokeRoundTripsPointsColorWidth()
+{
+    const QString book = "/tmp/book.pdf";
+    InkStroke stroke;
+    stroke.targetIndex = 4;
+    stroke.points = {QPointF(1.5, 2.5), QPointF(10, 20), QPointF(30, 40)};
+    stroke.color = QColor(200, 30, 40, 255);
+    stroke.width = 3.5;
+
+    InkStore::addStroke(book, stroke);
+
+    const QVector<InkStroke> strokes = InkStore::strokesFor(book);
+    QCOMPARE(strokes.size(), 1);
+    QCOMPARE(strokes[0].targetIndex, 4);
+    QCOMPARE(strokes[0].points, stroke.points);
+    QCOMPARE(strokes[0].color, QColor(200, 30, 40, 255));
+    QCOMPARE(strokes[0].width, 3.5);
+}
+
+void AppPersistenceTest::inkStrokesAreOrderedByDrawOrder()
+{
+    const QString book = "/tmp/book.pdf";
+    InkStore::addStroke(book, InkStroke{2, {QPointF(0, 0), QPointF(1, 1)}, Qt::black, 2.0, QString()});
+    InkStore::addStroke(book, InkStroke{0, {QPointF(0, 0), QPointF(1, 1)}, Qt::black, 2.0, QString()});
+    InkStore::addStroke(book, InkStroke{2, {QPointF(0, 0), QPointF(1, 1)}, Qt::black, 2.0, QString()});
+
+    const QVector<InkStroke> strokes = InkStore::strokesFor(book);
+    QCOMPARE(strokes.size(), 3);
+    // Draw order, not sorted by page like HighlightStore -- unlike a
+    // highlight, a stroke has no natural reading position to sort by.
+    QCOMPARE(strokes[0].targetIndex, 2);
+    QCOMPARE(strokes[1].targetIndex, 0);
+    QCOMPARE(strokes[2].targetIndex, 2);
+}
+
+void AppPersistenceTest::inkStrokesAreIsolatedPerFile()
+{
+    InkStore::addStroke("/tmp/a.pdf", InkStroke{0, {QPointF(0, 0), QPointF(1, 1)}, Qt::black, 2.0, QString()});
+    QVERIFY(InkStore::strokesFor("/tmp/b.pdf").isEmpty());
+}
+
+void AppPersistenceTest::clearPageRemovesOnlyThatPagesStrokes()
+{
+    const QString book = "/tmp/book.pdf";
+    InkStore::addStroke(book, InkStroke{0, {QPointF(0, 0), QPointF(1, 1)}, Qt::black, 2.0, QString()});
+    InkStore::addStroke(book, InkStroke{1, {QPointF(0, 0), QPointF(1, 1)}, Qt::black, 2.0, QString()});
+    InkStore::addStroke(book, InkStroke{0, {QPointF(2, 2), QPointF(3, 3)}, Qt::black, 2.0, QString()});
+
+    InkStore::clearPage(book, 0);
+
+    const QVector<InkStroke> strokes = InkStore::strokesFor(book);
+    QCOMPARE(strokes.size(), 1);
+    QCOMPARE(strokes[0].targetIndex, 1);
+}
+
+void AppPersistenceTest::addInkStrokeAssignsStableUniqueId()
+{
+    const QString book = "/tmp/book.pdf";
+    InkStore::addStroke(book, InkStroke{0, {QPointF(0, 0), QPointF(1, 1)}, Qt::black, 2.0, QString()});
+    InkStore::addStroke(book, InkStroke{1, {QPointF(0, 0), QPointF(1, 1)}, Qt::black, 2.0, QString()});
+
+    const QVector<InkStroke> strokes = InkStore::strokesFor(book);
+    QCOMPARE(strokes.size(), 2);
+    QVERIFY(!strokes[0].id.isEmpty());
+    QVERIFY(!strokes[1].id.isEmpty());
+    QVERIFY(strokes[0].id != strokes[1].id);
+
+    const QVector<InkStroke> again = InkStore::strokesFor(book);
+    QCOMPARE(again[0].id, strokes[0].id);
+    QCOMPARE(again[1].id, strokes[1].id);
+}
+
+void AppPersistenceTest::inkStrokeWithFewerThanTwoPointsIsDropped()
+{
+    // strokesFor() filters out anything that can't be drawn as a line --
+    // guards against a draw-mode drag that somehow committed with only 1
+    // point (PdfPageStackView itself already requires >= 2 before emitting
+    // inkStrokeDrawn(), but the store shouldn't rely solely on that).
+    const QString book = "/tmp/book.pdf";
+    InkStore::addStroke(book, InkStroke{0, {QPointF(5, 5)}, Qt::black, 2.0, QString()});
+    QVERIFY(InkStore::strokesFor(book).isEmpty());
 }
 
 QTEST_MAIN(AppPersistenceTest)

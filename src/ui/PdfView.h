@@ -3,6 +3,7 @@
 #include "PdfHighlightController.h"
 #include "PdfSearchController.h"
 #include "core/Document.h"
+#include "core/PdfFormField.h"
 #include "core/ReaderView.h"
 
 #include <QWidget>
@@ -54,6 +55,21 @@ public:
                                              const QString &password = QString());
 
     QString selectedText() const;
+
+    // AcroForm field filling (see core/PdfFormField.h, PopplerPdfDocument).
+    // Forwards straight to the live PopplerPdfDocument this view owns --
+    // unlike highlights/ink, a form field's value is written into the
+    // document object itself, not a Mnemosyne-only sidecar; it only reaches
+    // an actual file on disk via saveFilledFormAs() below.
+    QVector<PdfFormField> formFields() const;
+    void setFormFieldText(int pageIndex, int fieldIndex, const QString &value);
+    void setFormFieldChecked(int pageIndex, int fieldIndex, bool checked);
+    void setFormFieldChoiceIndex(int pageIndex, int fieldIndex, int choiceIndex);
+    // Writes every field value set above into a new PDF at outputPath,
+    // never overwriting the file this view was opened from. See
+    // PopplerPdfDocument::saveFilledFormAs().
+    bool saveFilledFormAs(const QString &outputPath) const;
+
     bool hasPendingSyncPrompt() const;
     // Whatever unlocked this view's file, if it was encrypted; empty
     // otherwise. See searchFile()'s own doc comment for the one thing
@@ -73,6 +89,12 @@ public slots:
     void copySelection();
     void addHighlightForSelection();
     void addNoteForSelection();
+    // Toggles freehand-pen draw mode on the canvas (see
+    // PdfPageStackView::setDrawMode()) -- checked state owned by the
+    // toolbar's own "Draw" button.
+    void toggleDrawMode(bool enabled);
+    // Erases every ink stroke on the current page (InkStore::clearPage()).
+    void clearPageDrawings();
 
 signals:
     // Emitted whenever this view adds, edits, or removes a highlight/note,
@@ -94,6 +116,11 @@ private:
     // NotePopup if it hit an existing highlight that has a note. See
     // PdfPageStackView::clicked()'s own doc comment.
     void showNotePopupIfClickedOnNote(int pageIndex, const QPointF &pagePoint, const QPoint &globalPos);
+    // Emitted by PdfPageStackView when a draw-mode drag commits (>= 2
+    // points) -- persists it (InkStore) then feeds the updated stroke list
+    // back into the canvas, the same round-trip addHighlightForSelection()
+    // already does for highlights.
+    void onInkStrokeDrawn(int pageIndex, const QVector<QPointF> &pagePoints);
 
     std::unique_ptr<IDocument> m_document;
     QString m_filePath;

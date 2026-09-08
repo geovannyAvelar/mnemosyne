@@ -1,6 +1,7 @@
 #include "PdfView.h"
 
 #include "app/HighlightSync.h"
+#include "app/InkStore.h"
 #include "core/SearchUtil.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "ui/NoteDialog.h"
@@ -102,6 +103,8 @@ PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget 
     m_pageStackView->setDocument(m_document.get());
     m_pageStackView->setZoom(m_zoom);
     m_pageStackView->setHighlights(m_highlightController.highlights());
+    m_pageStackView->setInkStrokes(InkStore::strokesFor(m_progressController->bookHash()));
+    connect(m_pageStackView, &PdfPageStackView::inkStrokeDrawn, this, &PdfView::onInkStrokeDrawn);
     updateNavigationState();
     m_pageStackView->setCurrentPageHint(m_currentPage);
 
@@ -166,6 +169,39 @@ int PdfView::currentPosition() const
 QString PdfView::selectedText() const
 {
     return m_pageStackView->selectedText();
+}
+
+QVector<PdfFormField> PdfView::formFields() const
+{
+    auto *pdfDoc = dynamic_cast<PopplerPdfDocument *>(m_document.get());
+    return pdfDoc ? pdfDoc->formFields() : QVector<PdfFormField>();
+}
+
+void PdfView::setFormFieldText(int pageIndex, int fieldIndex, const QString &value)
+{
+    if (auto *pdfDoc = dynamic_cast<PopplerPdfDocument *>(m_document.get())) {
+        pdfDoc->setFieldText(pageIndex, fieldIndex, value);
+    }
+}
+
+void PdfView::setFormFieldChecked(int pageIndex, int fieldIndex, bool checked)
+{
+    if (auto *pdfDoc = dynamic_cast<PopplerPdfDocument *>(m_document.get())) {
+        pdfDoc->setFieldChecked(pageIndex, fieldIndex, checked);
+    }
+}
+
+void PdfView::setFormFieldChoiceIndex(int pageIndex, int fieldIndex, int choiceIndex)
+{
+    if (auto *pdfDoc = dynamic_cast<PopplerPdfDocument *>(m_document.get())) {
+        pdfDoc->setFieldChoiceIndex(pageIndex, fieldIndex, choiceIndex);
+    }
+}
+
+bool PdfView::saveFilledFormAs(const QString &outputPath) const
+{
+    auto *pdfDoc = dynamic_cast<PopplerPdfDocument *>(m_document.get());
+    return pdfDoc && pdfDoc->saveFilledFormAs(outputPath);
 }
 
 bool PdfView::hasPendingSyncPrompt() const
@@ -277,6 +313,18 @@ void PdfView::setupUi()
         QSettings().setValue(QStringLiteral("pdfPageInvertColors"), checked);
     });
 
+    // Freehand pen annotations (see InkStore, PdfPageStackView draw mode).
+    // App-side only, like highlights/notes -- never written into the PDF
+    // itself, so unlike a real PDF ink annotation these strokes only show up
+    // when the page is reopened in Mnemosyne, not in other PDF viewers.
+    auto *drawButton = new QPushButton(tr("Draw"), toolbar);
+    drawButton->setCheckable(true);
+    drawButton->setToolTip(tr("Draw freehand pen strokes on the page"));
+    connect(drawButton, &QPushButton::toggled, this, &PdfView::toggleDrawMode);
+
+    auto *clearDrawingsButton = new QPushButton(tr("Clear Page Drawings"), toolbar);
+    connect(clearDrawingsButton, &QPushButton::clicked, this, &PdfView::clearPageDrawings);
+
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_pageSpinBox);
     toolbarLayout->addWidget(m_pageCountLabel);
@@ -285,6 +333,8 @@ void PdfView::setupUi()
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
     toolbarLayout->addWidget(pageDarkButton);
+    toolbarLayout->addWidget(drawButton);
+    toolbarLayout->addWidget(clearDrawingsButton);
 
     m_pageStackView = new PdfPageStackView(this);
     connect(m_pageStackView, &PdfPageStackView::contextMenuRequested, this, &PdfView::showCanvasContextMenu);
@@ -480,6 +530,32 @@ void PdfView::addNoteForSelection()
     m_pageStackView->clearSelection();
     m_pageStackView->setHighlights(m_highlightController.highlights());
     emit highlightsChanged();
+}
+
+void PdfView::toggleDrawMode(bool enabled)
+{
+    m_pageStackView->setDrawMode(enabled);
+    if (enabled) {
+        // Drawing and text-selecting at once would fight over mouse drags --
+        // dropping any in-progress/committed selection keeps the two modes
+        // from interfering with each other.
+        m_pageStackView->clearSelection();
+    }
+}
+
+void PdfView::clearPageDrawings()
+{
+    InkStore::clearPage(m_progressController->bookHash(), m_currentPage);
+    m_pageStackView->setInkStrokes(InkStore::strokesFor(m_progressController->bookHash()));
+}
+
+void PdfView::onInkStrokeDrawn(int pageIndex, const QVector<QPointF> &pagePoints)
+{
+    InkStroke stroke;
+    stroke.targetIndex = pageIndex;
+    stroke.points = pagePoints;
+    InkStore::addStroke(m_progressController->bookHash(), stroke);
+    m_pageStackView->setInkStrokes(InkStore::strokesFor(m_progressController->bookHash()));
 }
 
 void PdfView::showCanvasContextMenu(const QPoint &globalPos, int pageIndex, const QPointF &pagePoint)

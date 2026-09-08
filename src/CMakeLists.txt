@@ -4,6 +4,8 @@
 # end would link against instead of mnemosynedesktopui.
 set(MNEMOSYNE_CORE_SOURCES
     core/Highlight.h
+    core/InkStroke.h
+    core/PdfFormField.h
     core/ReadingProgress.h
     core/Document.h
     core/Document.cpp
@@ -28,6 +30,8 @@ set(MNEMOSYNE_CORE_SOURCES
     app/BookMetadataClient.cpp
     app/HighlightStore.h
     app/HighlightStore.cpp
+    app/InkStore.h
+    app/InkStore.cpp
     app/HighlightExporter.h
     app/HighlightExporter.cpp
     app/DeviceIdentity.h
@@ -254,6 +258,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/NotesDock.cpp
     ui/BookInfoDock.h
     ui/BookInfoDock.cpp
+    ui/FormFieldsDock.h
+    ui/FormFieldsDock.cpp
     ui/NoteDialog.h
     ui/NoteDialog.cpp
     ui/NotePopup.h

@@ -2,6 +2,7 @@
 
 #include "core/Document.h"
 #include "core/Highlight.h"
+#include "core/InkStroke.h"
 #include "core/PdfSelectionModel.h"
 
 #include <QColor>
@@ -9,6 +10,7 @@
 #include <QImage>
 #include <QMutex>
 #include <QPoint>
+#include <QPolygonF>
 #include <QRect>
 #include <QRectF>
 #include <QSharedPointer>
@@ -133,6 +135,18 @@ public:
     void setHighlights(const QVector<Highlight> &highlights);
     void setSearchTerm(const QString &term);
 
+    // Freehand pen strokes (see core/InkStroke.h) -- an app-side overlay,
+    // like highlights, never written into the PDF itself. setInkStrokes()
+    // mirrors setHighlights() (recomputes every materialized page's pixel
+    // polygons and repaints); drawMode(), while on, makes a mouse drag draw
+    // a new stroke instead of a text selection -- committed on release via
+    // inkStrokeDrawn(), which PdfView persists (InkStore) and then feeds
+    // back in through setInkStrokes(), the same round-trip
+    // addHighlightForSelection()/setHighlights() already do.
+    void setInkStrokes(const QVector<InkStroke> &strokes);
+    void setDrawMode(bool enabled);
+    bool drawMode() const { return m_drawMode; }
+
     // Live text selection, resolved from mouse drags via the shared
     // core/PdfSelectionModel -- the same state machine Qt Quick's
     // PdfSelectionController uses for touch long-press-drag selection. A
@@ -185,6 +199,11 @@ signals:
     // that has one. Not fired for a drag that commits a text selection.
     void clicked(int pageIndex, const QPointF &pagePoint, const QPoint &globalPos);
 
+    // Fired from mouseReleaseEvent() when drawMode() is on and the just-
+    // finished drag has at least 2 points -- PdfView persists it (InkStore)
+    // and hands the updated stroke list back via setInkStrokes().
+    void inkStrokeDrawn(int pageIndex, const QVector<QPointF> &pagePoints);
+
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
@@ -224,6 +243,9 @@ private:
     // cheap (no rasterization) compared to what materializePage() actually
     // guards against re-doing on every call.
     QVector<TextWord> wordsForPage(int index);
+    // Translates+scales a stroke's page-space points into this widget's
+    // current-zoom pixel space, for painting/caching (see m_pageInkMarks).
+    QPolygonF strokeToPixelPolygon(const InkStroke &stroke) const;
 
     IDocument *m_document = nullptr; // non-owning; PdfView owns the real thing
     QVector<QSizeF> m_pageSizePoints;
@@ -239,6 +261,21 @@ private:
     QHash<int, QVector<TextWord>> m_pageWords; // also doubles as "is this page materialized"
     QHash<int, QVector<HighlightMark>> m_pageHighlightRects;
     QHash<int, QVector<QRect>> m_pageSearchRects;
+
+    struct InkMark
+    {
+        QPolygonF polygon; // pixel space, current zoom
+        QColor color;
+        qreal widthPx = 2.0;
+    };
+    QVector<InkStroke> m_inkStrokes; // every stroke for the whole document, all pages
+    QHash<int, QVector<InkMark>> m_pageInkMarks; // pixel-space, recomputed per materialized page in applyOverlaysToPage()
+    bool m_drawMode = false;
+    bool m_isDrawingStroke = false;
+    int m_drawingPageIndex = -1;
+    QVector<QPointF> m_currentStrokePoints; // page-space, the not-yet-committed in-progress stroke
+    QColor m_drawColor = Qt::black; // pen used for the in-progress stroke's live preview
+    qreal m_drawWidth = 2.0;
     // Words fetched on demand for a page a selection drag reached that
     // wasn't (and may never be) materialized for rendering -- see
     // wordsForPage(). Grows for the document's lifetime rather than being
