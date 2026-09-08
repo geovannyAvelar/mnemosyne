@@ -158,16 +158,24 @@ Poppler::Page *PopplerPdfDocument::formPage(int index) const
     return raw;
 }
 
+std::vector<std::unique_ptr<Poppler::FormField>> &PopplerPdfDocument::formFieldsForPage(int index) const
+{
+    const auto it = m_formFieldsCache.find(index);
+    if (it != m_formFieldsCache.end()) {
+        return it->second;
+    }
+    Poppler::Page *page = formPage(index);
+    const auto result = m_formFieldsCache.emplace(
+        index, page ? page->formFields() : std::vector<std::unique_ptr<Poppler::FormField>>());
+    return result.first->second;
+}
+
 QVector<PdfFormField> PopplerPdfDocument::formFields() const
 {
     QVector<PdfFormField> result;
     const int pages = m_doc->numPages();
     for (int p = 0; p < pages; ++p) {
-        Poppler::Page *page = formPage(p);
-        if (!page) {
-            continue;
-        }
-        const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
+        const std::vector<std::unique_ptr<Poppler::FormField>> &fields = formFieldsForPage(p);
         for (int i = 0; i < static_cast<int>(fields.size()); ++i) {
             Poppler::FormField *field = fields[i].get();
 
@@ -217,11 +225,7 @@ QVector<PdfFormField> PopplerPdfDocument::formFields() const
 
 void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QString &value)
 {
-    Poppler::Page *page = formPage(pageIndex);
-    if (!page) {
-        return;
-    }
-    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
+    const std::vector<std::unique_ptr<Poppler::FormField>> &fields = formFieldsForPage(pageIndex);
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }
@@ -232,11 +236,7 @@ void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QStri
 
 void PopplerPdfDocument::setFieldChecked(int pageIndex, int fieldIndex, bool checked)
 {
-    Poppler::Page *page = formPage(pageIndex);
-    if (!page) {
-        return;
-    }
-    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
+    const std::vector<std::unique_ptr<Poppler::FormField>> &fields = formFieldsForPage(pageIndex);
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }
@@ -247,11 +247,7 @@ void PopplerPdfDocument::setFieldChecked(int pageIndex, int fieldIndex, bool che
 
 void PopplerPdfDocument::setFieldChoiceIndex(int pageIndex, int fieldIndex, int choiceIndex)
 {
-    Poppler::Page *page = formPage(pageIndex);
-    if (!page) {
-        return;
-    }
-    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
+    const std::vector<std::unique_ptr<Poppler::FormField>> &fields = formFieldsForPage(pageIndex);
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }
