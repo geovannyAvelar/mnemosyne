@@ -2,6 +2,7 @@
 
 #include <poppler-form.h>
 
+#include <QDebug>
 #include <QFileInfo>
 #include <QObject>
 
@@ -162,11 +163,16 @@ std::vector<std::unique_ptr<Poppler::FormField>> &PopplerPdfDocument::formFields
 {
     const auto it = m_formFieldsCache.find(index);
     if (it != m_formFieldsCache.end()) {
+        qDebug() << "MNEMOSYNE_DEBUG formFieldsForPage cache HIT page" << index << "vector@" << (&it->second)
+                 << "size" << it->second.size();
         return it->second;
     }
     Poppler::Page *page = formPage(index);
+    qDebug() << "MNEMOSYNE_DEBUG formFieldsForPage cache MISS page" << index << "page@" << page;
     const auto result = m_formFieldsCache.emplace(
         index, page ? page->formFields() : std::vector<std::unique_ptr<Poppler::FormField>>());
+    qDebug() << "MNEMOSYNE_DEBUG formFieldsForPage inserted page" << index << "vector@" << (&result.first->second)
+             << "size" << result.first->second.size();
     return result.first->second;
 }
 
@@ -190,6 +196,8 @@ QVector<PdfFormField> PopplerPdfDocument::formFields() const
                 auto *text = static_cast<Poppler::FormFieldText *>(field);
                 info.type = PdfFormField::Type::Text;
                 info.textValue = text->text();
+                qDebug() << "MNEMOSYNE_DEBUG formFields() read FormText field@" << field << "name" << info.name
+                         << "textValue" << info.textValue;
                 break;
             }
             case Poppler::FormField::FormButton: {
@@ -230,6 +238,9 @@ void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QStri
         return;
     }
     Poppler::FormField *field = fields[fieldIndex].get();
+    qDebug() << "MNEMOSYNE_DEBUG setFieldText page" << pageIndex << "fieldIndex" << fieldIndex << "field@" << field
+             << "type" << int(field->type()) << "wantFormText" << int(Poppler::FormField::FormText) << "readOnly"
+             << field->isReadOnly() << "name" << field->fullyQualifiedName();
     // type()-then-static_cast, not dynamic_cast -- see formFields()'s own
     // use of the same pattern. dynamic_cast across the poppler-qt6 shared
     // library boundary silently returned nullptr for a field that
@@ -239,7 +250,12 @@ void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QStri
     // a known class of cross-shared-library dynamic_cast pitfall. type()
     // is a plain virtual call, unaffected by that.
     if (field->type() == Poppler::FormField::FormText) {
-        static_cast<Poppler::FormFieldText *>(field)->setText(value);
+        auto *text = static_cast<Poppler::FormFieldText *>(field);
+        qDebug() << "MNEMOSYNE_DEBUG setFieldText before setText(), text() =" << text->text();
+        text->setText(value);
+        qDebug() << "MNEMOSYNE_DEBUG setFieldText immediately after setText(), same object, text() =" << text->text();
+    } else {
+        qDebug() << "MNEMOSYNE_DEBUG setFieldText type MISMATCH, setText() not called";
     }
 }
 
