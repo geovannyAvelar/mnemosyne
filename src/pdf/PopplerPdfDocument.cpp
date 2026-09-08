@@ -81,9 +81,11 @@ PopplerPdfDocument::PopplerPdfDocument(std::unique_ptr<Poppler::Document> doc, Q
     m_doc->setRenderHint(Poppler::Document::TextAntialiasing, true);
 }
 
-std::unique_ptr<PopplerPdfDocument> PopplerPdfDocument::load(const QString &filePath, QString *errorMessage)
+std::unique_ptr<PopplerPdfDocument> PopplerPdfDocument::load(const QString &filePath, QString *errorMessage,
+                                                               const QString &password)
 {
-    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(filePath);
+    const QByteArray passwordUtf8 = password.toUtf8();
+    std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(filePath, passwordUtf8, passwordUtf8);
 
     if (!doc) {
         if (errorMessage) {
@@ -94,13 +96,21 @@ std::unique_ptr<PopplerPdfDocument> PopplerPdfDocument::load(const QString &file
 
     if (doc->isLocked()) {
         if (errorMessage) {
-            *errorMessage = QObject::tr("PDF is password-protected: %1").arg(filePath);
+            *errorMessage = password.isEmpty()
+                                ? QObject::tr("PDF is password-protected: %1").arg(filePath)
+                                : QObject::tr("Incorrect password for: %1").arg(filePath);
         }
         return nullptr;
     }
 
     QString fallbackTitle = QFileInfo(filePath).completeBaseName();
     return std::unique_ptr<PopplerPdfDocument>(new PopplerPdfDocument(std::move(doc), std::move(fallbackTitle)));
+}
+
+bool PopplerPdfDocument::isPasswordProtected(const QString &filePath)
+{
+    const std::unique_ptr<Poppler::Document> doc = Poppler::Document::load(filePath);
+    return doc && doc->isLocked();
 }
 
 int PopplerPdfDocument::pageCount() const

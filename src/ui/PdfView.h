@@ -23,7 +23,11 @@ class PdfView : public QWidget, public IReaderView
     Q_OBJECT
 
 public:
-    explicit PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget *parent = nullptr);
+    // password is whatever unlocked `document`, if it was encrypted (empty
+    // otherwise) -- kept only to re-open the same file for search() below,
+    // never persisted anywhere.
+    explicit PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget *parent = nullptr,
+                      QString password = QString());
     ~PdfView() override;
 
     QString documentTitle() const override;
@@ -40,11 +44,21 @@ public:
     // view's m_document. Poppler documents aren't safe to use concurrently
     // from multiple threads, so this is what MainWindow calls on a
     // background thread while the view (and its m_document, used by the
-    // main thread for rendering) keeps running independently.
-    static QVector<SearchResult> searchFile(const QString &filePath, const QString &query);
+    // main thread for rendering) keeps running independently -- including
+    // for the search dock's search-the-current-tab feature, which is why
+    // MainWindow fetches password() (below) for the active tab and passes
+    // it through rather than leaving it empty: this file has already been
+    // opened and unlocked once, so the reader shouldn't have to enter its
+    // password a second time just to search within it.
+    static QVector<SearchResult> searchFile(const QString &filePath, const QString &query,
+                                             const QString &password = QString());
 
     QString selectedText() const;
     bool hasPendingSyncPrompt() const;
+    // Whatever unlocked this view's file, if it was encrypted; empty
+    // otherwise. See searchFile()'s own doc comment for the one thing
+    // outside this class that needs it.
+    QString password() const { return m_password; }
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -83,6 +97,7 @@ private:
 
     std::unique_ptr<IDocument> m_document;
     QString m_filePath;
+    QString m_password; // empty unless m_filePath needed one to open -- see the constructor's own doc comment
     int m_currentPage = 0; // topmost substantially-visible page
     qreal m_zoom = 1.5;
 

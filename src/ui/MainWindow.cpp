@@ -12,6 +12,7 @@
 #include "comic/CbzDocument.h"
 #include "core/Highlight.h"
 #include "core/ReaderView.h"
+#include "pdf/PopplerPdfDocument.h"
 #include "epub/EpubDocument.h"
 #include "markdown/MarkdownDocument.h"
 #include "mobi/MobiDocument.h"
@@ -51,8 +52,10 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QInputDialog>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -401,14 +404,20 @@ void MainWindow::setupDocks()
         // no dependency on this (or any widget) still being alive when it runs.
         const QString filePath = m_currentFilePath;
         const QString suffix = QFileInfo(filePath).suffix().toLower();
+        // Only meaningful for suffix == "pdf" (see PdfView::searchFile()'s
+        // doc comment); empty for every other format, which ignores it.
+        QString password;
+        if (auto *pdfView = dynamic_cast<PdfView *>(m_currentView)) {
+            password = pdfView->password();
+        }
 
         m_pendingSearchFilePath = filePath;
         m_pendingSearchQuery = query;
         m_searchDock->setSearching(true);
 
-        m_searchWatcher->setFuture(QtConcurrent::run([filePath, suffix, query]() -> QVector<SearchResult> {
+        m_searchWatcher->setFuture(QtConcurrent::run([filePath, suffix, query, password]() -> QVector<SearchResult> {
             if (suffix == QLatin1String("pdf")) {
-                return PdfView::searchFile(filePath, query);
+                return PdfView::searchFile(filePath, query, password);
             }
             if (suffix == QLatin1String("epub")) {
                 return EpubView::searchFile(filePath, query);
@@ -705,8 +714,41 @@ void MainWindow::openPath(const QString &filePath)
 
     if (suffix == QLatin1String("pdf")) {
         std::unique_ptr<IDocument> document = openDocument(filePath, &errorMessage);
+        QString password;
+        if (!document && PopplerPdfDocument::isPasswordProtected(filePath)) {
+            // A locked PDF fails openDocument() above with no password
+            // tried at all (empty by default) -- distinguished from any
+            // other failure via isPasswordProtected() so this prompts
+            // instead of just showing an error. Loops on a wrong guess
+            // rather than giving up after one try; a plain Cancel leaves
+            // document null and returns below with no extra error dialog,
+            // since the reader already knows why nothing opened. The
+            // password that finally worked is kept (below) and handed to
+            // PdfView so its own in-document search can reopen the same
+            // file later without prompting a second time.
+            bool cancelled = false;
+            while (true) {
+                bool ok = false;
+                password = QInputDialog::getText(this, tr("Password Required"),
+                                                  tr("\"%1\" is password-protected. Enter its password to open it:")
+                                                      .arg(QFileInfo(filePath).fileName()),
+                                                  QLineEdit::Password, QString(), &ok);
+                if (!ok) {
+                    cancelled = true;
+                    break;
+                }
+                document = openDocument(filePath, &errorMessage, password);
+                if (document) {
+                    break;
+                }
+                QMessageBox::warning(this, tr("Incorrect Password"), tr("That password didn't work. Try again."));
+            }
+            if (cancelled) {
+                return;
+            }
+        }
         if (document) {
-            auto *pdfView = new PdfView(std::move(document), filePath, m_tabWidget);
+            auto *pdfView = new PdfView(std::move(document), filePath, m_tabWidget, password);
             connect(pdfView, &PdfView::highlightsChanged, this, &MainWindow::refreshNotesDock);
             widget = pdfView;
             view = pdfView;

@@ -63,4 +63,9 @@ public:
 // Opens a PDF via the Poppler backend. Returns nullptr and fills errorMessage
 // on failure. EPUB uses a separate loading path (see epub/EpubDocument.h)
 // since reflowable HTML chapters don't fit the raster-page IDocument contract.
-std::unique_ptr<IDocument> openDocument(const QString &filePath, QString *errorMessage);
+// password is forwarded to PopplerPdfDocument::load() as-is (see there for
+// how it's tried against an encrypted PDF) -- callers that already know a
+// file needs one (see PopplerPdfDocument::isPasswordProtected()) pass it
+// here directly rather than needing a second, PDF-specific entry point.
+std::unique_ptr<IDocument> openDocument(const QString &filePath, QString *errorMessage,
+                                         const QString &password = QString());

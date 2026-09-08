@@ -7,7 +7,7 @@ A native desktop reader for PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and 
 
 ## Features
 
-- **PDF** — rendered via Poppler, with zoom, table of contents navigation, and text search.
+- **PDF** — rendered via Poppler, with zoom, table of contents navigation, and text search. Password-protected files are supported: opening one prompts for its password (retrying on a wrong guess) rather than just failing.
 - **EPUB** — chapter navigation via table of contents / spine, zoom (font size), dark mode, and highlights.
 - **HTML** — rendered with a real Chromium engine (`QWebEngineView`), including JavaScript execution.
 - **Markdown** — rendered via Qt's own Markdown support (`QTextDocument::setMarkdown()`), with a heading-derived table of contents, search, zoom, dark mode, and highlights — same feature set as EPUB.

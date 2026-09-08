@@ -55,10 +55,11 @@ QMutex g_searchCacheMutex;
 QHash<QString, QVector<QString>> g_searchTextCache;
 }
 
-PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget *parent)
+PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget *parent, QString password)
     : QWidget(parent)
     , m_document(std::move(document))
     , m_filePath(std::move(filePath))
+    , m_password(std::move(password))
     , m_progressController(new ReadingProgressController(this))
 {
     setupUi();
@@ -175,10 +176,10 @@ bool PdfView::hasPendingSyncPrompt() const
 
 QVector<SearchResult> PdfView::search(const QString &query) const
 {
-    return searchFile(m_filePath, query);
+    return searchFile(m_filePath, query, m_password);
 }
 
-QVector<SearchResult> PdfView::searchFile(const QString &filePath, const QString &query)
+QVector<SearchResult> PdfView::searchFile(const QString &filePath, const QString &query, const QString &password)
 {
     QVector<SearchResult> results;
     if (query.trimmed().isEmpty()) {
@@ -198,7 +199,7 @@ QVector<SearchResult> PdfView::searchFile(const QString &filePath, const QString
 
     if (!cached) {
         QString error;
-        const std::unique_ptr<PopplerPdfDocument> document = PopplerPdfDocument::load(filePath, &error);
+        const std::unique_ptr<PopplerPdfDocument> document = PopplerPdfDocument::load(filePath, &error, password);
         if (!document) {
             return results;
         }

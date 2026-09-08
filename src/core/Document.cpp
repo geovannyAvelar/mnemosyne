@@ -4,12 +4,12 @@
 
 #include <QFileInfo>
 
-std::unique_ptr<IDocument> openDocument(const QString &filePath, QString *errorMessage)
+std::unique_ptr<IDocument> openDocument(const QString &filePath, QString *errorMessage, const QString &password)
 {
     const QString suffix = QFileInfo(filePath).suffix().toLower();
 
     if (suffix == QLatin1String("pdf")) {
-        return PopplerPdfDocument::load(filePath, errorMessage);
+        return PopplerPdfDocument::load(filePath, errorMessage, password);
     }
 
     if (errorMessage) {
