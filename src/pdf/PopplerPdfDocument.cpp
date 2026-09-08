@@ -146,12 +146,24 @@ QString PopplerPdfDocument::title() const
     return info.isEmpty() ? m_fallbackTitle : info;
 }
 
+Poppler::Page *PopplerPdfDocument::formPage(int index) const
+{
+    const auto it = m_formPageCache.find(index);
+    if (it != m_formPageCache.end()) {
+        return it->second.get();
+    }
+    std::unique_ptr<Poppler::Page> page = m_doc->page(index);
+    Poppler::Page *raw = page.get();
+    m_formPageCache.emplace(index, std::move(page));
+    return raw;
+}
+
 QVector<PdfFormField> PopplerPdfDocument::formFields() const
 {
     QVector<PdfFormField> result;
     const int pages = m_doc->numPages();
     for (int p = 0; p < pages; ++p) {
-        const std::unique_ptr<Poppler::Page> page = m_doc->page(p);
+        Poppler::Page *page = formPage(p);
         if (!page) {
             continue;
         }
@@ -205,7 +217,7 @@ QVector<PdfFormField> PopplerPdfDocument::formFields() const
 
 void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QString &value)
 {
-    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    Poppler::Page *page = formPage(pageIndex);
     if (!page) {
         return;
     }
@@ -220,7 +232,7 @@ void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QStri
 
 void PopplerPdfDocument::setFieldChecked(int pageIndex, int fieldIndex, bool checked)
 {
-    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    Poppler::Page *page = formPage(pageIndex);
     if (!page) {
         return;
     }
@@ -235,7 +247,7 @@ void PopplerPdfDocument::setFieldChecked(int pageIndex, int fieldIndex, bool che
 
 void PopplerPdfDocument::setFieldChoiceIndex(int pageIndex, int fieldIndex, int choiceIndex)
 {
-    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    Poppler::Page *page = formPage(pageIndex);
     if (!page) {
         return;
     }

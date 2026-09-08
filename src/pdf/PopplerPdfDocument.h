@@ -5,6 +5,7 @@
 
 #include <poppler-qt6.h>
 
+#include <map>
 #include <memory>
 
 class PopplerPdfPage : public IPage
@@ -50,12 +51,12 @@ public:
     QString title() const override;
 
     // Every editable AcroForm field across the whole document (see
-    // core/PdfFormField.h), in page then on-page order. Re-derived fresh
-    // each call -- cheap enough (formFields() is a plain page walk, no
-    // rendering) and avoids keeping a second, potentially-stale field list
-    // in sync with the live Poppler document Set*() below writes into.
-    // Push-button and signature fields are omitted: neither has a value a
-    // side-panel field list can usefully show or edit.
+    // core/PdfFormField.h), in page then on-page order. The QVector itself
+    // is recomputed fresh each call -- cheap enough (a plain page walk, no
+    // rendering) -- but see formPage() below for why the underlying
+    // Poppler::Page objects backing it are cached rather than reconstructed
+    // every time. Push-button and signature fields are omitted: neither has
+    // a value a side-panel field list can usefully show or edit.
     QVector<PdfFormField> formFields() const;
     // Each Set*() re-locates the field by (pageIndex, fieldIndex) -- see
     // PdfFormField::fieldIndex's own doc comment -- rather than holding a
@@ -78,6 +79,21 @@ public:
 private:
     explicit PopplerPdfDocument(std::unique_ptr<Poppler::Document> doc, QString fallbackTitle);
 
+    // The Poppler::Page backing form-field access for pageIndex, creating
+    // and caching one on first use. A field edit (setFieldText() and
+    // friends) mutates the specific Poppler::FormField/FormWidget objects
+    // owned by whichever Poppler::Page produced them -- on at least one
+    // Poppler build seen in CI (Homebrew's, on macOS; not reproducible
+    // against the apt-packaged Poppler this was developed against), that
+    // mutation didn't survive a later m_doc->page(index) call fetching a
+    // *fresh* Page wrapper for the same index, so a set immediately
+    // followed by a re-read (or by saveFilledFormAs()) silently saw the old
+    // value. Every form-field method below goes through this cache instead
+    // of calling m_doc->page() directly, so a page's edits and the reads/
+    // save that follow all operate on the exact same Page object.
+    Poppler::Page *formPage(int index) const;
+
     std::unique_ptr<Poppler::Document> m_doc;
     QString m_fallbackTitle;
+    mutable std::map<int, std::unique_ptr<Poppler::Page>> m_formPageCache;
 };
