@@ -3,12 +3,9 @@
 #include "core/Document.h"
 #include "core/PdfFormField.h"
 
-#include <poppler-form.h>
 #include <poppler-qt6.h>
 
-#include <map>
 #include <memory>
-#include <vector>
 
 class PopplerPdfPage : public IPage
 {
@@ -53,11 +50,15 @@ public:
     QString title() const override;
 
     // Every editable AcroForm field across the whole document (see
-    // core/PdfFormField.h), in page then on-page order. The QVector itself
-    // is recomputed fresh each call -- cheap enough (a plain page walk, no
-    // rendering) -- but see formFieldsForPage() below for why the
-    // underlying Poppler::FormField objects backing it are fetched exactly
-    // once per page and cached, rather than reconstructed every call.
+    // core/PdfFormField.h), in page then on-page order. Re-derived fresh
+    // each call -- cheap enough (a plain page walk, no rendering). NOTE:
+    // the returned QVector must be captured into a named variable before
+    // being searched (e.g. with a helper like a test's own findField()) --
+    // binding this call's return value directly to a function parameter
+    // and returning a pointer into it is a dangling-pointer bug (the
+    // temporary is destroyed at the end of that full expression), one this
+    // class's own test suite shipped for a while before CI caught it on
+    // one platform's allocator but not another's.
     // Push-button and signature fields are omitted: neither has a value a
     // side-panel field list can usefully show or edit.
     QVector<PdfFormField> formFields() const;
@@ -80,27 +81,6 @@ public:
 private:
     explicit PopplerPdfDocument(std::unique_ptr<Poppler::Document> doc, QString fallbackTitle);
 
-    // The Poppler::Page backing form-field access for pageIndex, creating
-    // and caching one on first use.
-    Poppler::Page *formPage(int index) const;
-
-    // The live Poppler::FormField wrappers for pageIndex's AcroForm
-    // widgets, fetched via Poppler::Page::formFields() exactly once per
-    // page and cached for this PopplerPdfDocument's whole lifetime.
-    // formFields()/setField*() below all read and write through this same
-    // cached vector -- fieldIndex (see PdfFormField::fieldIndex) indexes
-    // into it -- rather than each calling Page::formFields() fresh, which
-    // constructs brand-new FormField wrapper objects every time. On at
-    // least one Poppler build seen in CI (Homebrew's, on macOS; not
-    // reproducible against the apt-packaged Poppler this was developed
-    // against), a value set on one such fresh wrapper wasn't visible
-    // through a *later* fresh wrapper for the same field -- reusing the
-    // exact same wrapper objects for every read and write sidesteps that
-    // regardless of which Poppler build turns out to be at fault.
-    std::vector<std::unique_ptr<Poppler::FormField>> &formFieldsForPage(int index) const;
-
     std::unique_ptr<Poppler::Document> m_doc;
     QString m_fallbackTitle;
-    mutable std::map<int, std::unique_ptr<Poppler::Page>> m_formPageCache;
-    mutable std::map<int, std::vector<std::unique_ptr<Poppler::FormField>>> m_formFieldsCache;
 };

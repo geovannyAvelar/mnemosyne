@@ -4,6 +4,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <optional>
+
 // FIXTURES_DIR is injected by CMake (see tests/CMakeLists.txt).
 namespace {
 QString fixturePath(const QString &name)
@@ -11,16 +13,21 @@ QString fixturePath(const QString &name)
     return QStringLiteral(FIXTURES_DIR) + QLatin1Char('/') + name;
 }
 
-// Finds the one PdfFormField with a given name, or nullptr -- fields is kept
-// alive by the caller, this just points into it.
-const PdfFormField *findField(const QVector<PdfFormField> &fields, const QString &name)
+// Returns a copy of the matching field, not a pointer into `fields` -- most
+// call sites here pass a just-returned-by-value QVector straight through
+// (e.g. findField(doc->formFields(), ...)), and a pointer into that
+// temporary would dangle the instant this call's full expression ends. A
+// previous pointer-returning version of this shipped that exact bug: it
+// read back fine on Linux's allocator (freed memory left coincidentally
+// intact) but reliably came back empty on macOS's, surfacing only in CI.
+std::optional<PdfFormField> findField(const QVector<PdfFormField> &fields, const QString &name)
 {
     for (const PdfFormField &field : fields) {
         if (field.name == name) {
-            return &field;
+            return field;
         }
     }
-    return nullptr;
+    return std::nullopt;
 }
 } // namespace
 
@@ -106,19 +113,19 @@ void PopplerPdfDocumentTest::formFieldsEnumeratesTextCheckboxAndChoiceFields()
     const QVector<PdfFormField> fields = doc->formFields();
     QCOMPARE(fields.size(), 3);
 
-    const PdfFormField *name = findField(fields, QStringLiteral("full_name"));
+    std::optional<PdfFormField> name = findField(fields, QStringLiteral("full_name"));
     QVERIFY(name);
     QCOMPARE(name->type, PdfFormField::Type::Text);
     QCOMPARE(name->pageIndex, 0);
     QVERIFY(name->textValue.isEmpty());
     QVERIFY(!name->readOnly);
 
-    const PdfFormField *subscribe = findField(fields, QStringLiteral("subscribe"));
+    std::optional<PdfFormField> subscribe = findField(fields, QStringLiteral("subscribe"));
     QVERIFY(subscribe);
     QCOMPARE(subscribe->type, PdfFormField::Type::CheckBox);
     QVERIFY(!subscribe->checked);
 
-    const PdfFormField *country = findField(fields, QStringLiteral("country"));
+    std::optional<PdfFormField> country = findField(fields, QStringLiteral("country"));
     QVERIFY(country);
     QCOMPARE(country->type, PdfFormField::Type::ComboBox);
     QCOMPARE(country->choices, QStringList({QStringLiteral("USA"), QStringLiteral("Canada"), QStringLiteral("Brazil")}));
@@ -131,11 +138,11 @@ void PopplerPdfDocumentTest::setFieldTextUpdatesFormFields()
     auto doc = PopplerPdfDocument::load(fixturePath("test_form.pdf"), &error);
     QVERIFY2(doc, qPrintable(error));
 
-    const PdfFormField *before = findField(doc->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> before = findField(doc->formFields(), QStringLiteral("full_name"));
     QVERIFY(before);
     doc->setFieldText(before->pageIndex, before->fieldIndex, QStringLiteral("Ada Lovelace"));
 
-    const PdfFormField *after = findField(doc->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> after = findField(doc->formFields(), QStringLiteral("full_name"));
     QVERIFY(after);
     QCOMPARE(after->textValue, QStringLiteral("Ada Lovelace"));
 }
@@ -146,12 +153,12 @@ void PopplerPdfDocumentTest::setFieldCheckedUpdatesFormFields()
     auto doc = PopplerPdfDocument::load(fixturePath("test_form.pdf"), &error);
     QVERIFY2(doc, qPrintable(error));
 
-    const PdfFormField *before = findField(doc->formFields(), QStringLiteral("subscribe"));
+    std::optional<PdfFormField> before = findField(doc->formFields(), QStringLiteral("subscribe"));
     QVERIFY(before);
     QVERIFY(!before->checked);
     doc->setFieldChecked(before->pageIndex, before->fieldIndex, true);
 
-    const PdfFormField *after = findField(doc->formFields(), QStringLiteral("subscribe"));
+    std::optional<PdfFormField> after = findField(doc->formFields(), QStringLiteral("subscribe"));
     QVERIFY(after);
     QVERIFY(after->checked);
 }
@@ -162,11 +169,11 @@ void PopplerPdfDocumentTest::setFieldChoiceIndexUpdatesFormFields()
     auto doc = PopplerPdfDocument::load(fixturePath("test_form.pdf"), &error);
     QVERIFY2(doc, qPrintable(error));
 
-    const PdfFormField *before = findField(doc->formFields(), QStringLiteral("country"));
+    std::optional<PdfFormField> before = findField(doc->formFields(), QStringLiteral("country"));
     QVERIFY(before);
     doc->setFieldChoiceIndex(before->pageIndex, before->fieldIndex, 2); // "Brazil"
 
-    const PdfFormField *after = findField(doc->formFields(), QStringLiteral("country"));
+    std::optional<PdfFormField> after = findField(doc->formFields(), QStringLiteral("country"));
     QVERIFY(after);
     QCOMPARE(after->currentChoiceIndex, 2);
 }
@@ -181,10 +188,10 @@ void PopplerPdfDocumentTest::saveFilledFormAsWritesValuesToNewFileWithoutTouchin
     auto doc = PopplerPdfDocument::load(fixturePath("test_form.pdf"), &error);
     QVERIFY2(doc, qPrintable(error));
 
-    const PdfFormField *name = findField(doc->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> name = findField(doc->formFields(), QStringLiteral("full_name"));
     QVERIFY(name);
     doc->setFieldText(name->pageIndex, name->fieldIndex, QStringLiteral("Grace Hopper"));
-    const PdfFormField *subscribe = findField(doc->formFields(), QStringLiteral("subscribe"));
+    std::optional<PdfFormField> subscribe = findField(doc->formFields(), QStringLiteral("subscribe"));
     QVERIFY(subscribe);
     doc->setFieldChecked(subscribe->pageIndex, subscribe->fieldIndex, true);
 
@@ -195,10 +202,10 @@ void PopplerPdfDocumentTest::saveFilledFormAsWritesValuesToNewFileWithoutTouchin
     QString reopenError;
     auto reopened = PopplerPdfDocument::load(outputPath, &reopenError);
     QVERIFY2(reopened, qPrintable(reopenError));
-    const PdfFormField *savedName = findField(reopened->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> savedName = findField(reopened->formFields(), QStringLiteral("full_name"));
     QVERIFY(savedName);
     QCOMPARE(savedName->textValue, QStringLiteral("Grace Hopper"));
-    const PdfFormField *savedSubscribe = findField(reopened->formFields(), QStringLiteral("subscribe"));
+    std::optional<PdfFormField> savedSubscribe = findField(reopened->formFields(), QStringLiteral("subscribe"));
     QVERIFY(savedSubscribe);
     QVERIFY(savedSubscribe->checked);
 
@@ -209,10 +216,10 @@ void PopplerPdfDocumentTest::saveFilledFormAsWritesValuesToNewFileWithoutTouchin
     QString originalError;
     auto original = PopplerPdfDocument::load(fixturePath("test_form.pdf"), &originalError);
     QVERIFY2(original, qPrintable(originalError));
-    const PdfFormField *originalName = findField(original->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> originalName = findField(original->formFields(), QStringLiteral("full_name"));
     QVERIFY(originalName);
     QVERIFY(originalName->textValue.isEmpty());
-    const PdfFormField *originalSubscribe = findField(original->formFields(), QStringLiteral("subscribe"));
+    std::optional<PdfFormField> originalSubscribe = findField(original->formFields(), QStringLiteral("subscribe"));
     QVERIFY(originalSubscribe);
     QVERIFY(!originalSubscribe->checked);
 }

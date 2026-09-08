@@ -2,7 +2,6 @@
 
 #include <poppler-form.h>
 
-#include <QDebug>
 #include <QFileInfo>
 #include <QObject>
 
@@ -147,41 +146,16 @@ QString PopplerPdfDocument::title() const
     return info.isEmpty() ? m_fallbackTitle : info;
 }
 
-Poppler::Page *PopplerPdfDocument::formPage(int index) const
-{
-    const auto it = m_formPageCache.find(index);
-    if (it != m_formPageCache.end()) {
-        return it->second.get();
-    }
-    std::unique_ptr<Poppler::Page> page = m_doc->page(index);
-    Poppler::Page *raw = page.get();
-    m_formPageCache.emplace(index, std::move(page));
-    return raw;
-}
-
-std::vector<std::unique_ptr<Poppler::FormField>> &PopplerPdfDocument::formFieldsForPage(int index) const
-{
-    const auto it = m_formFieldsCache.find(index);
-    if (it != m_formFieldsCache.end()) {
-        qDebug() << "MNEMOSYNE_DEBUG formFieldsForPage cache HIT page" << index << "vector@" << (&it->second)
-                 << "size" << it->second.size();
-        return it->second;
-    }
-    Poppler::Page *page = formPage(index);
-    qDebug() << "MNEMOSYNE_DEBUG formFieldsForPage cache MISS page" << index << "page@" << page;
-    const auto result = m_formFieldsCache.emplace(
-        index, page ? page->formFields() : std::vector<std::unique_ptr<Poppler::FormField>>());
-    qDebug() << "MNEMOSYNE_DEBUG formFieldsForPage inserted page" << index << "vector@" << (&result.first->second)
-             << "size" << result.first->second.size();
-    return result.first->second;
-}
-
 QVector<PdfFormField> PopplerPdfDocument::formFields() const
 {
     QVector<PdfFormField> result;
     const int pages = m_doc->numPages();
     for (int p = 0; p < pages; ++p) {
-        const std::vector<std::unique_ptr<Poppler::FormField>> &fields = formFieldsForPage(p);
+        const std::unique_ptr<Poppler::Page> page = m_doc->page(p);
+        if (!page) {
+            continue;
+        }
+        const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
         for (int i = 0; i < static_cast<int>(fields.size()); ++i) {
             Poppler::FormField *field = fields[i].get();
 
@@ -196,8 +170,6 @@ QVector<PdfFormField> PopplerPdfDocument::formFields() const
                 auto *text = static_cast<Poppler::FormFieldText *>(field);
                 info.type = PdfFormField::Type::Text;
                 info.textValue = text->text();
-                qDebug() << "MNEMOSYNE_DEBUG formFields() read FormText field@" << field << "name" << info.name
-                         << "textValue" << info.textValue;
                 break;
             }
             case Poppler::FormField::FormButton: {
@@ -233,35 +205,32 @@ QVector<PdfFormField> PopplerPdfDocument::formFields() const
 
 void PopplerPdfDocument::setFieldText(int pageIndex, int fieldIndex, const QString &value)
 {
-    const std::vector<std::unique_ptr<Poppler::FormField>> &fields = formFieldsForPage(pageIndex);
+    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    if (!page) {
+        return;
+    }
+    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }
     Poppler::FormField *field = fields[fieldIndex].get();
-    qDebug() << "MNEMOSYNE_DEBUG setFieldText page" << pageIndex << "fieldIndex" << fieldIndex << "field@" << field
-             << "type" << int(field->type()) << "wantFormText" << int(Poppler::FormField::FormText) << "readOnly"
-             << field->isReadOnly() << "name" << field->fullyQualifiedName();
-    // type()-then-static_cast, not dynamic_cast -- see formFields()'s own
-    // use of the same pattern. dynamic_cast across the poppler-qt6 shared
-    // library boundary silently returned nullptr for a field that
-    // genuinely was a FormFieldText on at least one Poppler build seen in
-    // CI (Homebrew's, on macOS), almost certainly an RTTI/typeinfo
-    // visibility mismatch between that prebuilt library and this binary --
-    // a known class of cross-shared-library dynamic_cast pitfall. type()
-    // is a plain virtual call, unaffected by that.
+    // type()-then-static_cast, not dynamic_cast -- matches formFields()'s
+    // own pattern above, and sidesteps a known pitfall where dynamic_cast
+    // across a prebuilt shared library boundary can misbehave if that
+    // library's RTTI/typeinfo visibility doesn't line up with the
+    // consuming binary's.
     if (field->type() == Poppler::FormField::FormText) {
-        auto *text = static_cast<Poppler::FormFieldText *>(field);
-        qDebug() << "MNEMOSYNE_DEBUG setFieldText before setText(), text() =" << text->text();
-        text->setText(value);
-        qDebug() << "MNEMOSYNE_DEBUG setFieldText immediately after setText(), same object, text() =" << text->text();
-    } else {
-        qDebug() << "MNEMOSYNE_DEBUG setFieldText type MISMATCH, setText() not called";
+        static_cast<Poppler::FormFieldText *>(field)->setText(value);
     }
 }
 
 void PopplerPdfDocument::setFieldChecked(int pageIndex, int fieldIndex, bool checked)
 {
-    const std::vector<std::unique_ptr<Poppler::FormField>> &fields = formFieldsForPage(pageIndex);
+    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    if (!page) {
+        return;
+    }
+    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }
@@ -273,7 +242,11 @@ void PopplerPdfDocument::setFieldChecked(int pageIndex, int fieldIndex, bool che
 
 void PopplerPdfDocument::setFieldChoiceIndex(int pageIndex, int fieldIndex, int choiceIndex)
 {
-    const std::vector<std::unique_ptr<Poppler::FormField>> &fields = formFieldsForPage(pageIndex);
+    const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+    if (!page) {
+        return;
+    }
+    const std::vector<std::unique_ptr<Poppler::FormField>> fields = page->formFields();
     if (fieldIndex < 0 || fieldIndex >= static_cast<int>(fields.size())) {
         return;
     }

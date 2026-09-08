@@ -6,6 +6,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <optional>
+
 // FIXTURES_DIR is injected by CMake (see tests/CMakeLists.txt).
 namespace {
 
@@ -14,14 +16,22 @@ QString fixturePath(const QString &name)
     return QStringLiteral(FIXTURES_DIR) + QLatin1Char('/') + name;
 }
 
-const PdfFormField *findField(const QVector<PdfFormField> &fields, const QString &name)
+// Returns a copy of the matching field, not a pointer into `fields` --
+// every call site here passes a just-returned-by-value QVector (e.g.
+// findField(view->formFields(), ...)) straight through, and a pointer into
+// that temporary would dangle the instant this call's full expression
+// ends. A previous pointer-returning version of this shipped that exact
+// bug: it read back fine on Linux's allocator (freed memory left
+// coincidentally intact) but reliably came back empty on macOS's,
+// surfacing only in CI.
+std::optional<PdfFormField> findField(const QVector<PdfFormField> &fields, const QString &name)
 {
     for (const PdfFormField &field : fields) {
         if (field.name == name) {
-            return &field;
+            return field;
         }
     }
-    return nullptr;
+    return std::nullopt;
 }
 
 } // namespace
@@ -79,12 +89,12 @@ void PdfFormFillingTest::pdfViewReturnsFieldsForFormPdf()
 void PdfFormFillingTest::pdfViewSetFormFieldTextForwardsToDocument()
 {
     auto view = makePdfView(QStringLiteral("test_form.pdf"));
-    const PdfFormField *before = findField(view->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> before = findField(view->formFields(), QStringLiteral("full_name"));
     QVERIFY(before);
 
     view->setFormFieldText(before->pageIndex, before->fieldIndex, QStringLiteral("Ada Lovelace"));
 
-    const PdfFormField *after = findField(view->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> after = findField(view->formFields(), QStringLiteral("full_name"));
     QVERIFY(after);
     QCOMPARE(after->textValue, QStringLiteral("Ada Lovelace"));
 }
@@ -92,13 +102,13 @@ void PdfFormFillingTest::pdfViewSetFormFieldTextForwardsToDocument()
 void PdfFormFillingTest::pdfViewSetFormFieldCheckedForwardsToDocument()
 {
     auto view = makePdfView(QStringLiteral("test_form.pdf"));
-    const PdfFormField *before = findField(view->formFields(), QStringLiteral("subscribe"));
+    std::optional<PdfFormField> before = findField(view->formFields(), QStringLiteral("subscribe"));
     QVERIFY(before);
     QVERIFY(!before->checked);
 
     view->setFormFieldChecked(before->pageIndex, before->fieldIndex, true);
 
-    const PdfFormField *after = findField(view->formFields(), QStringLiteral("subscribe"));
+    std::optional<PdfFormField> after = findField(view->formFields(), QStringLiteral("subscribe"));
     QVERIFY(after);
     QVERIFY(after->checked);
 }
@@ -106,12 +116,12 @@ void PdfFormFillingTest::pdfViewSetFormFieldCheckedForwardsToDocument()
 void PdfFormFillingTest::pdfViewSetFormFieldChoiceIndexForwardsToDocument()
 {
     auto view = makePdfView(QStringLiteral("test_form.pdf"));
-    const PdfFormField *before = findField(view->formFields(), QStringLiteral("country"));
+    std::optional<PdfFormField> before = findField(view->formFields(), QStringLiteral("country"));
     QVERIFY(before);
 
     view->setFormFieldChoiceIndex(before->pageIndex, before->fieldIndex, 1); // "Canada"
 
-    const PdfFormField *after = findField(view->formFields(), QStringLiteral("country"));
+    std::optional<PdfFormField> after = findField(view->formFields(), QStringLiteral("country"));
     QVERIFY(after);
     QCOMPARE(after->currentChoiceIndex, 1);
 }
@@ -123,7 +133,7 @@ void PdfFormFillingTest::pdfViewSaveFilledFormAsWritesNewFile()
     const QString outputPath = tempDir.filePath(QStringLiteral("filled.pdf"));
 
     auto view = makePdfView(QStringLiteral("test_form.pdf"));
-    const PdfFormField *field = findField(view->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> field = findField(view->formFields(), QStringLiteral("full_name"));
     QVERIFY(field);
     view->setFormFieldText(field->pageIndex, field->fieldIndex, QStringLiteral("Grace Hopper"));
 
@@ -133,7 +143,7 @@ void PdfFormFillingTest::pdfViewSaveFilledFormAsWritesNewFile()
     QString error;
     auto reopened = PopplerPdfDocument::load(outputPath, &error);
     QVERIFY2(reopened, qPrintable(error));
-    const PdfFormField *saved = findField(reopened->formFields(), QStringLiteral("full_name"));
+    std::optional<PdfFormField> saved = findField(reopened->formFields(), QStringLiteral("full_name"));
     QVERIFY(saved);
     QCOMPARE(saved->textValue, QStringLiteral("Grace Hopper"));
 }
