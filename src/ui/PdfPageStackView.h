@@ -99,6 +99,15 @@ public:
     void setZoom(qreal zoom);
     qreal zoom() const { return m_zoom; }
 
+    // Two-page mode: pages paired up (0,1), (2,3), ... and laid out side by
+    // side within each row, rows still stacked vertically like single-page
+    // mode -- a toggle, not a separate widget, since every offset/hit-test
+    // helper below already takes a page index and works unchanged once
+    // recomputeOffsets() has laid pages out this way (see pageXOffset()'s
+    // own doc comment).
+    void setTwoPageMode(bool enabled);
+    bool twoPageMode() const { return m_twoPageMode; }
+
     // Dark-mode reading: inverts every rendered page's colors at paint time
     // (see paintEvent()) rather than re-rendering or caching a second
     // inverted QImage per page -- cheap enough to redo every frame, and
@@ -116,12 +125,26 @@ public:
     qreal pageOffsetY(int index) const;
     qreal pageHeightPx(int index) const;
     qreal pageWidthPx(int index) const;
-    qreal pageXOffset(int index) const; // horizontal centering within the widest page
+    // Horizontal offset of this page's left edge -- centers a single page
+    // within the widest page in single-page mode, or centers its whole row
+    // (and offsets a right-column page past its left partner) in two-page
+    // mode. Precomputed into m_pageOffsetXCache by recomputeOffsets() rather
+    // than derived live, so every caller (overlays, hit-testing, painting)
+    // gets correct positioning in either mode with no mode check of its own.
+    qreal pageXOffset(int index) const;
 
-    // The page whose [top, bottom) interval contains absoluteY (this
+    // The page whose row's [top, bottom) interval contains absoluteY (this
     // widget's local Y, same space as pageOffsetY()) -- a binary search
-    // replacing the old O(n) scan over every canvas's y()/height().
+    // replacing the old O(n) scan over every canvas's y()/height(). In
+    // two-page mode this always resolves to the row's left (even) page
+    // index; combine with pageIndexAt() below when the query point's X also
+    // matters (e.g. mouse hit-testing).
     int pageIndexAtOffsetY(qreal absoluteY) const;
+
+    // Like pageIndexAtOffsetY(), but also resolves left vs. right column in
+    // two-page mode using pos.x() -- what mouse/context-menu handlers below
+    // want. Identical to pageIndexAtOffsetY(pos.y()) in single-page mode.
+    int pageIndexAt(const QPoint &pos) const;
 
     // Recomputes which pages (index +/- kMaterializeRadius) should have a
     // rendered image + cached words, materializing newly-in-range pages and
@@ -249,10 +272,18 @@ private:
 
     IDocument *m_document = nullptr; // non-owning; PdfView owns the real thing
     QVector<QSizeF> m_pageSizePoints;
-    QVector<qreal> m_pageOffsetY; // cumulative top offset per page, at current zoom
+    QVector<qreal> m_pageOffsetY; // cumulative top offset per page (row top, in two-page mode), at current zoom
+    QVector<qreal> m_pageOffsetXCache; // left edge per page, at current zoom -- see pageXOffset()
+    // Row bottom (offsetY + row height) per page -- identical to
+    // m_pageOffsetY[i] + pageHeightPx(i) in single-page mode, but in
+    // two-page mode reflects the *taller* of a row's two pages for both of
+    // its indices, so pageIndexAtOffsetY()'s binary search classifies a
+    // point correctly even when the row's shorter page is probed as `mid`.
+    QVector<qreal> m_pageRowBottomY;
     qreal m_zoom = 1.0;
     qreal m_maxPageWidthPx = 0.0;
     bool m_invertColors = false;
+    bool m_twoPageMode = false;
 
     QSharedPointer<PdfPageRenderContext> m_renderContext = QSharedPointer<PdfPageRenderContext>::create();
     QHash<int, qreal> m_pendingRenderZoom; // pageIndex -> zoom of its current in-flight render task, if any

@@ -140,15 +140,67 @@ void PdfPageStackView::setDocument(IDocument *document)
 
 void PdfPageStackView::recomputeOffsets()
 {
-    m_pageOffsetY.resize(m_pageSizePoints.size());
+    const int count = m_pageSizePoints.size();
+    m_pageOffsetY.resize(count);
+    m_pageOffsetXCache.resize(count);
+    m_pageRowBottomY.resize(count);
     m_maxPageWidthPx = 0.0;
     qreal y = kPageSpacing;
-    for (int i = 0; i < m_pageSizePoints.size(); ++i) {
-        m_pageOffsetY[i] = y;
-        m_maxPageWidthPx = std::max(m_maxPageWidthPx, pageWidthPx(i));
-        y += pageHeightPx(i) + kPageSpacing;
+
+    if (!m_twoPageMode) {
+        for (int i = 0; i < count; ++i) {
+            m_pageOffsetY[i] = y;
+            m_maxPageWidthPx = std::max(m_maxPageWidthPx, pageWidthPx(i));
+            y += pageHeightPx(i) + kPageSpacing;
+            m_pageRowBottomY[i] = y - kPageSpacing;
+        }
+        for (int i = 0; i < count; ++i) {
+            m_pageOffsetXCache[i] = std::max(0.0, (m_maxPageWidthPx - pageWidthPx(i)) / 2.0);
+        }
+    } else {
+        // First pass: each row's total width (left page + gap + right page,
+        // if it has one), to find the widest row -- needed before the
+        // second pass can center any row within it.
+        QVector<qreal> rowWidths;
+        for (int i = 0; i < count; i += 2) {
+            qreal width = pageWidthPx(i);
+            if (i + 1 < count) {
+                width += kPageSpacing + pageWidthPx(i + 1);
+            }
+            rowWidths.append(width);
+            m_maxPageWidthPx = std::max(m_maxPageWidthPx, width);
+        }
+
+        int row = 0;
+        for (int i = 0; i < count; i += 2, ++row) {
+            const bool hasPartner = i + 1 < count;
+            const qreal rowHeight = hasPartner ? std::max(pageHeightPx(i), pageHeightPx(i + 1)) : pageHeightPx(i);
+            const qreal rowX = std::max(0.0, (m_maxPageWidthPx - rowWidths[row]) / 2.0);
+            const qreal rowBottom = y + rowHeight;
+
+            m_pageOffsetY[i] = y;
+            m_pageOffsetXCache[i] = rowX;
+            m_pageRowBottomY[i] = rowBottom;
+            if (hasPartner) {
+                m_pageOffsetY[i + 1] = y;
+                m_pageOffsetXCache[i + 1] = rowX + pageWidthPx(i) + kPageSpacing;
+                m_pageRowBottomY[i + 1] = rowBottom;
+            }
+            y = rowBottom + kPageSpacing;
+        }
     }
+
     resize(std::max(1, int(std::ceil(m_maxPageWidthPx))), std::max(1, int(std::ceil(y))));
+}
+
+void PdfPageStackView::setTwoPageMode(bool enabled)
+{
+    if (m_twoPageMode == enabled) {
+        return;
+    }
+    m_twoPageMode = enabled;
+    recomputeOffsets();
+    update();
 }
 
 void PdfPageStackView::setZoom(qreal zoom)
@@ -189,7 +241,10 @@ qreal PdfPageStackView::pageWidthPx(int index) const
 
 qreal PdfPageStackView::pageXOffset(int index) const
 {
-    return std::max(0.0, (m_maxPageWidthPx - pageWidthPx(index)) / 2.0);
+    if (index < 0 || index >= m_pageOffsetXCache.size()) {
+        return 0.0;
+    }
+    return m_pageOffsetXCache[index];
 }
 
 int PdfPageStackView::pageIndexAtOffsetY(qreal absoluteY) const
@@ -197,17 +252,20 @@ int PdfPageStackView::pageIndexAtOffsetY(qreal absoluteY) const
     if (m_pageOffsetY.isEmpty()) {
         return -1;
     }
-    // Finds the smallest index whose bottom edge exceeds absoluteY -- same
-    // semantics as the old linear scan ("first canvas whose y()+height()
-    // exceeds the query point"), including attributing a point that falls
-    // exactly within the kPageSpacing gap between two pages to the
-    // following page, and clamping anything past the last page's bottom to
-    // the last page.
+    // Finds the smallest index whose row's bottom edge exceeds absoluteY --
+    // same semantics as the old linear scan ("first canvas whose
+    // y()+height() exceeds the query point"), including attributing a point
+    // that falls exactly within the kPageSpacing gap between two rows to the
+    // following row, and clamping anything past the last row's bottom to
+    // the last row. m_pageRowBottomY (not pageHeightPx(mid)) is what makes
+    // this correct in two-page mode: both indices of a row share the same
+    // bottom, so this always converges on the row's left (lower) index
+    // regardless of which of the two `mid` happens to land on.
     int lo = 0;
     int hi = static_cast<int>(m_pageOffsetY.size()) - 1;
     while (lo < hi) {
         const int mid = lo + (hi - lo) / 2;
-        if (m_pageOffsetY[mid] + pageHeightPx(mid) > absoluteY) {
+        if (m_pageRowBottomY[mid] > absoluteY) {
             hi = mid;
         } else {
             lo = mid + 1;
@@ -216,13 +274,37 @@ int PdfPageStackView::pageIndexAtOffsetY(qreal absoluteY) const
     return lo;
 }
 
+int PdfPageStackView::pageIndexAt(const QPoint &pos) const
+{
+    const int rowLeftIndex = pageIndexAtOffsetY(pos.y());
+    if (!m_twoPageMode || rowLeftIndex < 0) {
+        return rowLeftIndex;
+    }
+    const int rightIndex = rowLeftIndex + 1;
+    if (rightIndex >= m_pageSizePoints.size()) {
+        return rowLeftIndex;
+    }
+    return pos.x() >= pageXOffset(rightIndex) ? rightIndex : rowLeftIndex;
+}
+
 void PdfPageStackView::setCurrentPageHint(int index)
 {
     if (m_pageSizePoints.isEmpty()) {
         return;
     }
     const int windowStart = std::max(0, index - kMaterializeRadius);
-    const int windowEnd = std::min(static_cast<int>(m_pageSizePoints.size()) - 1, index + kMaterializeRadius);
+    int windowEnd = std::min(static_cast<int>(m_pageSizePoints.size()) - 1, index + kMaterializeRadius);
+    // `index` is always a row's left (even) index in two-page mode (see
+    // pageIndexAtOffsetY()), and kMaterializeRadius is even, so
+    // index+kMaterializeRadius always lands on another row's left index too
+    // -- silently excluding that row's right-column partner from the
+    // window. That page would then get evicted below only to be
+    // re-materialized again a moment later once scrolling nudges the hint
+    // forward, flickering blank on every such cycle. Extending by one row
+    // partner keeps the window row-complete.
+    if (m_twoPageMode && windowEnd + 1 < m_pageSizePoints.size()) {
+        windowEnd += 1;
+    }
 
     for (int i = windowStart; i <= windowEnd; ++i) {
         materializePage(i);
@@ -516,7 +598,13 @@ void PdfPageStackView::paintEvent(QPaintEvent *event)
     }
 
     const int firstIndex = pageIndexAtOffsetY(event->rect().top());
-    const int lastIndex = pageIndexAtOffsetY(event->rect().bottom());
+    int lastIndex = pageIndexAtOffsetY(event->rect().bottom());
+    // pageIndexAtOffsetY() always returns a row's left (even) index in
+    // two-page mode -- extend by one so the bottom row's right-column page
+    // (its partner, one past that index) gets painted too.
+    if (m_twoPageMode && lastIndex + 1 < m_pageSizePoints.size()) {
+        lastIndex += 1;
+    }
 
     for (int i = firstIndex; i <= lastIndex; ++i) {
         const auto imageIt = m_pageImages.constFind(i);
@@ -585,7 +673,7 @@ void PdfPageStackView::mousePressEvent(QMouseEvent *event)
 
     if (m_drawMode) {
         m_isDrawingStroke = true;
-        m_drawingPageIndex = pageIndexAtOffsetY(event->pos().y());
+        m_drawingPageIndex = pageIndexAt(event->pos());
         m_currentStrokePoints.clear();
         m_currentStrokePoints.append(toPagePoint(event->pos(), m_drawingPageIndex));
         update();
@@ -596,7 +684,7 @@ void PdfPageStackView::mousePressEvent(QMouseEvent *event)
     m_committedSelection = false;
     m_dragAnchorPixel = event->pos();
     m_dragFocusPixel = event->pos();
-    const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+    const int pageIndex = pageIndexAt(event->pos());
     m_selectionModel.beginSelection(pageIndex, toPagePoint(m_dragAnchorPixel, pageIndex), wordsForPage(pageIndex));
     refreshLiveSelectionRects();
 }
@@ -620,7 +708,7 @@ void PdfPageStackView::mouseMoveEvent(QMouseEvent *event)
     // visible viewport bounds (past the QScrollArea's edge, or above/below
     // the window) -- so pageIndexAtOffsetY() here can, and does, resolve to
     // a page other than whichever one the drag started on.
-    const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+    const int pageIndex = pageIndexAt(event->pos());
     // Skip the words fetch once this page is already known to the model --
     // otherwise a drag held still over one page would re-extract its words
     // on every single mouse-move event instead of just the first.
@@ -658,13 +746,13 @@ void PdfPageStackView::mouseReleaseEvent(QMouseEvent *event)
     const QRect rect = QRect(m_dragAnchorPixel, m_dragFocusPixel).normalized();
     m_committedSelection = rect.width() >= kMinSelectionPixels || rect.height() >= kMinSelectionPixels;
     if (m_committedSelection) {
-        const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+        const int pageIndex = pageIndexAt(event->pos());
         const QVector<TextWord> words =
             m_selectionModel.hasWordsForPage(pageIndex) ? QVector<TextWord>() : wordsForPage(pageIndex);
         m_selectionModel.updateSelection(pageIndex, toPagePoint(m_dragFocusPixel, pageIndex), words);
     } else {
         m_selectionModel.clearSelection();
-        const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+        const int pageIndex = pageIndexAt(event->pos());
         emit clicked(pageIndex, toPagePoint(event->pos(), pageIndex), mapToGlobal(event->pos()));
     }
     refreshLiveSelectionRects();
@@ -672,7 +760,7 @@ void PdfPageStackView::mouseReleaseEvent(QMouseEvent *event)
 
 void PdfPageStackView::contextMenuEvent(QContextMenuEvent *event)
 {
-    const int pageIndex = pageIndexAtOffsetY(event->pos().y());
+    const int pageIndex = pageIndexAt(event->pos());
     if (pageIndex < 0) {
         return;
     }

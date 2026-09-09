@@ -95,6 +95,13 @@ target_compile_definitions(pdf_ink_annotation_test PRIVATE FIXTURES_DIR="${CMAKE
 
 add_test(NAME PdfInkAnnotationTest COMMAND pdf_ink_annotation_test)
 
+qt_add_executable(pdf_two_page_mode_test PdfTwoPageModeTest.cpp)
+
+target_link_libraries(pdf_two_page_mode_test PRIVATE mnemosynedesktopui Qt6::Test)
+target_compile_definitions(pdf_two_page_mode_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME PdfTwoPageModeTest COMMAND pdf_two_page_mode_test)
+
 qt_add_executable(pdf_form_filling_test PdfFormFillingTest.cpp)
 
 target_link_libraries(pdf_form_filling_test PRIVATE mnemosynedesktopui Qt6::Test)

@@ -7,7 +7,7 @@ A native desktop reader for PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and 
 
 ## Features
 
-- **PDF** — rendered via Poppler, with zoom, table of contents navigation, and text search. Password-protected files are supported: opening one prompts for its password (retrying on a wrong guess) rather than just failing.
+- **PDF** — rendered via Poppler, with zoom, table of contents navigation, and text search. Password-protected files are supported: opening one prompts for its password (retrying on a wrong guess) rather than just failing. A "Two-Page" toggle shows facing pages side by side, like an open book, instead of one page per row; the choice is remembered for the next PDF you open.
 - **Freehand annotations (PDF)** — a "Draw" toggle lets you sketch pen strokes directly on a page. App-side only, like highlights/notes below: strokes live in Mnemosyne's own store, never written into the PDF file itself. "Clear Page Drawings" erases the current page's strokes.
 - **Form filling (PDF)** — the sidebar's Form Fields tab lists every AcroForm field on the current document (text, checkbox, and choice fields) with a live input for each. Unlike highlights/ink, edits go straight into the open document; "Save Filled Form As..." writes them out to a new PDF, leaving the original file untouched.
 - **EPUB** — chapter navigation via table of contents / spine, zoom (font size), dark mode, and highlights.

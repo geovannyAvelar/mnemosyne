@@ -128,6 +128,15 @@ PdfView::PdfView(std::unique_ptr<IDocument> document, QString filePath, QWidget 
     QTimer::singleShot(0, this, [self, targetPage] {
         if (self) {
             self->m_scrollArea->verticalScrollBar()->setValue(int(self->m_pageStackView->pageOffsetY(targetPage)));
+            // Mirrors goToPage()'s horizontal centering (see its own doc
+            // comment) -- needed here too since this restore path doesn't
+            // go through goToPage(), and a document reopened mid-way
+            // through in two-page mode can restore onto a row narrower than
+            // the widest one (e.g. an odd trailing page).
+            const int pageCenterX = int(self->m_pageStackView->pageXOffset(targetPage)
+                                         + self->m_pageStackView->pageWidthPx(targetPage) / 2.0);
+            self->m_scrollArea->horizontalScrollBar()->setValue(pageCenterX
+                                                                  - self->m_scrollArea->viewport()->width() / 2);
         }
     });
 }
@@ -325,6 +334,21 @@ void PdfView::setupUi()
     auto *clearDrawingsButton = new QPushButton(tr("Clear Page Drawings"), toolbar);
     connect(clearDrawingsButton, &QPushButton::clicked, this, &PdfView::clearPageDrawings);
 
+    // Two pages side by side, like an open book -- a layout toggle only
+    // (see PdfPageStackView::setTwoPageMode()), not a separate reading mode:
+    // scrolling/zoom/search/highlights/draw all keep working unchanged.
+    // Persisted the same way as "Invert" above (a plain QSettings key, not
+    // per-book), so it carries over to the next PDF opened, not just the
+    // next tab.
+    auto *twoPageButton = new QPushButton(tr("Two-Page"), toolbar);
+    twoPageButton->setCheckable(true);
+    twoPageButton->setToolTip(tr("Show two pages side by side"));
+    connect(twoPageButton, &QPushButton::toggled, this, [this](bool checked) {
+        m_pageStackView->setTwoPageMode(checked);
+        QSettings().setValue(QStringLiteral("pdfTwoPageMode"), checked);
+        goToPage(m_currentPage);
+    });
+
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_pageSpinBox);
     toolbarLayout->addWidget(m_pageCountLabel);
@@ -333,6 +357,7 @@ void PdfView::setupUi()
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
     toolbarLayout->addWidget(pageDarkButton);
+    toolbarLayout->addWidget(twoPageButton);
     toolbarLayout->addWidget(drawButton);
     toolbarLayout->addWidget(clearDrawingsButton);
 
@@ -344,6 +369,7 @@ void PdfView::setupUi()
     // dereferences it) -- restores last session's choice, matching what the
     // "Synced position/zoom" restore above does for page/zoom.
     pageDarkButton->setChecked(QSettings().value(QStringLiteral("pdfPageInvertColors"), false).toBool());
+    twoPageButton->setChecked(QSettings().value(QStringLiteral("pdfTwoPageMode"), false).toBool());
 
     m_scrollArea = new QScrollArea(this);
     m_scrollArea->setWidget(m_pageStackView);
@@ -380,6 +406,14 @@ void PdfView::goToPage(int index)
     m_progressController->scheduleSave(m_currentPage, m_zoom);
 
     m_scrollArea->verticalScrollBar()->setValue(int(m_pageStackView->pageOffsetY(index)));
+    // Recenters horizontally on the target page too -- matters in two-page
+    // mode, where rows can differ in width (e.g. a document's last page
+    // alone, with no partner): without this, jumping to a narrower row left
+    // the viewport wherever a previous, wider row had scrolled it, so the
+    // page could land off to one side instead of centered. A no-op in
+    // single-page mode, where the content is never wider than the viewport.
+    const int pageCenterX = int(m_pageStackView->pageXOffset(index) + m_pageStackView->pageWidthPx(index) / 2.0);
+    m_scrollArea->horizontalScrollBar()->setValue(pageCenterX - m_scrollArea->viewport()->width() / 2);
 }
 
 void PdfView::nextPage()
