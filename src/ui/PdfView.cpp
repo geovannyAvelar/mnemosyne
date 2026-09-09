@@ -270,6 +270,34 @@ QVector<SearchResult> PdfView::searchFile(const QString &filePath, const QString
     return results;
 }
 
+bool PdfView::invertColors() const
+{
+    return m_pageStackView->invertColors();
+}
+
+void PdfView::setInvertColors(bool enabled)
+{
+    m_pageStackView->setInvertColors(enabled);
+    QSettings().setValue(QStringLiteral("pdfPageInvertColors"), enabled);
+}
+
+bool PdfView::twoPageMode() const
+{
+    return m_pageStackView->twoPageMode();
+}
+
+void PdfView::setTwoPageMode(bool enabled)
+{
+    m_pageStackView->setTwoPageMode(enabled);
+    QSettings().setValue(QStringLiteral("pdfTwoPageMode"), enabled);
+    goToPage(m_currentPage);
+}
+
+bool PdfView::drawMode() const
+{
+    return m_pageStackView->drawMode();
+}
+
 void PdfView::setSearchTerm(const QString &term)
 {
     m_searchController.setTerm(term);
@@ -305,50 +333,6 @@ void PdfView::setupUi()
     connect(zoomOutButton, &QPushButton::clicked, this, &PdfView::zoomOut);
     connect(zoomInButton, &QPushButton::clicked, this, &PdfView::zoomIn);
 
-    // Page color inversion -- distinct from the app-wide Dark Mode menu
-    // action (which only restyles the UI chrome/EPUB-MOBI-TXT-Markdown
-    // text; see MainWindow::setDarkModeEnabled()). PDF pages are rasterized
-    // by Poppler with a fixed white background baked in, so there's no
-    // stylesheet to swap -- inverting the rendered image (see
-    // PdfPageStackView::setInvertColors()) is the only way to darken one.
-    // Persisted under its own "pdfPageInvertColors" QSettings key (shared
-    // with the Qt Quick side's ThemeSettings::pdfPageDark), separate from
-    // "darkMode" so it doesn't follow the app theme.
-    auto *pageDarkButton = new QPushButton(tr("Invert"), toolbar);
-    pageDarkButton->setCheckable(true);
-    pageDarkButton->setToolTip(tr("Invert this page's colors (dark background)"));
-    connect(pageDarkButton, &QPushButton::toggled, this, [this](bool checked) {
-        m_pageStackView->setInvertColors(checked);
-        QSettings().setValue(QStringLiteral("pdfPageInvertColors"), checked);
-    });
-
-    // Freehand pen annotations (see InkStore, PdfPageStackView draw mode).
-    // App-side only, like highlights/notes -- never written into the PDF
-    // itself, so unlike a real PDF ink annotation these strokes only show up
-    // when the page is reopened in Mnemosyne, not in other PDF viewers.
-    auto *drawButton = new QPushButton(tr("Draw"), toolbar);
-    drawButton->setCheckable(true);
-    drawButton->setToolTip(tr("Draw freehand pen strokes on the page"));
-    connect(drawButton, &QPushButton::toggled, this, &PdfView::toggleDrawMode);
-
-    auto *clearDrawingsButton = new QPushButton(tr("Clear Page Drawings"), toolbar);
-    connect(clearDrawingsButton, &QPushButton::clicked, this, &PdfView::clearPageDrawings);
-
-    // Two pages side by side, like an open book -- a layout toggle only
-    // (see PdfPageStackView::setTwoPageMode()), not a separate reading mode:
-    // scrolling/zoom/search/highlights/draw all keep working unchanged.
-    // Persisted the same way as "Invert" above (a plain QSettings key, not
-    // per-book), so it carries over to the next PDF opened, not just the
-    // next tab.
-    auto *twoPageButton = new QPushButton(tr("Two-Page"), toolbar);
-    twoPageButton->setCheckable(true);
-    twoPageButton->setToolTip(tr("Show two pages side by side"));
-    connect(twoPageButton, &QPushButton::toggled, this, [this](bool checked) {
-        m_pageStackView->setTwoPageMode(checked);
-        QSettings().setValue(QStringLiteral("pdfTwoPageMode"), checked);
-        goToPage(m_currentPage);
-    });
-
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_pageSpinBox);
     toolbarLayout->addWidget(m_pageCountLabel);
@@ -356,20 +340,20 @@ void PdfView::setupUi()
     toolbarLayout->addStretch();
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
-    toolbarLayout->addWidget(pageDarkButton);
-    toolbarLayout->addWidget(twoPageButton);
-    toolbarLayout->addWidget(drawButton);
-    toolbarLayout->addWidget(clearDrawingsButton);
 
     m_pageStackView = new PdfPageStackView(this);
     connect(m_pageStackView, &PdfPageStackView::contextMenuRequested, this, &PdfView::showCanvasContextMenu);
     connect(m_pageStackView, &PdfPageStackView::clicked, this, &PdfView::showNotePopupIfClickedOnNote);
 
-    // Applied after m_pageStackView exists (the toggled() handler above
-    // dereferences it) -- restores last session's choice, matching what the
-    // "Synced position/zoom" restore above does for page/zoom.
-    pageDarkButton->setChecked(QSettings().value(QStringLiteral("pdfPageInvertColors"), false).toBool());
-    twoPageButton->setChecked(QSettings().value(QStringLiteral("pdfTwoPageMode"), false).toBool());
+    // Invert/Two-Page/Draw/Clear-Drawings live in MainWindow's top bar now
+    // (icon actions, next to the sidebar toggle) rather than in this
+    // per-tab toolbar -- see MainWindow::setupSidebarToggle() and
+    // updatePdfToolbarActions(). Invert and Two-Page are still restored
+    // here from their own QSettings keys (see setInvertColors()/
+    // setTwoPageMode() below) so a freshly opened PDF honors the last
+    // session's choice even before MainWindow's actions sync to it.
+    m_pageStackView->setInvertColors(QSettings().value(QStringLiteral("pdfPageInvertColors"), false).toBool());
+    m_pageStackView->setTwoPageMode(QSettings().value(QStringLiteral("pdfTwoPageMode"), false).toBool());
 
     m_scrollArea = new QScrollArea(this);
     m_scrollArea->setWidget(m_pageStackView);

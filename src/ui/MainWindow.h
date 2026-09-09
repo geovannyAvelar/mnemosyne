@@ -110,6 +110,12 @@ private:
     void updateTouchBar(QWidget *activeWidget);
 #endif
     int findTabForFilePath(const QString &filePath) const;
+    // Shows/hides the PDF-only top-bar actions (Invert/Two-Page/Draw/Clear
+    // Page Drawings) based on whether the current tab is a PdfView, and
+    // syncs their checked state to it -- called from onTabChanged() so
+    // switching tabs never leaves them reflecting a different PdfView's
+    // state (or, worse, letting a toggle land on the wrong tab).
+    void updatePdfToolbarActions();
 
     TocDock *m_tocDock = nullptr;
     NotesDock *m_notesDock = nullptr;
@@ -140,6 +146,11 @@ private:
     QAction *m_sidebarToggleAction = nullptr;
     QAction *m_fullScreenAction = nullptr;
     QAction *m_bookInfoLookupAction = nullptr;
+    // PDF-only top-bar actions -- see updatePdfToolbarActions().
+    QAction *m_pdfInvertAction = nullptr;
+    QAction *m_pdfTwoPageAction = nullptr;
+    QAction *m_pdfDrawAction = nullptr;
+    QAction *m_pdfClearDrawingsAction = nullptr;
 
     QTabWidget *m_tabWidget = nullptr;
     LibraryView *m_libraryView = nullptr; // always tab 0, not closable

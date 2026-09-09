@@ -65,6 +65,7 @@
 #include <QMimeData>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QTabBar>
 #include <QTabWidget>
@@ -521,6 +522,51 @@ void MainWindow::setupSidebarToggle()
     searchAction->setToolTip(tr("Search"));
     connect(searchAction, &QAction::triggered, this, &MainWindow::focusSearch);
 
+    // PDF-only controls -- hidden for every other tab type (Library, EPUB,
+    // ...), see updatePdfToolbarActions(), which onTabChanged() calls to
+    // show/hide these and sync their checked state to whichever PdfView is
+    // now current. Formerly per-tab buttons inside PdfView's own toolbar;
+    // moved here (as icon actions, next to the sidebar toggle) so they're
+    // reachable without that toolbar's text-button row.
+    m_pdfInvertAction = topBar->addAction(Theme::invertColorsIcon(), QString());
+    m_pdfInvertAction->setCheckable(true);
+    m_pdfInvertAction->setToolTip(tr("Invert this page's colors (dark background)"));
+    m_pdfInvertAction->setVisible(false);
+    connect(m_pdfInvertAction, &QAction::toggled, this, [this](bool checked) {
+        if (auto *pdfView = dynamic_cast<PdfView *>(m_currentView)) {
+            pdfView->setInvertColors(checked);
+        }
+    });
+
+    m_pdfTwoPageAction = topBar->addAction(Theme::twoPageIcon(), QString());
+    m_pdfTwoPageAction->setCheckable(true);
+    m_pdfTwoPageAction->setToolTip(tr("Show two pages side by side"));
+    m_pdfTwoPageAction->setVisible(false);
+    connect(m_pdfTwoPageAction, &QAction::toggled, this, [this](bool checked) {
+        if (auto *pdfView = dynamic_cast<PdfView *>(m_currentView)) {
+            pdfView->setTwoPageMode(checked);
+        }
+    });
+
+    m_pdfDrawAction = topBar->addAction(Theme::drawIcon(), QString());
+    m_pdfDrawAction->setCheckable(true);
+    m_pdfDrawAction->setToolTip(tr("Draw freehand pen strokes on the page"));
+    m_pdfDrawAction->setVisible(false);
+    connect(m_pdfDrawAction, &QAction::toggled, this, [this](bool checked) {
+        if (auto *pdfView = dynamic_cast<PdfView *>(m_currentView)) {
+            pdfView->toggleDrawMode(checked);
+        }
+    });
+
+    m_pdfClearDrawingsAction = topBar->addAction(Theme::clearDrawingsIcon(), QString());
+    m_pdfClearDrawingsAction->setToolTip(tr("Clear Page Drawings"));
+    m_pdfClearDrawingsAction->setVisible(false);
+    connect(m_pdfClearDrawingsAction, &QAction::triggered, this, [this] {
+        if (auto *pdfView = dynamic_cast<PdfView *>(m_currentView)) {
+            pdfView->clearPageDrawings();
+        }
+    });
+
     auto *spacer = new QWidget(topBar);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     // Without this, this widget -- not nullptr -- is what childAt() finds
@@ -911,6 +957,7 @@ void MainWindow::onTabChanged(int index)
         if (widget == m_libraryView) {
             m_libraryView->refresh();
         }
+        updatePdfToolbarActions();
 #ifdef Q_OS_MACOS
         updateTouchBar(widget);
 #endif
@@ -931,9 +978,35 @@ void MainWindow::onTabChanged(int index)
         refreshFormFieldsDock();
         setWindowTitle(tr("%1 — Mnemosyne").arg(m_currentView->documentTitle()));
     }
+    updatePdfToolbarActions();
 #ifdef Q_OS_MACOS
     updateTouchBar(widget);
 #endif
+}
+
+void MainWindow::updatePdfToolbarActions()
+{
+    auto *pdfView = dynamic_cast<PdfView *>(m_currentView);
+    const bool isPdf = pdfView != nullptr;
+    m_pdfInvertAction->setVisible(isPdf);
+    m_pdfTwoPageAction->setVisible(isPdf);
+    m_pdfDrawAction->setVisible(isPdf);
+    m_pdfClearDrawingsAction->setVisible(isPdf);
+    if (!isPdf) {
+        return;
+    }
+
+    // Blocked so setting these to reflect the newly-current PdfView doesn't
+    // re-trigger the toggled() handlers above, which would just reapply the
+    // same value back onto the same view -- harmless, but pointless, and
+    // for Two-Page specifically it would also re-run setTwoPageMode()'s
+    // goToPage() re-centering on every single tab switch.
+    const QSignalBlocker invertBlocker(m_pdfInvertAction);
+    const QSignalBlocker twoPageBlocker(m_pdfTwoPageAction);
+    const QSignalBlocker drawBlocker(m_pdfDrawAction);
+    m_pdfInvertAction->setChecked(pdfView->invertColors());
+    m_pdfTwoPageAction->setChecked(pdfView->twoPageMode());
+    m_pdfDrawAction->setChecked(pdfView->drawMode());
 }
 
 void MainWindow::updateReadingSession(IReaderView *outgoingView, IReaderView *incomingView,

@@ -243,6 +243,12 @@ QToolButton {
 QToolButton:hover {
     background: $RAISED_HOVER$;
 }
+QToolButton:checked {
+    background: $ACCENT$;
+}
+QToolButton:checked:hover {
+    background: $ACCENT_HOVER$;
+}
 
 QToolBar#windowTopBar QToolButton {
     padding: 9px 10px;
@@ -395,6 +401,108 @@ QIcon searchIcon()
     const QRectF circle(3.0, 3.0, 9.0, 9.0);
     painter.drawEllipse(circle);
     painter.drawLine(QPointF(circle.right() - 1.0, circle.bottom() - 1.0), QPointF(size - 2.5, size - 2.5));
+
+    return QIcon(pixmap);
+}
+
+QIcon invertColorsIcon()
+{
+    const int size = 18;
+    QPixmap pixmap = newIconPixmap(size, 2.0);
+
+    const QColor stroke(0x8A, 0x87, 0x80);
+
+    const QRectF circle(3.0, 3.0, 12.0, 12.0);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // Right half filled solid, left half left as outline only -- the usual
+    // "contrast/invert" glyph.
+    QPainterPath rightHalf;
+    rightHalf.moveTo(circle.center());
+    rightHalf.arcTo(circle, 90, -180);
+    rightHalf.closeSubpath();
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(stroke);
+    painter.drawPath(rightHalf);
+
+    painter.setPen(QPen(stroke, 1.3));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawEllipse(circle);
+
+    return QIcon(pixmap);
+}
+
+QIcon twoPageIcon()
+{
+    const int size = 18;
+    QPixmap pixmap = newIconPixmap(size, 2.0);
+
+    const QColor stroke(0x8A, 0x87, 0x80);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(stroke, 1.3));
+    painter.setBrush(Qt::NoBrush);
+
+    // Two separate "pages" side by side, unlike sidebarToggleIcon()'s single
+    // panel with an internal divider -- this needs to read as two distinct
+    // sheets, not one split one.
+    painter.drawRoundedRect(QRectF(2.0, 3.0, 6.0, 12.0), 1.4, 1.4);
+    painter.drawRoundedRect(QRectF(10.0, 3.0, 6.0, 12.0), 1.4, 1.4);
+
+    return QIcon(pixmap);
+}
+
+QIcon drawIcon()
+{
+    const int size = 18;
+    QPixmap pixmap = newIconPixmap(size, 2.0);
+
+    const QColor stroke(0x8A, 0x87, 0x80);
+    QPen pen(stroke, 2.0);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+
+    // A pencil: a thick diagonal body plus a small filled triangular tip.
+    painter.setPen(pen);
+    painter.drawLine(QPointF(4.0, 15.0), QPointF(11.5, 7.5));
+
+    QPainterPath tip;
+    tip.moveTo(11.0, 7.0);
+    tip.lineTo(14.5, 3.5);
+    tip.lineTo(15.5, 6.5);
+    tip.closeSubpath();
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(stroke);
+    painter.drawPath(tip);
+
+    return QIcon(pixmap);
+}
+
+QIcon clearDrawingsIcon()
+{
+    const int size = 18;
+    QPixmap pixmap = newIconPixmap(size, 2.0);
+
+    const QColor stroke(0x8A, 0x87, 0x80);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(stroke, 1.3));
+    painter.setBrush(Qt::NoBrush);
+
+    // A classic eraser silhouette, tilted, with a seam line separating its
+    // two ends -- reads distinctly from the pencil above at a glance.
+    painter.translate(size / 2.0, size / 2.0);
+    painter.rotate(-40);
+    const QRectF eraser(-7.0, -4.0, 14.0, 8.0);
+    painter.drawRoundedRect(eraser, 2.0, 2.0);
+    painter.drawLine(QPointF(-2.0, -4.0), QPointF(-2.0, 4.0));
 
     return QIcon(pixmap);
 }

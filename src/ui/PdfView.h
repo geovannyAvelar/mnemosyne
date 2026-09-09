@@ -76,6 +76,32 @@ public:
     // outside this class that needs it.
     QString password() const { return m_password; }
 
+    // Page color inversion -- distinct from the app-wide Dark Mode menu
+    // action (which only restyles the UI chrome/EPUB-MOBI-TXT-Markdown
+    // text; see MainWindow::setDarkModeEnabled()). PDF pages are rasterized
+    // by Poppler with a fixed white background baked in, so there's no
+    // stylesheet to swap -- inverting the rendered image (see
+    // PdfPageStackView::setInvertColors()) is the only way to darken one.
+    // Persisted under its own "pdfPageInvertColors" QSettings key (shared
+    // with the Qt Quick side's ThemeSettings::pdfPageDark), separate from
+    // "darkMode" so it doesn't follow the app theme. Controlled from
+    // MainWindow's top bar (see updatePdfToolbarActions()), not a button of
+    // this view's own toolbar.
+    bool invertColors() const;
+    void setInvertColors(bool enabled);
+
+    // Two pages side by side, like an open book -- a layout toggle only
+    // (see PdfPageStackView::setTwoPageMode()), not a separate reading mode:
+    // scrolling/zoom/search/highlights/draw all keep working unchanged.
+    // Persisted the same way as invertColors() above (a plain QSettings
+    // key, not per-book).
+    bool twoPageMode() const;
+    void setTwoPageMode(bool enabled);
+
+    // Whether toggleDrawMode(true) is currently in effect -- MainWindow
+    // reads this to sync its Draw action's checked state on tab switch.
+    bool drawMode() const;
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
@@ -90,8 +116,8 @@ public slots:
     void addHighlightForSelection();
     void addNoteForSelection();
     // Toggles freehand-pen draw mode on the canvas (see
-    // PdfPageStackView::setDrawMode()) -- checked state owned by the
-    // toolbar's own "Draw" button.
+    // PdfPageStackView::setDrawMode()) -- checked state owned by
+    // MainWindow's top-bar "Draw" action.
     void toggleDrawMode(bool enabled);
     // Erases every ink stroke on the current page (InkStore::clearPage()).
     void clearPageDrawings();

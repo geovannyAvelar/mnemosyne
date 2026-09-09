@@ -18,5 +18,12 @@ QString styleSheet(bool dark);
 // (a muted neutral gray that reads on both the light and dark palettes).
 QIcon sidebarToggleIcon();
 QIcon searchIcon();
+// PDF-only top-bar actions (see MainWindow::setupSidebarToggle()) --
+// invert page colors, two-page side-by-side layout, freehand draw mode, and
+// clear this page's drawings, in that order.
+QIcon invertColorsIcon();
+QIcon twoPageIcon();
+QIcon drawIcon();
+QIcon clearDrawingsIcon();
 
 } // namespace Theme
