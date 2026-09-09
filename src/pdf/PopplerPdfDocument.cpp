@@ -4,6 +4,7 @@
 
 #include <QFileInfo>
 #include <QObject>
+#include <QSet>
 
 namespace {
 
@@ -259,6 +260,141 @@ void PopplerPdfDocument::setFieldChoiceIndex(int pageIndex, int fieldIndex, int 
 
 bool PopplerPdfDocument::saveFilledFormAs(const QString &outputPath) const
 {
+    const std::unique_ptr<Poppler::PDFConverter> converter = m_doc->pdfConverter();
+    if (!converter) {
+        return false;
+    }
+    converter->setOutputFileName(outputPath);
+    converter->setPDFOptions(Poppler::PDFConverter::WithChanges);
+    return converter->convert();
+}
+
+bool PopplerPdfDocument::exportAnnotated(const QString &outputPath, const QVector<Highlight> &highlights,
+                                          const QVector<InkStroke> &inkStrokes) const
+{
+    QHash<int, QVector<const Highlight *>> highlightsByPage;
+    for (const Highlight &highlight : highlights) {
+        if (highlight.targetIndex >= 0 && !highlight.pageRect.isNull()) {
+            highlightsByPage[highlight.targetIndex].append(&highlight);
+        }
+    }
+    QHash<int, QVector<const InkStroke *>> inkByPage;
+    for (const InkStroke &stroke : inkStrokes) {
+        if (stroke.targetIndex >= 0 && stroke.points.size() >= 2) {
+            inkByPage[stroke.targetIndex].append(&stroke);
+        }
+    }
+
+    QSet<int> pageIndices;
+    for (auto it = highlightsByPage.constBegin(); it != highlightsByPage.constEnd(); ++it) {
+        pageIndices.insert(it.key());
+    }
+    for (auto it = inkByPage.constBegin(); it != inkByPage.constEnd(); ++it) {
+        pageIndices.insert(it.key());
+    }
+
+    // Every Poppler::Annotation::set*() call below is safe before
+    // addAnnotation() -- each setter caches its value in the Qt wrapper's
+    // own private data until the native annotation object is created (see
+    // this class's own header doc comment), exactly the construct-then-add
+    // order this class's own header example shows. Kept alive past that
+    // call regardless (addAnnotation() doesn't take ownership -- see
+    // poppler-qt6.h) since nothing here needs them destroyed any sooner
+    // than the whole export being done.
+    std::vector<std::unique_ptr<Poppler::Annotation>> ownedAnnotations;
+
+    for (int pageIndex : pageIndices) {
+        const std::unique_ptr<Poppler::Page> page = m_doc->page(pageIndex);
+        if (!page) {
+            continue;
+        }
+        const QSizeF sizePoints = page->pageSizeF();
+        if (sizePoints.width() <= 0 || sizePoints.height() <= 0) {
+            continue;
+        }
+        const qreal pageWidth = sizePoints.width();
+        const qreal pageHeight = sizePoints.height();
+
+        for (const Highlight *highlight : highlightsByPage.value(pageIndex)) {
+            auto annotation = std::make_unique<Poppler::HighlightAnnotation>();
+
+            // Highlight::pageRect/InkStroke::points are page-space points
+            // with a top-left origin (see those structs' own doc comments)
+            // -- the same convention Poppler-Qt's own "normalized
+            // coordinates" use ((0,0) top-left, (1,1) bottom-right; see
+            // poppler-annotation.h's addAnnotation() example), so this is a
+            // plain divide-by-page-size, no axis flip needed.
+            const QRectF norm(highlight->pageRect.x() / pageWidth, highlight->pageRect.y() / pageHeight,
+                               highlight->pageRect.width() / pageWidth, highlight->pageRect.height() / pageHeight);
+            annotation->setBoundary(norm);
+
+            // One quad covering the whole highlight rect -- matches what
+            // PdfPageStackView itself paints on screen (a single filled
+            // rect per highlight, not one quad per text line), so the
+            // exported PDF looks the same as Mnemosyne's own view of it.
+            Poppler::HighlightAnnotation::Quad quad;
+            quad.points[0] = norm.topLeft();
+            quad.points[1] = norm.topRight();
+            quad.points[2] = norm.bottomRight();
+            quad.points[3] = norm.bottomLeft();
+            quad.capStart = true;
+            quad.capEnd = true;
+            quad.feather = 0.1;
+            annotation->setHighlightQuads({quad});
+
+            Poppler::Annotation::Style style = annotation->style();
+            style.setColor(highlight->color);
+            annotation->setStyle(style);
+
+            // The note (if any) becomes the annotation's own Contents --
+            // PDF readers show that in a popup when the highlight is
+            // clicked, which is exactly the "note attached to a highlight"
+            // UX Mnemosyne itself already gives it, so no separate popup/
+            // text annotation is needed just to carry it.
+            if (!highlight->note.isEmpty()) {
+                annotation->setContents(highlight->note);
+            }
+            if (!highlight->createdAt.isNull()) {
+                annotation->setCreationDate(highlight->createdAt);
+            }
+
+            page->addAnnotation(annotation.get());
+            ownedAnnotations.push_back(std::move(annotation));
+        }
+
+        for (const InkStroke *stroke : inkByPage.value(pageIndex)) {
+            auto annotation = std::make_unique<Poppler::InkAnnotation>();
+
+            QRectF bounds(stroke->points.first(), QSizeF(0, 0));
+            for (const QPointF &point : stroke->points) {
+                bounds |= QRectF(point, QSizeF(0, 0));
+            }
+            // Padded by half the stroke's own width (also converted to
+            // normalized units) so the boundary fully contains the drawn
+            // line rather than clipping it right at its centerline.
+            const qreal padX = (stroke->width / 2.0) / pageWidth;
+            const qreal padY = (stroke->width / 2.0) / pageHeight;
+            const QRectF norm(bounds.x() / pageWidth - padX, bounds.y() / pageHeight - padY,
+                               bounds.width() / pageWidth + 2 * padX, bounds.height() / pageHeight + 2 * padY);
+            annotation->setBoundary(norm);
+
+            QVector<QPointF> normPoints;
+            normPoints.reserve(stroke->points.size());
+            for (const QPointF &point : stroke->points) {
+                normPoints.append(QPointF(point.x() / pageWidth, point.y() / pageHeight));
+            }
+            annotation->setInkPaths({normPoints});
+
+            Poppler::Annotation::Style style = annotation->style();
+            style.setColor(stroke->color);
+            style.setWidth(stroke->width);
+            annotation->setStyle(style);
+
+            page->addAnnotation(annotation.get());
+            ownedAnnotations.push_back(std::move(annotation));
+        }
+    }
+
     const std::unique_ptr<Poppler::PDFConverter> converter = m_doc->pdfConverter();
     if (!converter) {
         return false;

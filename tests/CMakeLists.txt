@@ -116,6 +116,13 @@ target_compile_definitions(poppler_pdf_document_test PRIVATE FIXTURES_DIR="${CMA
 
 add_test(NAME PopplerPdfDocumentTest COMMAND poppler_pdf_document_test)
 
+qt_add_executable(pdf_annotation_export_test PdfAnnotationExportTest.cpp)
+
+target_link_libraries(pdf_annotation_export_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(pdf_annotation_export_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME PdfAnnotationExportTest COMMAND pdf_annotation_export_test)
+
 qt_add_executable(text_reader_typography_test TextReaderTypographyTest.cpp)
 
 target_link_libraries(text_reader_typography_test PRIVATE mnemosynedesktopui Qt6::Test)

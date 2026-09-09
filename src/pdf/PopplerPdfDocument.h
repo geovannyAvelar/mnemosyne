@@ -1,6 +1,8 @@
 #pragma once
 
 #include "core/Document.h"
+#include "core/Highlight.h"
+#include "core/InkStroke.h"
 #include "core/PdfFormField.h"
 
 #include <poppler-qt6.h>
@@ -77,6 +79,19 @@ public:
     // path this Poppler-Qt6 version exposes (there's no plain
     // Document::save()).
     bool saveFilledFormAs(const QString &outputPath) const;
+
+    // Writes highlights and ink strokes into a *new* PDF at outputPath as
+    // real PDF annotations (Poppler::HighlightAnnotation / InkAnnotation) --
+    // unlike the app-side overlay Mnemosyne normally draws these as (see
+    // PdfPageStackView), the result is visible, and printable, in any PDF
+    // reader. A highlight's note (if any) becomes the annotation's
+    // Contents, which readers show in a popup when the highlight is
+    // clicked -- no separate note/popup annotation is created for it. Never
+    // overwrites the file this document was opened from, same principle as
+    // saveFilledFormAs() above. Entries whose targetIndex is out of range
+    // for this document are silently skipped.
+    bool exportAnnotated(const QString &outputPath, const QVector<Highlight> &highlights,
+                          const QVector<InkStroke> &inkStrokes) const;
 
 private:
     explicit PopplerPdfDocument(std::unique_ptr<Poppler::Document> doc, QString fallbackTitle);

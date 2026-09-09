@@ -83,6 +83,10 @@ private:
     // tab type (same as refreshNotesDock() does for a non-highlightable one).
     void refreshFormFieldsDock();
     void saveFilledFormAs();
+    // Writes highlights/ink into a new PDF as real annotations -- see
+    // PdfView::exportAnnotatedAs(). PDF only, unlike exportNotesAsMarkdown()/
+    // exportNotesAsAnki() above.
+    void exportAnnotatedPdf();
     // Ends the outgoing tab's reading session (if any) and starts one for
     // the incoming tab (if it's a real document, not Library) -- see
     // ReadingSessionTracker's own header comment for why both halves are

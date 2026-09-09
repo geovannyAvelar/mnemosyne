@@ -2,6 +2,7 @@
 
 #include "app/BookMetadataClient.h"
 #include "app/FileIdentity.h"
+#include "app/InkStore.h"
 #include "app/HighlightExporter.h"
 #include "app/HighlightStore.h"
 #include "app/RecentFiles.h"
@@ -670,6 +671,12 @@ void MainWindow::setupMenus()
     connect(exportMarkdownAction, &QAction::triggered, this, &MainWindow::exportNotesAsMarkdown);
     QAction *exportAnkiAction = m_exportNotesMenu->addAction(tr("as &Anki Cards (TSV)..."));
     connect(exportAnkiAction, &QAction::triggered, this, &MainWindow::exportNotesAsAnki);
+    // PDF only (unlike the two above, which work for any highlightable
+    // view type) -- bakes highlights/ink into real PDF annotations rather
+    // than a separate document, so it has no library-wide equivalent
+    // either.
+    QAction *exportAnnotatedPdfAction = m_exportNotesMenu->addAction(tr("as Annotated &PDF..."));
+    connect(exportAnnotatedPdfAction, &QAction::triggered, this, &MainWindow::exportAnnotatedPdf);
     m_exportNotesMenu->addSeparator();
     QAction *exportLibraryMarkdownAction = m_exportNotesMenu->addAction(tr("Export &Library as Markdown..."));
     connect(exportLibraryMarkdownAction, &QAction::triggered, this, &MainWindow::exportLibraryAsMarkdown);
@@ -1100,6 +1107,36 @@ void MainWindow::saveFilledFormAs()
 
     if (!pdfView->saveFilledFormAs(outputPath)) {
         QMessageBox::warning(this, tr("Save Filled Form"), tr("Failed to save the filled form to:\n%1").arg(outputPath));
+    }
+}
+
+void MainWindow::exportAnnotatedPdf()
+{
+    auto *pdfView = dynamic_cast<PdfView *>(m_currentView);
+    if (!pdfView) {
+        QMessageBox::information(this, tr("Export Annotated PDF"), tr("Only available for PDF documents."));
+        return;
+    }
+
+    const QString bookHash = FileIdentity::contentHash(m_currentFilePath);
+    const bool hasHighlights = !HighlightStore::highlightsFor(bookHash).isEmpty();
+    const bool hasInk = !InkStore::strokesFor(bookHash).isEmpty();
+    if (!hasHighlights && !hasInk) {
+        QMessageBox::information(this, tr("Export Annotated PDF"), tr("No highlights or drawings to export yet."));
+        return;
+    }
+
+    const QString suggestedName = QFileInfo(m_currentFilePath).completeBaseName() + QStringLiteral("-annotated.pdf");
+    const QString suggestedPath = QDir(QFileInfo(m_currentFilePath).absolutePath()).filePath(suggestedName);
+    const QString outputPath =
+        QFileDialog::getSaveFileName(this, tr("Export Annotated PDF"), suggestedPath, tr("PDF Files (*.pdf)"));
+    if (outputPath.isEmpty()) {
+        return;
+    }
+
+    if (!pdfView->exportAnnotatedAs(outputPath)) {
+        QMessageBox::warning(this, tr("Export Annotated PDF"),
+                              tr("Failed to export the annotated PDF to:\n%1").arg(outputPath));
     }
 }
 

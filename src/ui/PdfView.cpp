@@ -213,6 +213,16 @@ bool PdfView::saveFilledFormAs(const QString &outputPath) const
     return pdfDoc && pdfDoc->saveFilledFormAs(outputPath);
 }
 
+bool PdfView::exportAnnotatedAs(const QString &outputPath) const
+{
+    auto *pdfDoc = dynamic_cast<PopplerPdfDocument *>(m_document.get());
+    if (!pdfDoc) {
+        return false;
+    }
+    const QVector<InkStroke> inkStrokes = InkStore::strokesFor(m_progressController->bookHash());
+    return pdfDoc->exportAnnotated(outputPath, m_highlightController.highlights(), inkStrokes);
+}
+
 bool PdfView::hasPendingSyncPrompt() const
 {
     // See EpubView::hasPendingSyncPrompt() for why isHidden(), not isVisible().

@@ -70,6 +70,13 @@ public:
     // PopplerPdfDocument::saveFilledFormAs().
     bool saveFilledFormAs(const QString &outputPath) const;
 
+    // Writes this book's highlights and ink strokes into a new PDF at
+    // outputPath as real PDF annotations (see
+    // PopplerPdfDocument::exportAnnotated()) -- visible and printable in
+    // any PDF reader, unlike Mnemosyne's own app-side overlay of the same
+    // marks. Never overwrites the file this view was opened from.
+    bool exportAnnotatedAs(const QString &outputPath) const;
+
     bool hasPendingSyncPrompt() const;
     // Whatever unlocked this view's file, if it was encrypted; empty
     // otherwise. See searchFile()'s own doc comment for the one thing
