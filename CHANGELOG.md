@@ -5,6 +5,32 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.15.0] - 2026-09-09
+
+### Added
+
+- PDF: freehand ink annotations and form filling. Draw directly on a page (app-side only, like highlights); a new Form Fields side panel lists a document's text/checkbox/choice fields with live inputs, and "Save Filled Form As..." writes them into a new copy of the PDF via Poppler, leaving the original untouched.
+- PDF: File > Export Notes gains "as Annotated PDF...", baking highlights, ink strokes, and each highlight's note into a new copy of the PDF as real Poppler annotations — visible and printable in any PDF reader, not just Mnemosyne's own overlay.
+- PDF: a "Two-Page" toolbar toggle shows pages side by side, row by row, with highlights, search, selection, ink, and rendering all working the same across the spread.
+- PDF: page color inversion is now its own per-document "Invert" toggle next to the zoom controls, independent of app-wide Dark Mode, and persists across restarts.
+- PDF: text selection can now be dragged across a page boundary, selecting each page in between in full instead of snapping back to the page the drag started on.
+- PDF: clicking a highlighted passage now shows a quick note popup at the click point (with Edit/Remove) instead of requiring the full "Edit Note..." dialog; the mobile reader gets the same on tap.
+- PDF: opening a password-protected PDF now prompts for a password, retrying on a wrong guess, instead of failing outright.
+- Library organization: named shelves a book can belong to, plus free-form tags, both filterable together in the Library view on desktop and mobile.
+- Reading stats: time spent, streaks, and pages/day per book, tracked automatically and shown in a new Stats sidebar tab on desktop and a Stats screen on mobile.
+- EPUB/MOBI/Markdown/TXT: a new "Aa" toolbar button opens font family, line-spacing, and margin controls, applied live and persisted globally like Dark Mode.
+- MOBI/AZW/AZW3 documents now render their embedded images instead of leaving them blank, matching EPUB.
+- CBZ comics: "Two-Page" and "R→L" toolbar toggles for spread view and manga-style right-to-left reading order.
+- Windows installer: installs per-user with no admin rights required by default (an elevated run can still choose an all-users install into Program Files); desktop shortcut and default-PDF-reader association are now opt-in checkboxes.
+
+### Changed
+
+- Desktop: the PDF toolbar's Invert/Two-Page/Draw/Clear-Drawings controls moved from PdfView's own toolbar into icon buttons in the main top bar, next to the sidebar toggle.
+
+### Fixed
+
+- Desktop: a PDF could open showing page 1 (blank/grey) instead of the saved reading position, because the initial scroll was applied before the view's scrollbar range was ready and got silently clamped back to zero.
+
 ## [1.14.0] - 2026-09-05
 
 ### Fixed
