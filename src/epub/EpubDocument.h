@@ -79,6 +79,17 @@ public:
     // spine index. Returns -1 if it doesn't match any spine item.
     int spineIndexForHref(const QString &baseDir, const QString &href) const;
 
+    // Build index: scans all chapters for images, stores in m_imageIndex.
+    // Returns JSON with structure: {"images": {"path": filesize}}.
+    // Runs on background thread.
+    QString buildIndex();
+
+    // Load index from JSON string (e.g., from cache file).
+    void loadIndexFromJson(const QString &json);
+
+    // Check if image should be embedded (size < threshold). Threshold in bytes.
+    static constexpr int kImageEmbedThreshold = 100 * 1024; // 100 KB
+
 private:
     EpubDocument();
 
@@ -108,4 +119,6 @@ private:
     QHash<QString, int> m_hrefToSpineIndex;
     QVector<TocNode> m_toc;
     mutable QHash<int, ProcessedChapter> m_chapterCache;
+    QHash<QString, int> m_imageIndex; // image path -> filesize, populated by buildIndex()
+    QString m_imageCacheDir; // directory where large images are cached
 };

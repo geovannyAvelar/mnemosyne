@@ -68,6 +68,8 @@ signals:
 
 private:
     void setupUi();
+    void startIndexingIfNeeded();
+    void loadWindowStartingAtAsync(int spineIndex);
 
     // Discards whatever chapter window is currently loaded and starts fresh
     // at spineIndex: setHtml() with just that chapter, scrolled to its top.
@@ -120,6 +122,7 @@ private:
     int m_currentChapter = 0; // dominantly-visible chapter, tracked continuously while scrolling
     int m_loadedChapterStart = 0; // spine index range currently present in m_browser's document
     int m_loadedChapterEnd = 0;
+    QString m_pendingAnchor; // anchor to scroll to after chapter loads
     QHash<int, int> m_chapterStartBlock; // spine index -> QTextCursor::blockNumber() where it begins
     bool m_loadingAdjacentChapter = false; // re-entrancy guard: prepending adjusts the scrollbar itself
     bool m_darkMode = false;
@@ -131,4 +134,8 @@ private:
     QLabel *m_chapterLabel = nullptr;
     SyncPromptBar *m_syncPromptBar = nullptr;
     QTimer *m_progressSaveTimer = nullptr;
+    QLabel *m_indexingLabel = nullptr; // "Indexing..." indicator
+    QLabel *m_loadingLabel = nullptr; // "Loading chapter..." spinner overlay
+    QThread *m_indexThread = nullptr;
+    QThread *m_chapterLoadThread = nullptr; // async chapter loading
 };

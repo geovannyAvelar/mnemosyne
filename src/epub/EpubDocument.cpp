@@ -3,9 +3,15 @@
 #include "ZipArchive.h"
 #include "core/HtmlAttrUtil.h"
 
+#include <QCryptographicHash>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QObject>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QUrl>
 #include <QXmlStreamReader>
 
@@ -397,6 +403,11 @@ TocNode EpubDocument::parseNcxNavPoint(QXmlStreamReader &reader, const QString &
             } else if (name.compare(QLatin1String("content"), Qt::CaseInsensitive) == 0) {
                 const QString src = reader.attributes().value(QLatin1String("src")).toString();
                 node.pageNumber = spineIndexForHref(baseDir, src);
+                // Extract anchor if present.
+                const int hashIndex = src.indexOf(QLatin1Char('#'));
+                if (hashIndex >= 0) {
+                    node.anchor = src.mid(hashIndex + 1);
+                }
             } else if (name.compare(QLatin1String("navPoint"), Qt::CaseInsensitive) == 0) {
                 node.children.append(parseNcxNavPoint(reader, baseDir));
             }
@@ -467,6 +478,11 @@ TocNode EpubDocument::parseNavListItem(QXmlStreamReader &reader, const QString &
                 const QString href = reader.attributes().value(QLatin1String("href")).toString();
                 if (!href.isEmpty()) {
                     node.pageNumber = spineIndexForHref(baseDir, href);
+                    // Extract anchor if present.
+                    const int hashIndex = href.indexOf(QLatin1Char('#'));
+                    if (hashIndex >= 0) {
+                        node.anchor = href.mid(hashIndex + 1);
+                    }
                 }
                 if (node.title.isEmpty()) {
                     node.title = reader.readElementText(QXmlStreamReader::SkipChildElements).trimmed();
@@ -548,7 +564,7 @@ EpubDocument::ProcessedChapter EpubDocument::processChapter(int spineIndex) cons
         html = transformed;
     }
 
-    // Embed images as data: URIs.
+    // Embed images as data: URIs (skip large images if index exists).
     {
         static const QRegularExpression imgRe(QStringLiteral("<img\\b[^>]*>"), QRegularExpression::CaseInsensitiveOption);
         static const QRegularExpression srcRe(QStringLiteral("\\bsrc\\s*=\\s*(\"[^\"]*\"|'[^']*')"), QRegularExpression::CaseInsensitiveOption);
@@ -564,40 +580,60 @@ EpubDocument::ProcessedChapter EpubDocument::processChapter(int spineIndex) cons
 
             if (!src.isEmpty()) {
                 const QString imgPath = resolveEpubPath(chapterDir, src);
-                bool imgOk = false;
-                const QByteArray imgData = m_archive->readEntry(imgPath, &imgOk);
-                if (imgOk) {
-                    const QString dataUri = QStringLiteral("data:%1;base64,%2").arg(mimeTypeForImagePath(imgPath), QString::fromLatin1(imgData.toBase64()));
-                    tag.replace(srcRe, QStringLiteral("src=\"%1\"").arg(dataUri));
 
-                    // QTextDocument (this app's EPUB renderer) doesn't honor
-                    // percentage-based CSS sizing on <img> at all -- confirmed
-                    // empirically: an <img style="max-width:100%"> (what a
-                    // well-authored EPUB's own cover page often specifies)
-                    // still renders at the image's native pixel size
-                    // regardless, which for a full-bleed cover can be
-                    // thousands of pixels wide, overflowing and clipping past
-                    // the page's edge instead of scaling down as intended.
-                    // Explicit pixel width/height attributes DO scale
-                    // correctly (also confirmed empirically), so an oversized
-                    // image gets capped to one here, computed from its own
-                    // aspect ratio.
-                    const QImage image = QImage::fromData(imgData);
-                    if (!image.isNull() && image.width() > kMaxEmbeddedImageWidth) {
-                        const int scaledHeight = (image.height() * kMaxEmbeddedImageWidth) / image.width();
-                        static const QRegularExpression widthAttrRe(QStringLiteral("\\bwidth\\s*=\\s*(\"[^\"]*\"|'[^']*')"),
-                                                                     QRegularExpression::CaseInsensitiveOption);
-                        static const QRegularExpression heightAttrRe(QStringLiteral("\\bheight\\s*=\\s*(\"[^\"]*\"|'[^']*')"),
-                                                                      QRegularExpression::CaseInsensitiveOption);
-                        tag.remove(widthAttrRe);
-                        tag.remove(heightAttrRe);
-                        // Position 4, not a literal "<img" replace: the tag
-                        // may be spelled "<IMG" (the opening regex match is
-                        // case-insensitive), but either way it's exactly 4
-                        // characters before here.
-                        tag.insert(4, QStringLiteral(" width=\"%1\" height=\"%2\"").arg(kMaxEmbeddedImageWidth).arg(scaledHeight));
-                    }
+                // Check index: skip embedding if image is large (> kImageEmbedThreshold).
+                int imgSize = -1;
+                if (m_imageIndex.contains(imgPath)) {
+                    imgSize = m_imageIndex.value(imgPath);
                 }
+
+                bool shouldEmbed = (imgSize < 0 || imgSize < kImageEmbedThreshold);
+
+                if (shouldEmbed) {
+                    bool imgOk = false;
+                    const QByteArray imgData = m_archive->readEntry(imgPath, &imgOk);
+                    if (imgOk) {
+                        const QString dataUri = QStringLiteral("data:%1;base64,%2").arg(mimeTypeForImagePath(imgPath), QString::fromLatin1(imgData.toBase64()));
+                        tag.replace(srcRe, QStringLiteral("src=\"%1\"").arg(dataUri));
+
+                        // QTextDocument (this app's EPUB renderer) doesn't honor
+                        // percentage-based CSS sizing on <img> at all -- confirmed
+                        // empirically: an <img style="max-width:100%"> (what a
+                        // well-authored EPUB's own cover page often specifies)
+                        // still renders at the image's native pixel size
+                        // regardless, which for a full-bleed cover can be
+                        // thousands of pixels wide, overflowing and clipping past
+                        // the page's edge instead of scaling down as intended.
+                        // Explicit pixel width/height attributes DO scale
+                        // correctly (also confirmed empirically), so an oversized
+                        // image gets capped to one here, computed from its own
+                        // aspect ratio.
+                        const QImage image = QImage::fromData(imgData);
+                        if (!image.isNull() && image.width() > kMaxEmbeddedImageWidth) {
+                            const int scaledHeight = (image.height() * kMaxEmbeddedImageWidth) / image.width();
+                            static const QRegularExpression widthAttrRe(QStringLiteral("\\bwidth\\s*=\\s*(\"[^\"]*\"|'[^']*')"),
+                                                                         QRegularExpression::CaseInsensitiveOption);
+                            static const QRegularExpression heightAttrRe(QStringLiteral("\\bheight\\s*=\\s*(\"[^\"]*\"|'[^']*')"),
+                                                                          QRegularExpression::CaseInsensitiveOption);
+                            tag.remove(widthAttrRe);
+                            tag.remove(heightAttrRe);
+                            // Position 4, not a literal "<img" replace: the tag
+                            // may be spelled "<IMG" (the opening regex match is
+                            // case-insensitive), but either way it's exactly 4
+                            // characters before here.
+                            tag.insert(4, QStringLiteral(" width=\"%1\" height=\"%2\"").arg(kMaxEmbeddedImageWidth).arg(scaledHeight));
+                        }
+                    }
+                } else if (!m_imageCacheDir.isEmpty()) {
+                    // Large image: use file:// URL to cached version.
+                    const QString fileName = QString::number(qHash(imgPath), 16) +
+                                           QStringLiteral(".") +
+                                           QFileInfo(imgPath).suffix();
+                    const QString cachePath = QStringLiteral("file://") + m_imageCacheDir +
+                                            QLatin1Char('/') + fileName;
+                    tag.replace(srcRe, QStringLiteral("src=\"%1\"").arg(cachePath));
+                }
+                // else: large image, no cache dir set. src remains archive-relative (won't load)
             }
 
             transformed += html.mid(lastPos, m.capturedStart() - lastPos);
@@ -642,6 +678,49 @@ EpubDocument::ProcessedChapter EpubDocument::processChapter(int spineIndex) cons
         html = transformed;
     }
 
+    // Rewrite internal links to use custom protocol so EpubView can navigate.
+    {
+        static const QRegularExpression linkRe(QStringLiteral("<a\\b[^>]*>"), QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression hrefRe(QStringLiteral("\\bhref\\s*=\\s*(\"[^\"]*\"|'[^']*')"), QRegularExpression::CaseInsensitiveOption);
+
+        QString transformed;
+        transformed.reserve(html.size());
+        int lastPos = 0;
+        auto it = linkRe.globalMatch(html);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            QString tag = m.captured(0);
+            const QString href = extractHtmlAttr(tag, QStringLiteral("href"));
+
+            if (!href.isEmpty() && !href.startsWith(QLatin1String("mailto:"))) {
+                const int linkSpineIndex = spineIndexForHref(chapterDir, href);
+                if (linkSpineIndex >= 0) {
+                    // Extract anchor from href if present.
+                    QString anchor;
+                    const int hashIndex = href.indexOf(QLatin1Char('#'));
+                    if (hashIndex >= 0) {
+                        anchor = href.mid(hashIndex + 1);
+                    }
+
+                    // Rewrite href as mnemosyne-epub:spineIndex#anchor.
+                    QString newHref = QStringLiteral("mnemosyne-epub:%1").arg(linkSpineIndex);
+                    if (!anchor.isEmpty()) {
+                        newHref += QLatin1Char('#') + anchor;
+                    }
+                    tag.replace(hrefRe, QStringLiteral("href=\"%1\"").arg(newHref));
+                }
+                // else: href doesn't resolve to a spine item, leave it as-is
+                // (might be an external link or broken link).
+            }
+
+            transformed += html.mid(lastPos, m.capturedStart() - lastPos);
+            transformed += tag;
+            lastPos = m.capturedEnd();
+        }
+        transformed += html.mid(lastPos);
+        html = transformed;
+    }
+
     result.html = html;
     m_chapterCache.insert(spineIndex, result);
     return result;
@@ -660,4 +739,91 @@ QVector<QString> EpubDocument::chapterVideoPaths(int spineIndex) const
 QByteArray EpubDocument::readResource(const QString &archivePath, bool *ok) const
 {
     return m_archive->readEntry(archivePath, ok);
+}
+
+QString EpubDocument::buildIndex()
+{
+    if (!m_archive) {
+        return QStringLiteral("{}");
+    }
+
+    static const QRegularExpression imgRe(QStringLiteral("<img\\b[^>]*>"), QRegularExpression::CaseInsensitiveOption);
+    m_imageIndex.clear();
+
+    // Create temp cache dir for large images.
+    const QString bookHash = QString::fromUtf8(QCryptographicHash::hash(
+        m_opfDir.toUtf8(), QCryptographicHash::Sha256).toHex());
+    const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
+                             QStringLiteral("/epub-images/") + bookHash;
+    QDir().mkpath(cacheDir);
+
+    for (int i = 0; i < m_spine.size(); ++i) {
+        const QString href = m_spine.at(i).href;
+        bool ok = false;
+        const QByteArray raw = m_archive->readEntry(href, &ok);
+        if (!ok) {
+            continue;
+        }
+
+        const QString chapterDir = dirOf(href);
+        const QString html = QString::fromUtf8(raw);
+
+        auto it = imgRe.globalMatch(html);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            const QString tag = m.captured(0);
+            const QString src = extractHtmlAttr(tag, QStringLiteral("src"));
+
+            if (!src.isEmpty()) {
+                const QString imgPath = resolveEpubPath(chapterDir, src);
+                if (!m_imageIndex.contains(imgPath)) {
+                    bool imgOk = false;
+                    const QByteArray imgData = m_archive->readEntry(imgPath, &imgOk);
+                    if (imgOk) {
+                        const int imgSize = imgData.size();
+                        m_imageIndex.insert(imgPath, imgSize);
+
+                        // Extract large images to cache.
+                        if (imgSize >= kImageEmbedThreshold) {
+                            const QString fileName = QString::number(qHash(imgPath), 16) +
+                                                   QStringLiteral(".") +
+                                                   QFileInfo(imgPath).suffix();
+                            const QString cachePath = cacheDir + QLatin1Char('/') + fileName;
+                            QFile cacheFile(cachePath);
+                            if (cacheFile.open(QIODevice::WriteOnly)) {
+                                cacheFile.write(imgData);
+                                cacheFile.close();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Build JSON: {"images": {"path": size}, "cacheDir": "..."}
+    QJsonObject root;
+    QJsonObject images;
+    for (auto it = m_imageIndex.begin(); it != m_imageIndex.end(); ++it) {
+        images.insert(it.key(), it.value());
+    }
+    root.insert(QStringLiteral("images"), images);
+    root.insert(QStringLiteral("cacheDir"), cacheDir);
+
+    return QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+}
+
+void EpubDocument::loadIndexFromJson(const QString &json)
+{
+    m_imageIndex.clear();
+    QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8());
+    if (!doc.isObject()) {
+        return;
+    }
+    QJsonObject root = doc.object();
+    QJsonObject images = root.value(QStringLiteral("images")).toObject();
+    for (auto it = images.begin(); it != images.end(); ++it) {
+        m_imageIndex.insert(it.key(), it.value().toInt());
+    }
+    m_imageCacheDir = root.value(QStringLiteral("cacheDir")).toString();
 }

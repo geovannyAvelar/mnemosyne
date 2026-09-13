@@ -34,6 +34,7 @@
 #include <QTextBlock>
 #include <QTextBrowser>
 #include <QTextDocument>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -99,6 +100,7 @@ EpubView::EpubView(std::unique_ptr<EpubDocument> document, QString filePath, QWi
     , m_highlights(HighlightStore::highlightsFor(FileIdentity::contentHash(m_filePath)))
 {
     setupUi();
+    startIndexingIfNeeded();
     restoreProgressAndCheckSync(); // sets m_currentChapter/m_fontZoomSteps before the first render, so there's no visible jump
     loadWindowStartingAt(m_currentChapter);
 }
@@ -116,6 +118,7 @@ QVector<TocNode> EpubView::tableOfContents() const
 void EpubView::goToTocNode(const TocNode &node)
 {
     if (node.pageNumber >= 0) {
+        m_pendingAnchor = node.anchor;
         goToChapter(node.pageNumber);
     }
 }
@@ -220,10 +223,15 @@ void EpubView::setupUi()
         showTypographyPopup(typographyButton->mapToGlobal(QPoint(0, typographyButton->height())));
     });
 
+    m_indexingLabel = new QLabel(tr("Indexing..."), toolbar);
+    m_indexingLabel->setVisible(false);
+    m_indexingLabel->setStyleSheet(QStringLiteral("color: #999; font-size: 11px;"));
+
     toolbarLayout->addWidget(prevButton);
     toolbarLayout->addWidget(m_chapterLabel);
     toolbarLayout->addWidget(nextButton);
     toolbarLayout->addStretch();
+    toolbarLayout->addWidget(m_indexingLabel);
     toolbarLayout->addWidget(zoomOutButton);
     toolbarLayout->addWidget(zoomInButton);
     toolbarLayout->addWidget(typographyButton);
@@ -238,6 +246,12 @@ void EpubView::setupUi()
     applyTypography();
     m_browser->viewport()->installEventFilter(this); // Ctrl+wheel zoom
     connect(m_browser->verticalScrollBar(), &QScrollBar::valueChanged, this, &EpubView::onScrolled);
+
+    // Loading spinner overlay.
+    m_loadingLabel = new QLabel(tr("Loading chapter..."), m_browser);
+    m_loadingLabel->setAlignment(Qt::AlignCenter);
+    m_loadingLabel->setStyleSheet(QStringLiteral("background: rgba(0,0,0,0.7); color: white; border-radius: 8px; padding: 20px;"));
+    m_loadingLabel->setVisible(false);
 
     m_syncPromptBar = new SyncPromptBar(this);
 
@@ -357,8 +371,7 @@ void EpubView::goToChapter(int spineIndex)
         updateNavigationState();
         return;
     }
-    loadWindowStartingAt(spineIndex);
-    scheduleProgressSave();
+    loadWindowStartingAtAsync(spineIndex);
 }
 
 void EpubView::nextChapter()
@@ -662,6 +675,33 @@ void EpubView::showBrowserContextMenu(const QPoint &pos)
 void EpubView::onVideoLinkActivated(const QUrl &url)
 {
     const QString scheme = url.scheme();
+
+    if (scheme == QLatin1String("mnemosyne-epub")) {
+        // Internal EPUB link: mnemosyne-epub:spineIndex#anchor
+        const QString urlStr = url.toString();
+        const QString rest = urlStr.mid(scheme.size() + 1); // Skip "mnemosyne-epub:"
+        const int hashIndex = rest.indexOf(QLatin1Char('#'));
+
+        bool ok = false;
+        const int spineIndex = rest.left(hashIndex >= 0 ? hashIndex : -1).toInt(&ok);
+        if (!ok || !m_document) {
+            return;
+        }
+
+        goToChapter(spineIndex);
+
+        // Scroll to anchor if present, deferred to allow full chapter render.
+        if (hashIndex >= 0) {
+            const QString anchor = rest.mid(hashIndex + 1);
+            if (!anchor.isEmpty()) {
+                QTimer::singleShot(100, this, [this, anchor]() {
+                    m_browser->scrollToAnchor(anchor);
+                });
+            }
+        }
+        return;
+    }
+
     if (scheme != QLatin1String("mnemosyne-video")) {
         return; // an ordinary in-book link; setOpenLinks(false) means Qt won't follow it either way
     }
@@ -816,4 +856,113 @@ bool EpubView::eventFilter(QObject *watched, QEvent *event)
         });
     }
     return QWidget::eventFilter(watched, event);
+}
+
+void EpubView::startIndexingIfNeeded()
+{
+    if (!m_document || !m_indexingLabel || !m_browser) {
+        return;
+    }
+
+    // Cache index in app cache dir, keyed by file hash.
+    const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + QStringLiteral("/epub-index");
+    QDir().mkpath(cacheDir);
+
+    const QString bookHash = FileIdentity::contentHash(m_filePath);
+    const QString indexPath = cacheDir + QLatin1Char('/') + bookHash + QStringLiteral(".json");
+
+    // Try to load cached index.
+    QFile indexFile(indexPath);
+    if (indexFile.exists() && indexFile.open(QIODevice::ReadOnly)) {
+        const QString indexJson = QString::fromUtf8(indexFile.readAll());
+        indexFile.close();
+        m_document->loadIndexFromJson(indexJson);
+        return; // Index loaded, no need to rebuild.
+    }
+
+    // Index doesn't exist or failed to load: build in background thread.
+    m_indexingLabel->setVisible(true);
+
+    // Use Qt Thread to run indexing.
+    m_indexThread = QThread::create([this, indexPath] {
+        const QString indexJson = m_document->buildIndex();
+        // Save to cache.
+        QFile indexFile(indexPath);
+        if (indexFile.open(QIODevice::WriteOnly)) {
+            indexFile.write(indexJson.toUtf8());
+            indexFile.close();
+        }
+        // Emit signal to update UI on main thread.
+        QMetaObject::invokeMethod(this, [this] {
+            m_indexingLabel->setVisible(false);
+            if (m_indexThread) {
+                m_indexThread->quit();
+                m_indexThread->wait();
+                m_indexThread->deleteLater();
+                m_indexThread = nullptr;
+            }
+        }, Qt::QueuedConnection);
+    });
+    m_indexThread->start();
+}
+
+void EpubView::loadWindowStartingAtAsync(int spineIndex)
+{
+    if (!m_document || m_document->spineCount() == 0) {
+        return;
+    }
+    spineIndex = std::clamp(spineIndex, 0, m_document->spineCount() - 1);
+
+    // Show loading spinner centered in browser.
+    m_loadingLabel->adjustSize();
+    const QRect browserRect = m_browser->rect();
+    const int x = (browserRect.width() - m_loadingLabel->width()) / 2;
+    const int y = (browserRect.height() - m_loadingLabel->height()) / 2;
+    m_loadingLabel->move(x, y);
+    m_loadingLabel->setVisible(true);
+    m_loadingLabel->raise();
+
+    // Generate chapter HTML on background thread.
+    m_chapterLoadThread = QThread::create([this, spineIndex] {
+        if (!m_document) {
+            return; // Document deleted while loading
+        }
+        const QString html = chapterHtmlFragment(spineIndex);
+
+        // Apply to browser on main thread.
+        QMetaObject::invokeMethod(this, [this, html, spineIndex] {
+            if (!m_browser || !m_document) {
+                return; // View destroyed while loading
+            }
+            m_chapterStartBlock.clear();
+            m_browser->setHtml(html);
+            m_chapterStartBlock.insert(spineIndex, 0);
+            m_loadedChapterStart = spineIndex;
+            m_loadedChapterEnd = spineIndex;
+            m_currentChapter = spineIndex;
+
+            applyHighlightsToBrowser();
+            updateNavigationState();
+
+            // Scroll to pending anchor if set, otherwise chapter start.
+            if (!m_pendingAnchor.isEmpty()) {
+                m_browser->scrollToAnchor(m_pendingAnchor);
+                m_pendingAnchor.clear();
+            } else {
+                m_browser->scrollToAnchor(QStringLiteral("mnemosyne-chapter-%1").arg(spineIndex));
+            }
+
+            m_loadingLabel->setVisible(false);
+
+            if (m_chapterLoadThread) {
+                m_chapterLoadThread->quit();
+                m_chapterLoadThread->wait();
+                m_chapterLoadThread->deleteLater();
+                m_chapterLoadThread = nullptr;
+            }
+        }, Qt::QueuedConnection);
+    });
+    m_chapterLoadThread->start();
+
+    scheduleProgressSave();
 }

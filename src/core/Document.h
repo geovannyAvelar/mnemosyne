@@ -15,6 +15,7 @@ struct TocNode
     // Markdown heading index (see MarkdownDocument::tableOfContents()), or
     // TXT character offset; -1 if unknown.
     int pageNumber = -1;
+    QString anchor; // EPUB/HTML: fragment to scroll to within the chapter
     QVector<TocNode> children;
 };
 Q_DECLARE_METATYPE(TocNode)
