@@ -88,6 +88,12 @@ target_compile_definitions(epub_performance_test PRIVATE FIXTURES_DIR="${CMAKE_C
 
 add_test(NAME EpubPerformanceTest COMMAND epub_performance_test)
 
+qt_add_executable(epub_large_file_benchmark EpubLargeFileBenchmark.cpp)
+
+target_link_libraries(epub_large_file_benchmark PRIVATE mnemosynecore Qt6::Test)
+
+add_test(NAME EpubLargeFileBenchmark COMMAND epub_large_file_benchmark)
+
 qt_add_executable(pdf_text_selection_test PdfTextSelectionTest.cpp)
 
 target_link_libraries(pdf_text_selection_test PRIVATE mnemosynedesktopui Qt6::Test)
