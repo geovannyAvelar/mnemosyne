@@ -26,6 +26,7 @@ class EpubView : public QWidget, public IReaderView
 
 public:
     explicit EpubView(std::unique_ptr<EpubDocument> document, QString filePath, QWidget *parent = nullptr);
+    ~EpubView();
 
     QString documentTitle() const override;
     QVector<TocNode> tableOfContents() const override;

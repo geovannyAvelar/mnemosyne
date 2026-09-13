@@ -105,6 +105,21 @@ EpubView::EpubView(std::unique_ptr<EpubDocument> document, QString filePath, QWi
     loadWindowStartingAt(m_currentChapter);
 }
 
+EpubView::~EpubView()
+{
+    // Clean up background threads before destroying the view
+    if (m_indexThread) {
+        m_indexThread->quit();
+        m_indexThread->wait();
+        m_indexThread->deleteLater();
+    }
+    if (m_chapterLoadThread) {
+        m_chapterLoadThread->quit();
+        m_chapterLoadThread->wait();
+        m_chapterLoadThread->deleteLater();
+    }
+}
+
 QString EpubView::documentTitle() const
 {
     return m_document ? m_document->title() : QString();
@@ -371,7 +386,9 @@ void EpubView::goToChapter(int spineIndex)
         updateNavigationState();
         return;
     }
-    loadWindowStartingAtAsync(spineIndex);
+    // Use synchronous loading for explicit navigation (goToChapter calls from tests, TOC, etc).
+    // Async loading is for deferred operations like scrolling that don't need immediate updates.
+    loadWindowStartingAt(spineIndex);
 }
 
 void EpubView::nextChapter()
@@ -923,16 +940,25 @@ void EpubView::loadWindowStartingAtAsync(int spineIndex)
     m_loadingLabel->raise();
 
     // Generate chapter HTML on background thread.
-    m_chapterLoadThread = QThread::create([this, spineIndex] {
+    auto thread = new QThread(this);
+    m_chapterLoadThread = thread;
+
+    QObject::connect(thread, &QThread::finished, this, [thread] {
+        thread->deleteLater();
+    });
+
+    QObject::connect(thread, &QThread::started, this, [this, spineIndex, thread] {
         if (!m_document) {
-            return; // Document deleted while loading
+            thread->quit();
+            return;
         }
         const QString html = chapterHtmlFragment(spineIndex);
 
         // Apply to browser on main thread.
-        QMetaObject::invokeMethod(this, [this, html, spineIndex] {
+        QMetaObject::invokeMethod(this, [this, html, spineIndex, thread] {
             if (!m_browser || !m_document) {
-                return; // View destroyed while loading
+                thread->quit();
+                return;
             }
             m_chapterStartBlock.clear();
             m_browser->setHtml(html);
@@ -953,16 +979,11 @@ void EpubView::loadWindowStartingAtAsync(int spineIndex)
             }
 
             m_loadingLabel->setVisible(false);
-
-            if (m_chapterLoadThread) {
-                m_chapterLoadThread->quit();
-                m_chapterLoadThread->wait();
-                m_chapterLoadThread->deleteLater();
-                m_chapterLoadThread = nullptr;
-            }
+            thread->quit();
         }, Qt::QueuedConnection);
     });
-    m_chapterLoadThread->start();
+
+    thread->start();
 
     scheduleProgressSave();
 }
