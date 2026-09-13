@@ -250,6 +250,10 @@ void MainWindow::closeEvent(QCloseEvent *event)
     if (m_currentView && m_sessionTracker.isActive()) {
         m_sessionTracker.stop(m_currentView->currentPosition());
     }
+
+    // Save dock widget visibility state (which sidebar tabs are shown/hidden).
+    QSettings().setValue(QStringLiteral("dockState"), saveState());
+
     QMainWindow::closeEvent(event);
 }
 
@@ -363,7 +367,13 @@ void MainWindow::setupDocks()
     m_formFieldsDock->setTitleBarWidget(new QWidget(m_formFieldsDock));
     m_readingStatsDock->setTitleBarWidget(new QWidget(m_readingStatsDock));
 
-    m_tocDock->raise(); // Contents is the more useful default tab on opening a book
+    // Restore dock widget visibility state (which sidebar tabs were visible last time).
+    const QByteArray savedDockState = QSettings().value(QStringLiteral("dockState")).toByteArray();
+    if (!savedDockState.isEmpty()) {
+        restoreState(savedDockState);
+    } else {
+        m_tocDock->raise(); // Contents is the more useful default tab on opening a book
+    }
 
     connect(m_tocDock, &TocDock::nodeActivated, this, [this](const TocNode &node) {
         if (m_currentView) {
