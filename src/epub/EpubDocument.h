@@ -89,6 +89,13 @@ private:
     TocNode parseNcxNavPoint(QXmlStreamReader &reader, const QString &baseDir);
     TocNode parseNavListItem(QXmlStreamReader &reader, const QString &baseDir);
 
+    struct ProcessedChapter {
+        QString html;
+        QVector<QString> videoPaths;
+    };
+
+    ProcessedChapter processChapter(int spineIndex) const;
+
     std::unique_ptr<ZipArchive> m_archive;
     QString m_opfDir;
     QString m_title;
@@ -100,4 +107,5 @@ private:
     QVector<EpubSpineItem> m_spine;
     QHash<QString, int> m_hrefToSpineIndex;
     QVector<TocNode> m_toc;
+    mutable QHash<int, ProcessedChapter> m_chapterCache;
 };

@@ -493,21 +493,29 @@ int EpubDocument::spineIndexForHref(const QString &baseDir, const QString &href)
     return m_hrefToSpineIndex.value(resolveEpubPath(baseDir, href), -1);
 }
 
-QString EpubDocument::chapterHtml(int spineIndex) const
+EpubDocument::ProcessedChapter EpubDocument::processChapter(int spineIndex) const
 {
+    ProcessedChapter result;
+
     if (spineIndex < 0 || spineIndex >= m_spine.size()) {
-        return {};
+        return result;
+    }
+
+    if (m_chapterCache.contains(spineIndex)) {
+        return m_chapterCache.value(spineIndex);
     }
 
     const QString href = m_spine.at(spineIndex).href;
     bool ok = false;
     const QByteArray raw = m_archive->readEntry(href, &ok);
     if (!ok) {
-        return QStringLiteral("<p><i>%1</i></p>").arg(QObject::tr("Could not load chapter: %1").arg(href.toHtmlEscaped()));
+        result.html = QStringLiteral("<p><i>%1</i></p>").arg(QObject::tr("Could not load chapter: %1").arg(href.toHtmlEscaped()));
+        return result;
     }
 
     const QString chapterDir = dirOf(href);
     QString html = QString::fromUtf8(raw);
+    int videoIndex = 0;
 
     // Inline linked stylesheets as <style> blocks.
     {
@@ -603,7 +611,7 @@ QString EpubDocument::chapterHtml(int spineIndex) const
     // Replace <video> elements with a "Play Video" link: QTextBrowser has no
     // video support at all (the tag would just silently vanish), so this at
     // least gives the reader an obvious way to watch it. EpubView resolves
-    // "mnemosyne-video:N" to the Nth entry of chapterVideoPaths() for this
+    // "mnemosyne-video:N" to the Nth entry in result.videoPaths for this
     // same chapter, extracts it to a temp file, and hands that to the OS's
     // default player -- a real in-app player isn't practical without
     // switching chapter rendering to a full web engine.
@@ -611,7 +619,6 @@ QString EpubDocument::chapterHtml(int spineIndex) const
         QString transformed;
         transformed.reserve(html.size());
         int lastPos = 0;
-        int videoIndex = 0;
         auto it = kVideoTagRe.globalMatch(html);
         while (it.hasNext()) {
             const QRegularExpressionMatch m = it.next();
@@ -619,55 +626,35 @@ QString EpubDocument::chapterHtml(int spineIndex) const
 
             transformed += html.mid(lastPos, m.capturedStart() - lastPos);
             if (!src.isEmpty()) {
+                const QString resolvedPath = resolveEpubPath(chapterDir, src);
+                result.videoPaths.append(resolvedPath);
                 const QString label = QFileInfo(src).fileName().toHtmlEscaped();
-                // An explicit color, not left to inherit from the book's own
-                // CSS (or default rich-text link styling): QTextBrowser's
-                // dark-mode override (see EpubView::renderCurrentChapter())
-                // only lightens body text, not anchors, so an unstyled link
-                // here rendered in the book's own dark body-text color --
-                // nearly invisible against the dark-mode page background.
-                // #D97756 is Theme's accent color, chosen because it's the
-                // same hex in both the light and dark palette.
                 transformed += QStringLiteral("<p><a href=\"mnemosyne-video:%1\" style=\"color:#D97756;\">&#9654; %2</a></p>")
                                    .arg(videoIndex)
                                    .arg(label);
+            } else {
+                result.videoPaths.append(QString());
             }
-            // else: no usable source at all, drop the element silently --
-            // same treatment an <img> with no src (or a broken one) gets.
             lastPos = m.capturedEnd();
-            ++videoIndex; // keeps this in lockstep with chapterVideoPaths()'s indexing regardless of src
+            ++videoIndex;
         }
         transformed += html.mid(lastPos);
         html = transformed;
     }
 
-    return html;
+    result.html = html;
+    m_chapterCache.insert(spineIndex, result);
+    return result;
+}
+
+QString EpubDocument::chapterHtml(int spineIndex) const
+{
+    return processChapter(spineIndex).html;
 }
 
 QVector<QString> EpubDocument::chapterVideoPaths(int spineIndex) const
 {
-    QVector<QString> paths;
-    if (spineIndex < 0 || spineIndex >= m_spine.size()) {
-        return paths;
-    }
-
-    const QString href = m_spine.at(spineIndex).href;
-    bool ok = false;
-    const QByteArray raw = m_archive->readEntry(href, &ok);
-    if (!ok) {
-        return paths;
-    }
-
-    const QString chapterDir = dirOf(href);
-    const QString html = QString::fromUtf8(raw);
-
-    auto it = kVideoTagRe.globalMatch(html);
-    while (it.hasNext()) {
-        const QRegularExpressionMatch m = it.next();
-        const QString src = pickVideoSource(m.captured(1), m.captured(2));
-        paths.append(src.isEmpty() ? QString() : resolveEpubPath(chapterDir, src));
-    }
-    return paths;
+    return processChapter(spineIndex).videoPaths;
 }
 
 QByteArray EpubDocument::readResource(const QString &archivePath, bool *ok) const
