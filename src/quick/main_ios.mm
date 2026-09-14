@@ -7,6 +7,7 @@
 #include "PdfSelectionController.h"
 #include "PopplerFontSetup.h"
 #include "ReadingStatsModel.h"
+#include "SearchResultsModel.h"
 #include "SmokeTestBridge.h"
 #include "SyncController.h"
 #include "ThemeSettings.h"
@@ -39,6 +40,7 @@ int main(int argc, char *argv[])
     PdfDocumentModel pdfDocumentModel(pdfPageImageProvider);
     EpubReaderModel epubReaderModel;
     HighlightsModel highlightsModel;
+    SearchResultsModel searchResultsModel;
     PdfSelectionController pdfSelectionController(&pdfDocumentModel);
     SyncController syncController;
     ThemeSettings themeSettings;
@@ -52,6 +54,7 @@ int main(int argc, char *argv[])
     context->setContextProperty("pdfDocumentModel", &pdfDocumentModel);
     context->setContextProperty("epubReaderModel", &epubReaderModel);
     context->setContextProperty("highlightsModel", &highlightsModel);
+    context->setContextProperty("searchResultsModel", &searchResultsModel);
     context->setContextProperty("pdfSelectionController", &pdfSelectionController);
     context->setContextProperty("syncController", &syncController);
     context->setContextProperty("themeSettings", &themeSettings);

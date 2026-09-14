@@ -37,6 +37,7 @@ Item {
     Component.onDestruction: {
         readingSessionTracker.stop(documentModel.currentSpineIndex)
         documentModel.close()
+        searchResultsModel.clear()
     }
 
     Connections {
@@ -54,6 +55,7 @@ Item {
     }
 
     property int _pendingRemoteSpineIndex: -1
+    property bool _searchOpen: false
 
     Rectangle {
         anchors.fill: parent
@@ -75,7 +77,7 @@ Item {
 
     WebView {
         id: webView
-        anchors.top: topBar.bottom
+        anchors.top: searchPanel.visible ? searchPanel.bottom : topBar.bottom
         anchors.bottom: navBar.top
         anchors.left: parent.left
         anchors.right: parent.right
@@ -181,6 +183,98 @@ Item {
             }
 
             Item { Layout.fillWidth: true }
+
+            Button {
+                text: qsTr("Search")
+                flat: true
+                checkable: true
+                checked: root._searchOpen
+                onClicked: {
+                    root._searchOpen = !root._searchOpen
+                    if (!root._searchOpen) {
+                        searchField.text = ""
+                    }
+                }
+            }
+        }
+    }
+
+    // Chapter-level search: pushes the WebView down rather than overlaying
+    // it, since WebView is a native view composited outside Qt Quick's
+    // scene graph (see the file-level comment above) and can't be drawn
+    // over. Results are one entry per matching chapter -- same
+    // chapter-granularity, first-match-only scope as desktop's SearchDock
+    // (see ui/EpubView.cpp's searchFile, which epub/EpubSearch.h's
+    // searchEpubFile() was extracted from) -- tapping a result jumps there
+    // via currentSpineIndex, exactly like desktop's resultActivated ->
+    // goToChapter.
+    Rectangle {
+        id: searchPanel
+        visible: root._searchOpen
+        anchors.top: topBar.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: visible ? 240 : 0
+        clip: true
+        color: Theme.panel
+        border.color: Theme.border
+        border.width: visible ? 1 : 0
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 6
+
+            TextField {
+                id: searchField
+                Layout.fillWidth: true
+                placeholderText: qsTr("Search chapters…")
+                onTextChanged: searchDebounce.restart()
+            }
+
+            Text {
+                visible: searchResultsModel.isSearching
+                text: qsTr("Searching…")
+                color: Theme.mutedText
+                font.pixelSize: 12
+            }
+
+            Text {
+                visible: !searchResultsModel.isSearching && searchField.text.length > 0
+                         && searchResultsList.count === 0
+                text: qsTr("No matches")
+                color: Theme.mutedText
+                font.pixelSize: 12
+            }
+
+            ListView {
+                id: searchResultsList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: searchResultsModel
+                delegate: ItemDelegate {
+                    width: ListView.view.width
+                    text: model.label + " — " + model.snippet
+                    onClicked: {
+                        root.documentModel.currentSpineIndex = model.targetIndex
+                        root._searchOpen = false
+                        searchField.text = ""
+                    }
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: searchDebounce
+        interval: 350
+        onTriggered: {
+            if (searchField.text.trim().length === 0) {
+                searchResultsModel.clear()
+            } else {
+                searchResultsModel.search(root.documentModel.filePath, searchField.text)
+            }
         }
     }
 

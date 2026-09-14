@@ -68,6 +68,20 @@ target_compile_definitions(view_search_test PRIVATE FIXTURES_DIR="${CMAKE_CURREN
 
 add_test(NAME ViewSearchTest COMMAND view_search_test)
 
+qt_add_executable(epub_search_test EpubSearchTest.cpp)
+
+target_link_libraries(epub_search_test PRIVATE mnemosynecore Qt6::Test)
+target_compile_definitions(epub_search_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME EpubSearchTest COMMAND epub_search_test)
+
+qt_add_executable(search_results_model_test SearchResultsModelTest.cpp)
+
+target_link_libraries(search_results_model_test PRIVATE mnemosynequick Qt6::Test)
+target_compile_definitions(search_results_model_test PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+
+add_test(NAME SearchResultsModelTest COMMAND search_results_model_test)
+
 qt_add_executable(coordinate_util_test CoordinateUtilTest.cpp)
 
 target_link_libraries(coordinate_util_test PRIVATE mnemosynecore Qt6::Test)

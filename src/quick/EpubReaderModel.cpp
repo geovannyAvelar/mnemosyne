@@ -54,6 +54,7 @@ bool EpubReaderModel::open(const QString &filePathOrUri, const QString &format)
 
     m_document = std::move(document);
     m_bookHash = FileIdentity::contentHash(localPath);
+    m_filePath = localPath;
 
     restoreProgress();
 
@@ -73,6 +74,7 @@ void EpubReaderModel::close()
     }
     m_document.reset();
     m_bookHash.clear();
+    m_filePath.clear();
     m_currentSpineIndex = 0;
     emit documentChanged();
 }

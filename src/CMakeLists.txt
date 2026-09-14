@@ -67,6 +67,8 @@ set(MNEMOSYNE_CORE_SOURCES
     epub/ZipArchive.cpp
     epub/EpubDocument.h
     epub/EpubDocument.cpp
+    epub/EpubSearch.h
+    epub/EpubSearch.cpp
     comic/CbzDocument.h
     comic/CbzDocument.cpp
     markdown/MarkdownDocument.h
@@ -213,6 +215,8 @@ set(MNEMOSYNE_QUICK_SOURCES
     quick/EpubReaderModel.cpp
     quick/HighlightsModel.h
     quick/HighlightsModel.cpp
+    quick/SearchResultsModel.h
+    quick/SearchResultsModel.cpp
     quick/ReadingStatsModel.h
     quick/ReadingStatsModel.cpp
     quick/PdfSelectionController.h
@@ -225,7 +229,7 @@ set(MNEMOSYNE_QUICK_SOURCES
 
 add_library(mnemosynequick STATIC ${MNEMOSYNE_QUICK_SOURCES})
 
-target_link_libraries(mnemosynequick PUBLIC mnemosynecore Qt6::Quick)
+target_link_libraries(mnemosynequick PUBLIC mnemosynecore Qt6::Quick Qt6::Concurrent)
 target_include_directories(mnemosynequick PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Desktop (Qt Widgets) UI, layered on top of mnemosynecore. Everything in
