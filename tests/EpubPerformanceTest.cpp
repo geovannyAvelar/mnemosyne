@@ -43,20 +43,26 @@ void EpubPerformanceTest::chapterHtmlCachingIsFast()
         QSKIP("No chapters in test EPUB");
     }
 
+    // Millisecond-resolution elapsed() rounds both calls down to 0 on fast
+    // CI hardware against this tiny fixture (seen consistently on the
+    // linux-arm64 runner), making "secondCall < firstCall" compare 0 < 0
+    // and fail even though caching is working correctly. nsecsElapsed()
+    // has enough resolution to tell a real XML/HTML parse apart from a
+    // QHash lookup regardless of how fast either one is.
     QElapsedTimer timer;
 
     timer.start();
     QString html1 = doc->chapterHtml(0);
-    qint64 firstCall = timer.elapsed();
+    qint64 firstCall = timer.nsecsElapsed();
 
     timer.start();
     QString html2 = doc->chapterHtml(0);
-    qint64 secondCall = timer.elapsed();
+    qint64 secondCall = timer.nsecsElapsed();
 
     QCOMPARE(html1, html2);
 
-    qDebug() << "First chapterHtml() call:" << firstCall << "ms";
-    qDebug() << "Cached chapterHtml() call:" << secondCall << "ms";
+    qDebug() << "First chapterHtml() call:" << firstCall << "ns";
+    qDebug() << "Cached chapterHtml() call:" << secondCall << "ns";
 
     QVERIFY2(secondCall < firstCall, "Cached call should be significantly faster than first call");
 }
