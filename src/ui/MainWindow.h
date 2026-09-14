@@ -8,6 +8,7 @@
 #include "app/ReadingSessionTracker.h"
 #include "core/Document.h"
 #include "core/ReaderView.h" // SearchResult
+#include "epub/EpubSearch.h" // EpubSearchCancelToken
 
 #include <QFutureWatcher>
 #include <QHash>
@@ -177,6 +178,19 @@ private:
     QFutureWatcher<QVector<SearchResult>> *m_searchWatcher = nullptr;
     QString m_pendingSearchFilePath;
     QString m_pendingSearchQuery;
+
+    // EPUB-only streamed + cancelable search path (see epub/EpubSearch.h)
+    // -- separate from m_searchWatcher above, which the other four
+    // searchable formats still use as a single blocking QtConcurrent call.
+    QFutureWatcher<void> *m_epubSearchWatcher = nullptr;
+    EpubSearchCancelToken m_epubSearchCancelToken;
+    // Bumped on every EPUB search start so a result or finished callback
+    // from a search superseded by a newer one (new query, tab switch, dock
+    // cleared) can tell it's stale and skip applying -- mirrors
+    // quick/SearchResultsModel.cpp's own m_generation guard.
+    int m_epubSearchGeneration = 0;
+    bool m_epubSearchHasResult = false;
+    SearchResult m_epubSearchFirstResult;
 
     QPalette m_lightPalette;
     QPalette m_darkPalette;

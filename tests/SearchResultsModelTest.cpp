@@ -13,8 +13,9 @@ QString fixturePath(const QString &name)
 
 // SearchResultsModel is the QML-facing wrapper (see quick/SearchResultsModel.h)
 // around epub/EpubSearch.h's searchEpubFile(), already covered directly by
-// EpubSearchTest.cpp -- this only checks the QAbstractListModel plumbing and
-// the async isSearching/stale-result handling around QtConcurrent::run().
+// EpubSearchTest.cpp -- this checks the QAbstractListModel plumbing, the
+// async isSearching/stale-result handling around QtConcurrent::run(), and
+// cancel().
 class SearchResultsModelTest : public QObject
 {
     Q_OBJECT
@@ -24,6 +25,9 @@ private slots:
     void searchWithNoMatchesLeavesModelEmpty();
     void clearResetsModelAndSearchingState();
     void searchWithBlankQueryClearsModel();
+    void cancelWithNoActiveSearchIsNoOp();
+    void cancelDuringSearchEventuallyStopsSearching();
+    void searchAfterCancelStartsFresh();
 };
 
 void SearchResultsModelTest::searchPopulatesModelWithMatchingChapters()
@@ -75,6 +79,39 @@ void SearchResultsModelTest::searchWithBlankQueryClearsModel()
     model.search(fixturePath("test.epub"), QStringLiteral("   "));
     QVERIFY(!model.isSearching());
     QCOMPARE(model.rowCount(), 0);
+}
+
+void SearchResultsModelTest::cancelWithNoActiveSearchIsNoOp()
+{
+    SearchResultsModel model;
+    model.cancel(); // must not crash with no search ever started
+    QVERIFY(!model.isSearching());
+}
+
+void SearchResultsModelTest::cancelDuringSearchEventuallyStopsSearching()
+{
+    SearchResultsModel model;
+    model.search(fixturePath("test.epub"), QStringLiteral("chapter"));
+    model.cancel();
+
+    // The worker notices the cancel token on its next per-chapter check
+    // (see epub/EpubSearch.h), so this may take a moment -- unlike clear(),
+    // cancel() doesn't force isSearching false immediately.
+    QTRY_VERIFY(!model.isSearching());
+}
+
+void SearchResultsModelTest::searchAfterCancelStartsFresh()
+{
+    SearchResultsModel model;
+    model.search(fixturePath("test.epub"), QStringLiteral("chapter"));
+    model.cancel();
+    QTRY_VERIFY(!model.isSearching());
+
+    // A cancelled search must not leave stale state (generation, watcher)
+    // behind that breaks the next real one.
+    model.search(fixturePath("test.epub"), QStringLiteral("chapter"));
+    QTRY_VERIFY(!model.isSearching());
+    QCOMPARE(model.rowCount(), 2);
 }
 
 QTEST_MAIN(SearchResultsModelTest)

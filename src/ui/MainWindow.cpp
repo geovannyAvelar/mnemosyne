@@ -15,6 +15,7 @@
 #include "core/ReaderView.h"
 #include "pdf/PopplerPdfDocument.h"
 #include "epub/EpubDocument.h"
+#include "epub/EpubSearch.h"
 #include "markdown/MarkdownDocument.h"
 #include "mobi/MobiDocument.h"
 #include "txt/TxtDocument.h"
@@ -308,6 +309,7 @@ void MainWindow::setupDocks()
     tabifyDockWidget(m_tocDock, m_readingStatsDock);
 
     m_searchWatcher = new QFutureWatcher<QVector<SearchResult>>(this);
+    m_epubSearchWatcher = new QFutureWatcher<void>(this);
 
     m_bookMetadataClient = new BookMetadataClient(this);
     connect(m_bookMetadataClient, &BookMetadataClient::metadataReady, this,
@@ -427,14 +429,66 @@ void MainWindow::setupDocks()
             return;
         }
 
-        // The actual scan runs on the global QThreadPool via the format's
-        // searchFile() (see PdfView/EpubView), which opens its own document
-        // handle from disk instead of touching m_currentView's — Poppler and
-        // libzip aren't safe to use concurrently with the main thread's
-        // rendering of the live document. Captured by value so the task has
-        // no dependency on this (or any widget) still being alive when it runs.
         const QString filePath = m_currentFilePath;
         const QString suffix = QFileInfo(filePath).suffix().toLower();
+
+        if (suffix == QLatin1String("epub")) {
+            // Streamed + cancelable: results land in the dock as each
+            // chapter is scanned rather than only once the whole book is
+            // done (see epub/EpubSearch.h), and the Cancel button (wired
+            // below) can stop a scan of a huge book early. The other
+            // formats below still block until the whole document has been
+            // scanned — none of their searchFile()s take a cancel token.
+            if (m_epubSearchCancelToken) {
+                m_epubSearchCancelToken->store(true); // stop whatever search is still running
+            }
+            m_pendingSearchFilePath = filePath;
+            m_pendingSearchQuery = query;
+            ++m_epubSearchGeneration;
+            m_epubSearchHasResult = false;
+
+            m_epubSearchCancelToken = makeSearchCancelToken();
+            const EpubSearchCancelToken cancelToken = m_epubSearchCancelToken;
+            const int generation = m_epubSearchGeneration;
+
+            m_searchDock->clearResults();
+            m_searchDock->setSearching(true, /*cancelable=*/true);
+
+            // Runs on the QtConcurrent thread pool; onResult is called from
+            // that same worker thread, so it hops back to the GUI thread via
+            // invokeMethod (the pattern EpubView.cpp's own background
+            // chapter loading already uses) before touching m_searchDock.
+            // The generation captured here is what lets that callback (and
+            // the finished handler below) recognize a search this window
+            // has since moved on from -- a newer query, or the user
+            // switching tabs while this one was still scanning.
+            auto onResult = [this, generation](const SearchResult &result) {
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, result, generation] {
+                        if (generation != m_epubSearchGeneration) {
+                            return;
+                        }
+                        m_searchDock->appendResult(result);
+                        if (!m_epubSearchHasResult) {
+                            m_epubSearchHasResult = true;
+                            m_epubSearchFirstResult = result;
+                        }
+                    },
+                    Qt::QueuedConnection);
+            };
+
+            m_epubSearchWatcher->setFuture(QtConcurrent::run(searchEpubFile, filePath, query, onResult, cancelToken));
+            return;
+        }
+
+        // The actual scan runs on the global QThreadPool via the format's
+        // searchFile() (see PdfView/MarkdownView/MobiView/TxtView), which
+        // opens its own document handle from disk instead of touching
+        // m_currentView's — Poppler isn't safe to use concurrently with the
+        // main thread's rendering of the live document. Captured by value
+        // so the task has no dependency on this (or any widget) still being
+        // alive when it runs.
         // Only meaningful for suffix == "pdf" (see PdfView::searchFile()'s
         // doc comment); empty for every other format, which ignores it.
         QString password;
@@ -449,9 +503,6 @@ void MainWindow::setupDocks()
         m_searchWatcher->setFuture(QtConcurrent::run([filePath, suffix, query, password]() -> QVector<SearchResult> {
             if (suffix == QLatin1String("pdf")) {
                 return PdfView::searchFile(filePath, query, password);
-            }
-            if (suffix == QLatin1String("epub")) {
-                return EpubView::searchFile(filePath, query);
             }
             if (suffix == QLatin1String("md") || suffix == QLatin1String("markdown")) {
                 return MarkdownView::searchFile(filePath, query);
@@ -483,6 +534,35 @@ void MainWindow::setupDocks()
             TocNode node;
             node.pageNumber = results.first().targetIndex;
             m_currentView->goToTocNode(node);
+        }
+    });
+
+    connect(m_epubSearchWatcher, &QFutureWatcher<void>::finished, this, [this] {
+        m_searchDock->setSearching(false);
+
+        // Discard a search that's no longer relevant: the user switched
+        // documents (or closed the tab), or fired a newer search, while
+        // this one was still scanning (or being cancelled).
+        if (m_pendingSearchFilePath != m_currentFilePath || !m_currentView) {
+            return;
+        }
+
+        m_searchDock->finishResults();
+        m_currentView->setSearchTerm(m_pendingSearchQuery);
+
+        // Same "land on the first hit" behavior as the blocking formats
+        // above, just driven from whichever result happened to stream in
+        // first rather than results.first() of a completed QVector.
+        if (m_epubSearchHasResult) {
+            TocNode node;
+            node.pageNumber = m_epubSearchFirstResult.targetIndex;
+            m_currentView->goToTocNode(node);
+        }
+    });
+
+    connect(m_searchDock, &SearchDock::cancelRequested, this, [this] {
+        if (m_epubSearchCancelToken) {
+            m_epubSearchCancelToken->store(true);
         }
     });
 
@@ -958,6 +1038,14 @@ void MainWindow::onTabChanged(int index)
 {
     QWidget *widget = m_tabWidget->widget(index);
     IReaderView *outgoingView = m_currentView; // captured before reassignment below -- see updateReadingSession()
+
+    // No longer relevant once the active tab changes -- the pendingFilePath
+    // guards in the search-finished handlers below would discard its result
+    // anyway, but cancelling stops the background scan from doing pointless
+    // work first.
+    if (m_epubSearchCancelToken) {
+        m_epubSearchCancelToken->store(true);
+    }
 
     if (!widget || widget == m_libraryView) {
         m_currentView = nullptr;

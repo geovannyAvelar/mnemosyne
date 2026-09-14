@@ -1,13 +1,11 @@
 #include "SearchResultsModel.h"
 
-#include "epub/EpubSearch.h"
-
 #include <QtConcurrentRun>
 
 SearchResultsModel::SearchResultsModel(QObject *parent)
     : QAbstractListModel(parent)
 {
-    connect(&m_watcher, &QFutureWatcher<QVector<SearchResult>>::finished, this, &SearchResultsModel::applyResults);
+    connect(&m_watcher, &QFutureWatcher<void>::finished, this, &SearchResultsModel::searchFinished);
 }
 
 int SearchResultsModel::rowCount(const QModelIndex &parent) const
@@ -48,29 +46,51 @@ QHash<int, QByteArray> SearchResultsModel::roleNames() const
 
 void SearchResultsModel::search(const QString &filePath, const QString &query)
 {
+    cancel();
     ++m_generation;
 
+    if (!m_results.isEmpty()) {
+        beginResetModel();
+        m_results.clear();
+        endResetModel();
+    }
+
     if (filePath.isEmpty() || query.trimmed().isEmpty()) {
-        clear();
         return;
     }
 
     m_isSearching = true;
     emit isSearchingChanged();
 
-    // setFuture() on an already-running watcher detaches it from whatever
-    // earlier search is still in flight -- that older QtConcurrent::run
-    // keeps executing on the thread pool, but its result is simply never
-    // delivered through this watcher, so a newer search's result can't be
-    // clobbered by an older one finishing later. Same pattern desktop's
-    // MainWindow.cpp uses its own QFutureWatcher for.
-    m_dispatchedGeneration = m_generation;
-    m_watcher.setFuture(QtConcurrent::run(searchEpubFile, filePath, query));
+    m_cancelToken = makeSearchCancelToken();
+    const int generation = m_generation;
+    const EpubSearchCancelToken cancelToken = m_cancelToken;
+
+    // Runs on the QtConcurrent thread pool; each onResult call happens on
+    // that worker thread too, so it hops back to this model's own (GUI)
+    // thread via invokeMethod before touching m_results. The generation
+    // captured here, not read from m_generation again, is what lets
+    // appendResult() recognize a result from a search this model has since
+    // moved on from.
+    auto onResult = [this, generation](const SearchResult &result) {
+        QMetaObject::invokeMethod(
+            this, [this, result, generation] { appendResult(result, generation); }, Qt::QueuedConnection);
+    };
+
+    m_watcher.setFuture(QtConcurrent::run(searchEpubFile, filePath, query, onResult, cancelToken));
+}
+
+void SearchResultsModel::cancel()
+{
+    if (m_cancelToken) {
+        m_cancelToken->store(true);
+    }
 }
 
 void SearchResultsModel::clear()
 {
-    ++m_generation; // invalidates applyResults() for any still-running search
+    cancel();
+    ++m_generation;
 
     if (m_isSearching) {
         m_isSearching = false;
@@ -84,18 +104,22 @@ void SearchResultsModel::clear()
     endResetModel();
 }
 
-void SearchResultsModel::applyResults()
+void SearchResultsModel::appendResult(const SearchResult &result, int generation)
 {
-    const bool isStale = m_dispatchedGeneration != m_generation;
-
-    if (!isStale) {
-        beginResetModel();
-        m_results = m_watcher.result();
-        endResetModel();
+    if (generation != m_generation) {
+        return; // superseded by a newer search() or clear() since this result was found
     }
+    const int row = m_results.size();
+    beginInsertRows(QModelIndex(), row, row);
+    m_results.append(result);
+    endInsertRows();
+}
 
-    if (!isStale && m_isSearching) {
-        m_isSearching = false;
-        emit isSearchingChanged();
+void SearchResultsModel::searchFinished()
+{
+    if (!m_isSearching) {
+        return; // already stopped by clear(); this is the now-stale search catching up
     }
+    m_isSearching = false;
+    emit isSearchingChanged();
 }

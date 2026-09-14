@@ -6,20 +6,30 @@
 
 #include <QTextDocument>
 
-QVector<SearchResult> searchEpubFile(const QString &filePath, const QString &query)
+EpubSearchCancelToken makeSearchCancelToken()
 {
-    QVector<SearchResult> results;
+    return std::make_shared<std::atomic_bool>(false);
+}
+
+void searchEpubFile(const QString &filePath, const QString &query,
+                     const std::function<void(const SearchResult &)> &onResult,
+                     const EpubSearchCancelToken &cancelToken)
+{
     if (query.trimmed().isEmpty()) {
-        return results;
+        return;
     }
 
     QString error;
     const std::unique_ptr<EpubDocument> document = EpubDocument::load(filePath, &error);
     if (!document) {
-        return results;
+        return;
     }
 
     for (int i = 0; i < document->spineCount(); ++i) {
+        if (cancelToken && cancelToken->load()) {
+            return;
+        }
+
         QTextDocument doc;
         doc.setHtml(document->chapterHtml(i));
         const QString text = doc.toPlainText();
@@ -28,8 +38,7 @@ QVector<SearchResult> searchEpubFile(const QString &filePath, const QString &que
             result.targetIndex = i;
             result.label = QStringLiteral("Chapter %1").arg(i + 1);
             result.snippet = makeSearchSnippet(text, query);
-            results.append(result);
+            onResult(result);
         }
     }
-    return results;
 }

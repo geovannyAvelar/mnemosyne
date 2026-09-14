@@ -232,11 +232,23 @@ Item {
                 onTextChanged: searchDebounce.restart()
             }
 
-            Text {
+            RowLayout {
                 visible: searchResultsModel.isSearching
-                text: qsTr("Searching…")
-                color: Theme.mutedText
-                font.pixelSize: 12
+                spacing: 6
+
+                Text {
+                    text: qsTr("Searching…")
+                    color: Theme.mutedText
+                    font.pixelSize: 12
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Button {
+                    text: qsTr("Cancel")
+                    flat: true
+                    onClicked: searchResultsModel.cancel()
+                }
             }
 
             Text {

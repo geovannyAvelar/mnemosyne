@@ -38,10 +38,21 @@ SearchDock::SearchDock(QWidget *parent)
     // Range (0, 0) puts a QProgressBar into Qt's built-in indeterminate/busy
     // mode — a continuously scrolling bar rather than a fraction-complete
     // one — which is the standard Qt Widgets stand-in for a spinner.
-    m_spinner = new QProgressBar(container);
+    auto *progressRow = new QWidget(container);
+    auto *progressRowLayout = new QHBoxLayout(progressRow);
+    progressRowLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_spinner = new QProgressBar(progressRow);
     m_spinner->setRange(0, 0);
     m_spinner->setTextVisible(false);
     m_spinner->hide();
+
+    m_cancelButton = new QPushButton(tr("Cancel"), progressRow);
+    m_cancelButton->hide();
+    connect(m_cancelButton, &QPushButton::clicked, this, &SearchDock::cancelRequested);
+
+    progressRowLayout->addWidget(m_spinner, 1);
+    progressRowLayout->addWidget(m_cancelButton);
 
     m_resultsList = new QListWidget(container);
     connect(m_resultsList, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
@@ -52,7 +63,7 @@ SearchDock::SearchDock(QWidget *parent)
     });
 
     layout->addWidget(searchRow);
-    layout->addWidget(m_spinner);
+    layout->addWidget(progressRow);
     layout->addWidget(m_resultsList, 1);
 
     setWidget(container);
@@ -78,9 +89,35 @@ void SearchDock::setResults(const QVector<SearchResult> &results)
     m_resultsList->setCurrentRow(0);
 }
 
-void SearchDock::setSearching(bool searching)
+void SearchDock::clearResults()
+{
+    m_resultsList->clear();
+}
+
+void SearchDock::appendResult(const SearchResult &result)
+{
+    auto *item = new QListWidgetItem(tr("%1\n%2").arg(result.label, result.snippet), m_resultsList);
+    item->setData(Qt::UserRole, result.targetIndex);
+
+    // Mirrors setResults()'s "land on the first hit" behavior below, but as
+    // soon as the first one streams in rather than waiting for the rest.
+    if (m_resultsList->count() == 1) {
+        m_resultsList->setCurrentRow(0);
+    }
+}
+
+void SearchDock::finishResults()
+{
+    if (m_resultsList->count() == 0) {
+        auto *placeholder = new QListWidgetItem(tr("No results found."), m_resultsList);
+        placeholder->setFlags(Qt::NoItemFlags);
+    }
+}
+
+void SearchDock::setSearching(bool searching, bool cancelable)
 {
     m_spinner->setVisible(searching);
+    m_cancelButton->setVisible(searching && cancelable);
     m_queryEdit->setEnabled(!searching);
     m_searchButton->setEnabled(!searching);
 }
