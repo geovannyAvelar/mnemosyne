@@ -161,6 +161,16 @@ MainWindow::MainWindow(QWidget *parent)
     // undoing a hide() called before then. Running after that first show
     // cycle has completed avoids the race.
     QTimer::singleShot(0, this, [this] {
+        // Restore dock widget visibility state (sidebar tabs) after window show completes.
+        // Must defer to after the first show cycle: QMainWindowLayout re-asserts default
+        // visibility during show(), silently undoing any changes made before then.
+        const QByteArray savedDockState = QSettings().value(QStringLiteral("dockState")).toByteArray();
+        if (!savedDockState.isEmpty()) {
+            restoreState(savedDockState);
+        } else {
+            m_tocDock->raise(); // Contents is the more useful default tab on opening a book
+        }
+
         const bool savedSidebarVisible = QSettings().value(QStringLiteral("sidebarVisible"), true).toBool();
         if (!savedSidebarVisible) {
             toggleSidebar();
@@ -369,13 +379,7 @@ void MainWindow::setupDocks()
     m_formFieldsDock->setTitleBarWidget(new QWidget(m_formFieldsDock));
     m_readingStatsDock->setTitleBarWidget(new QWidget(m_readingStatsDock));
 
-    // Restore dock widget visibility state (which sidebar tabs were visible last time).
-    const QByteArray savedDockState = QSettings().value(QStringLiteral("dockState")).toByteArray();
-    if (!savedDockState.isEmpty()) {
-        restoreState(savedDockState);
-    } else {
-        m_tocDock->raise(); // Contents is the more useful default tab on opening a book
-    }
+    // Dock state restoration is deferred to after window show (see MainWindow ctor)
 
     connect(m_tocDock, &TocDock::nodeActivated, this, [this](const TocNode &node) {
         if (m_currentView) {
