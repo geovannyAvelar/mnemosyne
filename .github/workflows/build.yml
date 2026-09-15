@@ -414,8 +414,17 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      # Default `packages` is "tools platform-tools" -- the legacy "tools"
+      # package was removed from Google's SDK repository years ago, so the
+      # action's own default now fails outright ("Warning: Failed to find
+      # package 'tools'", exit 1). Override to just "platform-tools";
+      # androiddeployqt's generated Gradle project pulls whatever
+      # platform/build-tools versions it needs on its own via the Android
+      # Gradle Plugin (licenses are pre-accepted by this action's default).
       - name: Install Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
 
       - name: Install Android NDK ${{ env.NDK_VERSION }}
         run: sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
