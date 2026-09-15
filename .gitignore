@@ -23,6 +23,7 @@ _deps/
 *.pro.user.*
 CMakeLists.txt.user
 CMakeLists.txt.user.*
+aqtinstall.log
 
 # macOS
 .DS_Store
