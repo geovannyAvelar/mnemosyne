@@ -378,10 +378,16 @@ jobs:
       # host executables (androiddeployqt, qmlcachegen, ...) -- qt-cmake
       # finds them via a sibling gcc_64 install, exactly like the local
       # dev setup in docs/android-build.md.
+      # Pinned to 6.7.3, not the 6.8.3 used elsewhere in this workflow:
+      # Qt for Android's aqt index tops out at 6.7.3 (no 6.8.x android
+      # build exists upstream). Both installs below must share the same
+      # version -- qt-cmake finds host tools via a sibling kit install
+      # matched by version, so the desktop kit here has to follow suit
+      # even though 6.8.3 desktop packages do exist.
       - name: Install Qt (Android kit)
         uses: jurplel/install-qt-action@v4
         with:
-          version: "6.8.3"
+          version: "6.7.3"
           host: "linux"
           target: "android"
           arch: "android_x86_64"
@@ -391,7 +397,7 @@ jobs:
       - name: Install Qt (desktop host tools)
         uses: jurplel/install-qt-action@v4
         with:
-          version: "6.8.3"
+          version: "6.7.3"
           host: "linux"
           target: "desktop"
           arch: "linux_gcc_64"
