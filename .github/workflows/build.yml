@@ -378,17 +378,22 @@ jobs:
       # host executables (androiddeployqt, qmlcachegen, ...) -- qt-cmake
       # finds them via a sibling gcc_64 install, exactly like the local
       # dev setup in docs/android-build.md.
-      # Pinned to 6.7.3, not the 6.8.3 used elsewhere in this workflow:
-      # Qt for Android's aqt index tops out at 6.7.3 (no 6.8.x android
-      # build exists upstream). Both installs below must share the same
-      # version -- qt-cmake finds host tools via a sibling kit install
-      # matched by version, so the desktop kit here has to follow suit
-      # even though 6.8.3 desktop packages do exist.
+      #
+      # host: "all_os" on the Android kit, not "linux": since Qt 6.7, the
+      # android target's packages are indexed under qt.io's all_os host
+      # rather than per-build-OS (confirmed against the online repository --
+      # linux_x64/android/ has nothing past 6.6.3; all_os/android/ has 6.7
+      # through current). Querying host "linux" for target "android" at
+      # 6.8.3 finds nothing, which is what broke this job ("No latest
+      # version available for this request") -- it looked like 6.8.3 had no
+      # android build at all, but it was just under the wrong host. The
+      # desktop host-tools install below is a genuinely different, always-
+      # linux-hosted package and keeps host: "linux".
       - name: Install Qt (Android kit)
         uses: jurplel/install-qt-action@v4
         with:
-          version: "6.7.3"
-          host: "linux"
+          version: "6.8.3"
+          host: "all_os"
           target: "android"
           arch: "android_x86_64"
           modules: "qtwebview"
@@ -397,7 +402,7 @@ jobs:
       - name: Install Qt (desktop host tools)
         uses: jurplel/install-qt-action@v4
         with:
-          version: "6.7.3"
+          version: "6.8.3"
           host: "linux"
           target: "desktop"
           arch: "linux_gcc_64"
