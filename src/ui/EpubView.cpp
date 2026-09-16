@@ -370,7 +370,14 @@ void EpubView::loadWindowStartingAt(int spineIndex)
 
     applyHighlightsToBrowser();
     updateNavigationState();
-    m_browser->scrollToAnchor(QStringLiteral("mnemosyne-chapter-%1").arg(spineIndex));
+
+    // Scroll to pending anchor if set, otherwise chapter start.
+    if (!m_pendingAnchor.isEmpty()) {
+        m_browser->scrollToAnchor(m_pendingAnchor);
+        m_pendingAnchor.clear();
+    } else {
+        m_browser->scrollToAnchor(QStringLiteral("mnemosyne-chapter-%1").arg(spineIndex));
+    }
 }
 
 void EpubView::goToChapter(int spineIndex)
@@ -384,6 +391,10 @@ void EpubView::goToChapter(int spineIndex)
     // explicit jump here should always reset to just that one chapter.
     if (spineIndex == m_currentChapter && spineIndex == m_loadedChapterStart && spineIndex == m_loadedChapterEnd) {
         updateNavigationState();
+        if (!m_pendingAnchor.isEmpty()) {
+            m_browser->scrollToAnchor(m_pendingAnchor);
+            m_pendingAnchor.clear();
+        }
         return;
     }
     // Use synchronous loading for explicit navigation (goToChapter calls from tests, TOC, etc).
