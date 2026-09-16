@@ -18,6 +18,7 @@
 #include "ui/TextReaderTypography.h"
 #include "ui/TypographyPopup.h"
 
+#include <QApplication>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
@@ -361,6 +362,17 @@ void EpubView::loadWindowStartingAt(int spineIndex)
     }
     spineIndex = std::clamp(spineIndex, 0, m_document->spineCount() - 1);
 
+    // Show the loading spinner and force a repaint before the synchronous
+    // (and, for large chapters, potentially slow) HTML generation below --
+    // otherwise it'd never get painted until after the work is already done.
+    m_loadingLabel->adjustSize();
+    const QRect browserRect = m_browser->rect();
+    m_loadingLabel->move((browserRect.width() - m_loadingLabel->width()) / 2,
+                          (browserRect.height() - m_loadingLabel->height()) / 2);
+    m_loadingLabel->setVisible(true);
+    m_loadingLabel->raise();
+    QApplication::processEvents();
+
     m_chapterStartBlock.clear();
     m_browser->setHtml(chapterHtmlFragment(spineIndex));
     m_chapterStartBlock.insert(spineIndex, 0);
@@ -378,6 +390,8 @@ void EpubView::loadWindowStartingAt(int spineIndex)
     } else {
         m_browser->scrollToAnchor(QStringLiteral("mnemosyne-chapter-%1").arg(spineIndex));
     }
+
+    m_loadingLabel->setVisible(false);
 }
 
 void EpubView::goToChapter(int spineIndex)

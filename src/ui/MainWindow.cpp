@@ -65,6 +65,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QProgressDialog>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -905,6 +906,16 @@ void MainWindow::openPath(const QString &filePath)
     QString isbn; // only EPUB/MOBI carry one; see BookMetadataClient
     BookMetadata localInfo; // ditto: EPUB/MOBI's own OPF/EXTH metadata
 
+    // Parsing below is synchronous and can take a while for a large file, so
+    // show a busy indicator rather than leaving the window looking frozen.
+    QProgressDialog busyDialog(tr("Opening \"%1\"…").arg(QFileInfo(filePath).fileName()),
+                                QString(), 0, 0, this);
+    busyDialog.setWindowModality(Qt::WindowModal);
+    busyDialog.setMinimumDuration(0);
+    busyDialog.setCancelButton(nullptr);
+    busyDialog.show();
+    QApplication::processEvents();
+
     if (suffix == QLatin1String("pdf")) {
         std::unique_ptr<IDocument> document = openDocument(filePath, &errorMessage);
         QString password;
@@ -1016,6 +1027,8 @@ void MainWindow::openPath(const QString &filePath)
     } else {
         errorMessage = tr("Unsupported file type: .%1").arg(suffix);
     }
+
+    busyDialog.close();
 
     if (!widget || !view) {
         QMessageBox::warning(this, tr("Could Not Open File"), errorMessage);
