@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.16.0] - 2026-09-19
+
+### Added
+
+- Mobile: the EPUB reader gains chapter search — a Search button opens a debounced query field with results that jump to the matching chapter on tap.
+- EPUB: chapter search streams results as they are found and can be canceled mid-scan, so large books no longer block until the whole scan finishes (desktop and mobile).
+- File open (any format) and EPUB chapter jumps (TOC, notes) now show a loading indicator while the document is parsed.
+
+### Changed
+
+- EPUB: chapter rendering is cached and large images are lazy-loaded from an on-disk index, making repeated chapter navigation near-instant on image-heavy books.
+
+### Fixed
+
+- EPUB: internal links now navigate to the linked chapter and anchor.
+- EPUB: TOC navigation could land on the wrong page instead of the target section.
+- Desktop: sidebar tab visibility now persists across restarts.
+- EPUB: fixed crashes when a view was destroyed while a chapter was loading in the background.
+- CI: fixed Android build (Qt install host, SDK package list) and an `EpubPerformanceTest` timing flake on fast runners.
+
 ## [1.15.0] - 2026-09-09
 
 ### Added
