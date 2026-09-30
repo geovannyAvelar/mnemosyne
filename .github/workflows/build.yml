@@ -18,9 +18,31 @@ env:
   QTWEBENGINE_DISABLE_SANDBOX: "1"
 
 jobs:
+  # One .deb per (Ubuntu release, CPU arch). Each is built inside a container of
+  # the target release so the Qt/poppler/etc. it links against (and the
+  # shlibdeps CPack computes from them) match what that release ships -- a
+  # .deb built against 24.04's Qt 6.4 can't run on 26.04's newer Qt, and vice
+  # versa. Only Ubuntu is supported for Linux packages.
   linux:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["24.04", "26.04"]
+        arch:
+          - { name: amd64, runner: ubuntu-latest }
+          - { name: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.arch.runner }}
+    container:
+      image: ubuntu:${{ matrix.ubuntu }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
     steps:
+      # Bare ubuntu images have no git/ca-certificates; checkout needs them.
+      - name: Bootstrap container
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
+
       - uses: actions/checkout@v4
 
       # qt6-declarative-dev (Qt Quick/QML) is needed here even though this
@@ -31,18 +53,22 @@ jobs:
       # ever running on-device on Android.
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          apt-get install -y \
             cmake ninja-build build-essential pkg-config \
             qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-webengine-dev \
             libpoppler-qt6-dev libzip-dev libmobi-dev libsecret-1-dev \
             libxkbcommon-x11-0 libxcb-cursor0 \
             gnome-keyring dbus-x11
 
+      # MNEMOSYNE_DEB_DISTRO is baked into the .deb's revision (e.g.
+      # 1.16.0-1ubuntu24.04) so the same upstream version built for two
+      # releases gets distinct file names and versions, and apt-repo.yml can
+      # sort them into per-release distributions.
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DMNEMOSYNE_PACKAGE_VERSION_SUFFIX="${{ inputs.package_version_suffix }}"
+            -DMNEMOSYNE_PACKAGE_VERSION_SUFFIX="${{ inputs.package_version_suffix }}" \
+            -DMNEMOSYNE_DEB_DISTRO="ubuntu${{ matrix.ubuntu }}"
 
       - name: Build
         run: cmake --build build
@@ -87,67 +113,7 @@ jobs:
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mnemosyne-deb
-          path: build/*.deb
-          if-no-files-found: error
-
-  # Same steps as `linux` above, just on a native arm64 runner — the .deb's
-  # architecture (arm64 vs amd64) is picked up automatically by dpkg via
-  # CPACK_DEBIAN_FILE_NAME=DEB-DEFAULT, no CMake/CPack changes needed.
-  linux-arm64:
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            cmake ninja-build build-essential pkg-config \
-            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-webengine-dev \
-            libpoppler-qt6-dev libzip-dev libmobi-dev libsecret-1-dev \
-            libxkbcommon-x11-0 libxcb-cursor0 \
-            gnome-keyring dbus-x11
-
-      - name: Configure
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DMNEMOSYNE_PACKAGE_VERSION_SUFFIX="${{ inputs.package_version_suffix }}"
-
-      - name: Build
-        run: cmake --build build
-
-      # See the `linux` job's "Run tests" step for why this pre-seeds a
-      # keyring instead of letting gnome-keyring-daemon create one itself.
-      - name: Run tests
-        timeout-minutes: 5
-        run: |
-          mkdir -p ~/.local/share/keyrings
-          printf '%s\n' \
-            '[keyring]' \
-            'display-name=Default' \
-            'ctime=0' \
-            'mtime=0' \
-            'lock-on-idle=false' \
-            'lock-after=false' \
-            > ~/.local/share/keyrings/Default_keyring.keyring
-          echo -n "Default_keyring" > ~/.local/share/keyrings/default
-
-          dbus-run-session -- bash -c '
-            eval "$(gnome-keyring-daemon --start --components=secrets)"
-            export GNOME_KEYRING_CONTROL
-            ctest --test-dir build --output-on-failure
-          '
-
-      - name: Package .deb
-        run: |
-          cd build
-          cpack -G DEB
-
-      - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mnemosyne-deb-arm64
+          name: mnemosyne-deb-ubuntu${{ matrix.ubuntu }}-${{ matrix.arch.name }}
           path: build/*.deb
           if-no-files-found: error
 

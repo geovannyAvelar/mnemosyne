@@ -6,6 +6,9 @@ name: Publish APT repository
 # distributions have to be assembled in one go regardless of which caller
 # triggered this):
 #
+#   (Per Ubuntu release: distributions "noble" (24.04) and "resolute" (26.04),
+#   plus "noble-unstable"/"resolute-unstable". "stable"/"unstable" remain as
+#   aliases of the 24.04 ones for existing users.)
 #   stable    every .deb ever attached to a non-prerelease GitHub release
 #             (i.e. every tagged vX.Y.Z release) -- the full version history,
 #             same as before this file existed.
@@ -81,28 +84,46 @@ jobs:
           gh release download unstable --repo "$GITHUB_REPOSITORY" --pattern '*.deb' --dir debs-unstable --skip-existing || true
           ls -la debs-unstable
 
-      - name: Build and publish both distributions
+      - name: Build and publish all distributions
         env:
           GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
         run: |
           echo "$GPG_PASSPHRASE" > /tmp/passphrase
 
           # -architectures is passed explicitly (rather than left for aptly to
-          # infer from the repo's contents) because the unstable repo can be
-          # legitimately empty -- see the "no unstable release exists yet"
-          # case above -- and aptly refuses to publish an empty repo without
-          # an explicit architecture list ("unable to figure out list of
-          # architectures"). Both distributions only ever carry amd64/arm64
-          # .debs (see build.yml), so the list is the same for both.
-          aptly repo create -distribution=stable -component=main mnemosyne-stable
-          aptly repo add mnemosyne-stable debs-stable
-          aptly snapshot create mnemosyne-stable-snapshot from repo mnemosyne-stable
-          aptly publish snapshot -batch -architectures=amd64,arm64 -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-stable-snapshot
+          # infer from the repo's contents) because a repo can be legitimately
+          # empty -- e.g. no unstable release yet, or no 26.04 .deb yet -- and
+          # aptly refuses to publish an empty repo without an explicit
+          # architecture list. All .debs are amd64/arm64 only (see build.yml).
+          #
+          # publish <suffix> <deb dir> <ubuntu tag> <distribution name>...
+          # Filters the .debs down to one Ubuntu release, then publishes that
+          # set under every given distribution name.
+          publish() {
+            local name=$1 dir=$2 tag=$3; shift 3
+            mkdir -p "filtered-$name"
+            # Legacy .debs (pre-multi-release, no "ubuntuXX.XX" in the name)
+            # were all built on 24.04 runners, so they belong to that release.
+            if [ "$tag" = "ubuntu24.04" ]; then
+              find "$dir" -name '*.deb' ! -name '*ubuntu[0-9][0-9].[0-9][0-9]*' -exec cp {} "filtered-$name" \;
+            fi
+            find "$dir" -name "*${tag}*.deb" -exec cp {} "filtered-$name" \;
+            aptly repo create -distribution="$1" -component=main "mnemosyne-$name"
+            aptly repo add "mnemosyne-$name" "filtered-$name"
+            aptly snapshot create "snap-$name" from repo "mnemosyne-$name"
+            for dist in "$@"; do
+              aptly publish snapshot -batch -distribution="$dist" -architectures=amd64,arm64 \
+                -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" "snap-$name"
+            done
+          }
 
-          aptly repo create -distribution=unstable -component=main mnemosyne-unstable
-          aptly repo add mnemosyne-unstable debs-unstable
-          aptly snapshot create mnemosyne-unstable-snapshot from repo mnemosyne-unstable
-          aptly publish snapshot -batch -architectures=amd64,arm64 -passphrase-file=/tmp/passphrase -gpg-key="$GPG_KEY_ID" mnemosyne-unstable-snapshot
+          # noble (24.04) / resolute (26.04). "stable" and "unstable" stay as
+          # aliases of the 24.04 sets so existing sources.list entries keep
+          # working.
+          publish stable-noble       debs-stable   ubuntu24.04 noble stable
+          publish stable-resolute    debs-stable   ubuntu26.04 resolute
+          publish unstable-noble     debs-unstable ubuntu24.04 noble-unstable unstable
+          publish unstable-resolute  debs-unstable ubuntu26.04 resolute-unstable
 
           rm -f /tmp/passphrase
 

@@ -197,6 +197,15 @@ if(UNIX AND NOT APPLE)
   set(MNEMOSYNE_PACKAGE_VERSION_SUFFIX "" CACHE STRING
       "Appended to CPACK_PACKAGE_VERSION, e.g. for an unstable/rolling build")
 
+  # Set by CI (e.g. "ubuntu24.04") so one upstream version can be packaged for
+  # several Ubuntu releases without file-name/version collisions. Becomes the
+  # .deb revision, e.g. mnemosyne-pdf_1.16.0-1ubuntu24.04_amd64.deb.
+  set(MNEMOSYNE_DEB_DISTRO "" CACHE STRING
+      "Ubuntu release tag folded into the .deb revision, e.g. ubuntu24.04")
+  if(MNEMOSYNE_DEB_DISTRO)
+    set(CPACK_DEBIAN_PACKAGE_RELEASE "1${MNEMOSYNE_DEB_DISTRO}")
+  endif()
+
   set(CPACK_GENERATOR "DEB")
   set(CPACK_PACKAGE_NAME "mnemosyne-pdf")
   set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}${MNEMOSYNE_PACKAGE_VERSION_SUFFIX}")

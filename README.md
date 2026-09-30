@@ -92,23 +92,28 @@ build one yourself:
 ### APT repository (Debian / Ubuntu)
 
 Every release also publishes to an APT repository, updated automatically on
-each tag:
+each tag. Only Ubuntu is supported: 24.04 (`noble`) and 26.04 (`resolute`)
+get separate packages, each built against that release's own Qt. Use the
+distribution matching your release:
 
 ```bash
 curl -fsSL https://geovannyavelar.github.io/mnemosyne/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/mnemosyne.gpg
-echo "deb [signed-by=/usr/share/keyrings/mnemosyne.gpg] https://geovannyavelar.github.io/mnemosyne stable main" | sudo tee /etc/apt/sources.list.d/mnemosyne.list
+echo "deb [signed-by=/usr/share/keyrings/mnemosyne.gpg] https://geovannyavelar.github.io/mnemosyne noble main" | sudo tee /etc/apt/sources.list.d/mnemosyne.list
 sudo apt update
 sudo apt install mnemosyne-pdf
 ```
 
+(Use `resolute` instead of `noble` on Ubuntu 26.04. The old `stable` name
+still works and is an alias of `noble`.)
+
 There's also an `unstable` distribution, rebuilt from the latest commit on
 `main` on every push (see the "Unstable (latest main)" release) — always a
 single package, no version history, and may be broken. Use the same key,
-pointed at `unstable` instead of `stable`:
+pointed at `noble-unstable` / `resolute-unstable` (`unstable` is an alias of `noble-unstable`):
 
 ```bash
 curl -fsSL https://geovannyavelar.github.io/mnemosyne/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/mnemosyne.gpg
-echo "deb [signed-by=/usr/share/keyrings/mnemosyne.gpg] https://geovannyavelar.github.io/mnemosyne unstable main" | sudo tee /etc/apt/sources.list.d/mnemosyne-unstable.list
+echo "deb [signed-by=/usr/share/keyrings/mnemosyne.gpg] https://geovannyavelar.github.io/mnemosyne noble-unstable main" | sudo tee /etc/apt/sources.list.d/mnemosyne-unstable.list
 sudo apt update
 sudo apt install mnemosyne-pdf
 ```

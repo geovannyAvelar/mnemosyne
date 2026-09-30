@@ -46,8 +46,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            artifacts/mnemosyne-deb/*.deb \
-            artifacts/mnemosyne-deb-arm64/*.deb \
+            artifacts/mnemosyne-deb-*/*.deb \
             artifacts/mnemosyne-macos-arm64/*.dmg \
             artifacts/mnemosyne-macos-x86_64/*.dmg \
             artifacts/mnemosyne-windows/*.zip \
