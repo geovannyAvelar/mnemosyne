@@ -54,7 +54,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get install -y \
-            cmake ninja-build build-essential pkg-config \
+            cmake ninja-build build-essential pkg-config file \
             qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-webengine-dev \
             libpoppler-qt6-dev libzip-dev libmobi-dev libsecret-1-dev \
             libxkbcommon-x11-0 libxcb-cursor0 \
