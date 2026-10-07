@@ -8,6 +8,9 @@
 #include <QStringList>
 #include <QTextStream>
 
+#include <utility>
+#include <vector>
+
 namespace {
 
 // Builds a heading tree from ATX-style ("# Heading") lines, skipping any
@@ -30,15 +33,19 @@ QVector<TocNode> buildTableOfContents(const QString &text)
         int level;
         TocNode node;
     };
-    QVector<OpenNode> open;
+    std::vector<OpenNode> open;
 
     auto closeDownTo = [&](int level) {
-        while (!open.isEmpty() && open.last().level >= level) {
-            const TocNode finished = open.takeLast().node;
-            if (!open.isEmpty()) {
-                open.last().node.children.append(finished);
+        while (!open.empty() && open.back().level >= level) {
+            // Move out of the stack element, then pop, instead of copying
+            // through QList::takeLast()'s temporary (segfaulted on ARM64 /
+            // GCC 15 / Qt 6.10 with TocNode's self-referential QList).
+            TocNode finished = std::move(open.back().node);
+            open.pop_back();
+            if (!open.empty()) {
+                open.back().node.children.append(std::move(finished));
             } else {
-                roots.append(finished);
+                roots.append(std::move(finished));
             }
         }
     };
@@ -66,7 +73,7 @@ QVector<TocNode> buildTableOfContents(const QString &text)
         TocNode node;
         node.title = match.captured(2).trimmed();
         node.pageNumber = headingIndex++;
-        open.append({level, node});
+        open.push_back({level, std::move(node)});
     }
     closeDownTo(1); // flush everything still open, regardless of level
 
