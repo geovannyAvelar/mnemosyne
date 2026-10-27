@@ -45,6 +45,16 @@ echo "==> Building installer for version $VERSION"
 STAGE_DIR_WIN=$(cygpath -w "$STAGE_DIR")
 OUT_FILE_WIN=$(cygpath -w "$OUT_FILE")
 
+# makensis resolves its plugin dirs (nsDialogs etc., used by MultiUser.nsh)
+# from NSISDIR. mingw-w64-nsis 3.13-2 started failing with "Plugin not found,
+# cannot call nsDialogs::Create" / empty "Plugin directories:", so point it at
+# the install explicitly (Windows-style path, since makensis is a native exe)
+# and list what's there to make any future breakage diagnosable from the log.
+NSISDIR_POSIX=/mingw64/share/nsis
+export NSISDIR=$(cygpath -w "$NSISDIR_POSIX")
+echo "==> NSISDIR=$NSISDIR"
+ls "$NSISDIR_POSIX/Plugins" "$NSISDIR_POSIX"/Plugins/* 2>&1 | head -30
+
 "$MAKENSIS" "-DSTAGE_DIR=$STAGE_DIR_WIN" "-DVERSION=$VERSION" "-DOUT_FILE=$OUT_FILE_WIN" \
     scripts/windows-installer.nsi
 
