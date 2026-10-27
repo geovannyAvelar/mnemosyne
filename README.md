@@ -20,6 +20,7 @@ A native desktop reader for PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and 
 - **Library / tabs** — open multiple books at once in tabs, with a persistent Library tab and recent-files list. Organize your library with shelves (named collections a book can belong to) and free-form tags, both filterable from the Library view; right-click (desktop) or the "⋯" button (mobile) on a book to assign it.
 - **Reading stats** — time spent and pages read today, your current/longest day streak, average pages/day, and all-time totals across your whole library. Desktop: the sidebar's Stats tab. Mobile: the 📊 button on the Library screen.
 - **Highlights and notes**, synced across devices — highlight a passage in a color of your choosing, optionally attach a note to it, and browse every note in the sidebar's Notes tab. Exportable via File > Export Notes, as a Markdown document or as Anki flashcards, for the open book or your whole library at once. For PDFs specifically, "as Annotated PDF..." bakes highlights and freehand drawings into a new copy of the PDF itself as real PDF annotations (highlights, ink strokes, and each highlight's note as a clickable annotation popup) — visible and printable in any PDF reader, not just Mnemosyne.
+- **Printing** (desktop) — File > Print... (Ctrl+P) prints the open document through the system print dialog, or to PDF. PDF and CBZ print a page range; EPUB/MOBI/Markdown/TXT print the chapter/part currently open; HTML prints through the browser engine. Annotations are not printed — use "as Annotated PDF..." first if you want highlights on paper.
 - **Scroll-to-turn-page** — scrolling past the top/bottom edge of a page or chapter advances to the next/previous one.
 - **Collapsible sidebar** — hide the table of contents / notes / search dock with a single chevron toggle.
 - **Cross-device sync** — point Mnemosyne at a cloud-synced folder (Google Drive, iCloud Drive, Dropbox, etc.) and/or sign in with Google Drive, and it syncs reading position (page/zoom) and highlights/notes across every device reading the same book. Books are matched by content hash, not file path; a same-highlight edit made on two devices resolves last-edit-wins.
@@ -29,7 +30,7 @@ A native desktop reader for PDF, EPUB, HTML, Markdown, MOBI/AZW, CBZ comic, and 
 
 - CMake 3.20+
 - A C++17 compiler
-- Qt6 (`Widgets`, `Test`, `WebEngineWidgets`)
+- Qt6 (`Widgets`, `PrintSupport`, `Test`, `WebEngineWidgets`)
 - Poppler-Qt6
 - libzip
 - libmobi

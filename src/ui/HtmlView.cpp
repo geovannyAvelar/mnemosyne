@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPrinter>
 #include <QPushButton>
 #include <QTimer>
 #include <QUrl>
@@ -149,4 +150,16 @@ void HtmlView::saveProgressNow()
 #ifdef MNEMOSYNE_ENABLE_GOOGLE_DRIVE_SYNC
     GoogleDriveSync::appendEntry(m_bookHash, documentTitle(), 0, zoom);
 #endif
+}
+
+void HtmlView::print(std::shared_ptr<QPrinter> printer)
+{
+    // Asynchronous: the connection's copy of the shared_ptr keeps the printer
+    // alive until WebEngine reports it has finished rendering into it.
+    auto *connection = new QMetaObject::Connection;
+    *connection = connect(m_webView, &QWebEngineView::printFinished, this, [printer, connection](bool) {
+        QObject::disconnect(*connection);
+        delete connection;
+    });
+    m_webView->print(printer.get());
 }

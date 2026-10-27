@@ -88,6 +88,7 @@ private:
     // PdfView::exportAnnotatedAs(). PDF only, unlike exportNotesAsMarkdown()/
     // exportNotesAsAnki() above.
     void exportAnnotatedPdf();
+    void printCurrent();
     // Ends the outgoing tab's reading session (if any) and starts one for
     // the incoming tab (if it's a real document, not Library) -- see
     // ReadingSessionTracker's own header comment for why both halves are

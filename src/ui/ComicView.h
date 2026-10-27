@@ -2,6 +2,7 @@
 
 #include "comic/CbzDocument.h"
 #include "core/ReaderView.h"
+#include "ui/PrintSupport.h"
 
 #include <QWidget>
 
@@ -26,7 +27,7 @@ struct RemoteEntry;
 // right-to-left/manga reading order option), since a comic's two-page
 // layout is often meant to be seen as one continuous spread the way a
 // prose book's single column never is.
-class ComicView : public QWidget, public IReaderView
+class ComicView : public QWidget, public IReaderView, public IPrintableView
 {
     Q_OBJECT
 
@@ -41,6 +42,9 @@ public:
     void setSearchTerm(const QString &term) override { Q_UNUSED(term); }
     void refreshHighlights() override { } // no text layer, no highlights
     void flushProgress() override;
+
+    int printablePageCount() const override { return m_document ? m_document->pageCount() : 0; }
+    void print(std::shared_ptr<QPrinter> printer) override;
 
     bool hasPendingSyncPrompt() const;
 

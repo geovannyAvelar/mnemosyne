@@ -120,9 +120,9 @@ elseif(MNEMOSYNE_ENABLE_HTML)
   # built on every platform so its logic gets real desktop Qt Test coverage
   # in CI rather than only ever running on Android — see Stage 9 of the
   # mobile-port plan.
-  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent WebEngineWidgets Quick)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets PrintSupport Test Network Concurrent WebEngineWidgets Quick)
 else()
-  find_package(Qt6 REQUIRED COMPONENTS Widgets Test Network Concurrent Quick)
+  find_package(Qt6 REQUIRED COMPONENTS Widgets PrintSupport Test Network Concurrent Quick)
 endif()
 
 find_package(PkgConfig REQUIRED)

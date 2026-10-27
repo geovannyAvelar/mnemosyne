@@ -20,6 +20,7 @@
 
 #include <QApplication>
 #include <QDateTime>
+#include <QPrinter>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -1011,4 +1012,11 @@ void EpubView::loadWindowStartingAtAsync(int spineIndex)
     thread->start();
 
     scheduleProgressSave();
+}
+
+void EpubView::print(std::shared_ptr<QPrinter> printer)
+{
+    if (m_browser && m_browser->document()) {
+        PrintSupport::printTextDocument(printer.get(), *m_browser->document());
+    }
 }

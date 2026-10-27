@@ -2,6 +2,7 @@
 
 #include "core/Highlight.h"
 #include "core/ReaderView.h"
+#include "ui/PrintSupport.h"
 #include "txt/TxtDocument.h"
 
 #include <QWidget>
@@ -20,7 +21,7 @@ struct RemoteEntry;
 // structure to derive a table of contents or per-section search results
 // from — navigation and search both address the document by raw character
 // offset instead of a heading index.
-class TxtView : public QWidget, public IReaderView
+class TxtView : public QWidget, public IReaderView, public IPrintableView
 {
     Q_OBJECT
 
@@ -35,6 +36,10 @@ public:
     void setSearchTerm(const QString &term) override;
     void refreshHighlights() override;
     void flushProgress() override;
+
+    // Prints the chapter/part/document currently loaded in the view.
+    int printablePageCount() const override { return 0; }
+    void print(std::shared_ptr<QPrinter> printer) override;
 
     // Independent of any TxtView instance — see EpubView::searchFile() for
     // why this reopens the file rather than touching a live instance.

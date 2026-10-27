@@ -37,6 +37,7 @@
 #include "ui/PluginsDialog.h"
 #endif
 #include "ui/PdfView.h"
+#include "ui/PrintSupport.h"
 #ifdef Q_OS_MACOS
 #include "platform/MacTouchBar.h"
 #endif
@@ -56,6 +57,8 @@
 #include <QEvent>
 #include <QFile>
 #include <QFileDialog>
+#include <QPrintDialog>
+#include <QPrinter>
 #include <QFileInfo>
 #include <QInputDialog>
 #include <QJsonObject>
@@ -761,6 +764,10 @@ void MainWindow::setupMenus()
     closeTabAction->setShortcut(QKeySequence::Close);
     connect(closeTabAction, &QAction::triggered, this, &MainWindow::closeCurrentTab);
 
+    QAction *printAction = fileMenu->addAction(tr("&Print..."));
+    printAction->setShortcut(QKeySequence::Print);
+    connect(printAction, &QAction::triggered, this, &MainWindow::printCurrent);
+
     m_exportNotesMenu = fileMenu->addMenu(tr("Export &Notes"));
     QAction *exportMarkdownAction = m_exportNotesMenu->addAction(tr("as &Markdown..."));
     connect(exportMarkdownAction, &QAction::triggered, this, &MainWindow::exportNotesAsMarkdown);
@@ -1253,6 +1260,34 @@ void MainWindow::exportAnnotatedPdf()
         QMessageBox::warning(this, tr("Export Annotated PDF"),
                               tr("Failed to export the annotated PDF to:\n%1").arg(outputPath));
     }
+}
+
+void MainWindow::printCurrent()
+{
+    auto *printable = dynamic_cast<IPrintableView *>(m_currentView);
+    if (!printable) {
+        QMessageBox::information(this, tr("Print"), tr("Open a document to print it."));
+        return;
+    }
+
+    // 300 dpi rather than the HighResolution default (1200 on PDF-backed
+    // printers): raster pages are rendered at this resolution, and 1200 dpi
+    // A4 would be a ~140 MB image per page.
+    auto printer = std::make_shared<QPrinter>(QPrinter::ScreenResolution);
+    printer->setResolution(300);
+    printer->setDocName(m_currentView->documentTitle());
+
+    QPrintDialog dialog(printer.get(), this);
+    const int pages = printable->printablePageCount();
+    if (pages > 0) {
+        dialog.setMinMax(1, pages);
+        dialog.setOption(QAbstractPrintDialog::PrintPageRange);
+    }
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    printable->print(printer);
 }
 
 void MainWindow::onTabCloseRequested(int index)

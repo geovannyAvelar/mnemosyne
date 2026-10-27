@@ -17,6 +17,7 @@
 #include <QMenu>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QPrinter>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
@@ -717,4 +718,11 @@ void PdfView::keyPressEvent(QKeyEvent *event)
         return;
     }
     QWidget::keyPressEvent(event);
+}
+
+void PdfView::print(std::shared_ptr<QPrinter> printer)
+{
+    if (m_document) {
+        PrintSupport::printPages(printer.get(), *m_document);
+    }
 }

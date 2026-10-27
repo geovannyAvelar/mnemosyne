@@ -15,6 +15,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <QPointer>
+#include <QPrinter>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -390,4 +391,11 @@ bool ComicView::eventFilter(QObject *watched, QEvent *event)
         }
     }
     return QWidget::eventFilter(watched, event);
+}
+
+void ComicView::print(std::shared_ptr<QPrinter> printer)
+{
+    if (m_document) {
+        PrintSupport::printPages(printer.get(), *m_document);
+    }
 }

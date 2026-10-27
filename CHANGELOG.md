@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Desktop: File > Print... (Ctrl+P) for every format, with page-range selection for PDF and CBZ.
+
+### Changed
+
+- Linux CI: separate `.deb` packages and APT distributions (`noble`, `resolute`) for Ubuntu 24.04 and 26.04, each built against that release's Qt.
+
 ## [1.16.0] - 2026-09-19
 
 ### Added

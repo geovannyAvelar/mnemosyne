@@ -15,6 +15,7 @@
 #include "ui/TypographyPopup.h"
 
 #include <QDateTime>
+#include <QPrinter>
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QPushButton>
@@ -526,4 +527,11 @@ bool TxtView::eventFilter(QObject *watched, QEvent *event)
         }
     }
     return QWidget::eventFilter(watched, event);
+}
+
+void TxtView::print(std::shared_ptr<QPrinter> printer)
+{
+    if (m_browser && m_browser->document()) {
+        PrintSupport::printTextDocument(printer.get(), *m_browser->document());
+    }
 }

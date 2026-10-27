@@ -253,6 +253,8 @@ set(MNEMOSYNE_DESKTOP_UI_SOURCES
     ui/PdfPageStackView.cpp
     ui/PdfHighlightController.h
     ui/PdfHighlightController.cpp
+    ui/PrintSupport.h
+    ui/PrintSupport.cpp
     ui/PdfSearchController.h
     ui/ReadingProgressController.h
     ui/ReadingProgressController.cpp
@@ -328,6 +330,7 @@ add_library(mnemosynedesktopui STATIC ${MNEMOSYNE_DESKTOP_UI_SOURCES})
 target_link_libraries(mnemosynedesktopui PUBLIC
     mnemosynecore
     Qt6::Widgets
+    Qt6::PrintSupport
     Qt6::Concurrent
 )
 

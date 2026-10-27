@@ -2,6 +2,7 @@
 
 #include "core/Highlight.h"
 #include "core/ReaderView.h"
+#include "ui/PrintSupport.h"
 #include "mobi/MobiDocument.h"
 
 #include <QWidget>
@@ -20,7 +21,7 @@ struct RemoteEntry;
 // document reconstructs into chapter-like "parts" with an NCX-derived table
 // of contents targeting them by index), so this mirrors EpubView almost
 // exactly, with "part" standing in for "chapter"/"spine index".
-class MobiView : public QWidget, public IReaderView
+class MobiView : public QWidget, public IReaderView, public IPrintableView
 {
     Q_OBJECT
 
@@ -35,6 +36,10 @@ public:
     void setSearchTerm(const QString &term) override;
     void refreshHighlights() override;
     void flushProgress() override;
+
+    // Prints the chapter/part/document currently loaded in the view.
+    int printablePageCount() const override { return 0; }
+    void print(std::shared_ptr<QPrinter> printer) override;
 
     // Independent of any MobiView instance — see EpubView::searchFile() for
     // why this reopens the file rather than touching a live instance.

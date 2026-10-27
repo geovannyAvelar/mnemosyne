@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/ReaderView.h"
+#include "ui/PrintSupport.h"
 
 #include <QWidget>
 
@@ -16,7 +17,7 @@ class QWebEngineView;
 // selection model, so cross-document search and highlight annotations
 // (which the other formats support) are not implemented here. See
 // search()'s doc comment for specifics.
-class HtmlView : public QWidget, public IReaderView
+class HtmlView : public QWidget, public IReaderView, public IPrintableView
 {
     Q_OBJECT
 
@@ -38,6 +39,9 @@ public:
     void setSearchTerm(const QString &term) override; // no-op, see search() above
     void refreshHighlights() override { } // no highlight support, see class comment above
     void flushProgress() override;
+
+    int printablePageCount() const override { return 0; }
+    void print(std::shared_ptr<QPrinter> printer) override;
 
     qreal currentZoomFactor() const;
 
