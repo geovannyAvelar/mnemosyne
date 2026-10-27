@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Desktop: File > Print... (Ctrl+P) for every format, with page-range selection for PDF and CBZ.
+- Linux: Flatpak package (`io.github.geovannyavelar.Mnemosyne`) attached to releases, independent of the host's Qt.
 
 ### Changed
 

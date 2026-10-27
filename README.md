@@ -122,6 +122,19 @@ sudo apt install mnemosyne-pdf
 Don't add both `.list` files at once — they publish the same package name at
 different, conflicting versions, and apt will just pick whichever it prefers.
 
+### Flatpak (any distro)
+
+Each release attaches `Mnemosyne-linux-x86_64.flatpak`. It bundles its own
+Poppler/libzip/libmobi and uses the KDE runtime's Qt, so it doesn't depend on
+your distro's Qt version:
+
+```bash
+flatpak install --user Mnemosyne-linux-x86_64.flatpak
+flatpak run io.github.geovannyavelar.Mnemosyne
+```
+
+To build it yourself: `flatpak-builder --user --install-deps-from=flathub --force-clean build-flatpak flatpak/io.github.geovannyavelar.Mnemosyne.yml`.
+
 ### Linux (.deb, manual build)
 
 The build additionally installs a binary and a `.desktop` file, and CPack can produce a `.deb`:

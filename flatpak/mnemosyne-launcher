@@ -1,0 +1,4 @@
+#!/bin/sh
+# QtWebEngine's Chromium sandbox can't run unprivileged inside Flatpak;
+# zypak (from the QtWebEngine BaseApp) redirects it to Flatpak's own sandbox.
+exec zypak-wrapper /app/bin/Mnemosyne "$@"

@@ -117,6 +117,42 @@ jobs:
           path: build/*.deb
           if-no-files-found: error
 
+  # Distro-independent Linux package. Bundles poppler/libzip/libmobi and uses
+  # the KDE runtime's Qt, so unlike the per-release .debs it doesn't care what
+  # Qt the host ships. amd64 only for now.
+  flatpak:
+    runs-on: ubuntu-latest
+    # Remove once the first builds are green: until then a Flatpak failure
+    # must not block the unstable release. (release.yml expects its artifact.)
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+
+      - name: Add Flathub
+        run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build Flatpak
+        run: |
+          flatpak-builder --user --force-clean --install-deps-from=flathub \
+            --repo=flatpak-repo build-flatpak \
+            flatpak/io.github.geovannyavelar.Mnemosyne.yml
+
+      - name: Bundle .flatpak
+        run: |
+          flatpak build-bundle flatpak-repo Mnemosyne-linux-x86_64.flatpak io.github.geovannyavelar.Mnemosyne
+
+      - name: Upload .flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mnemosyne-flatpak
+          path: Mnemosyne-linux-x86_64.flatpak
+          if-no-files-found: error
+
   macos:
     runs-on: macos-latest
     steps:
