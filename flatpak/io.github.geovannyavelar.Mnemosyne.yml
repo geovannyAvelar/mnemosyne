@@ -47,6 +47,7 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DBUILD_CODEC=OFF
       - -DBUILD_STATIC_LIBS=OFF
     sources:
@@ -58,6 +59,7 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DENABLE_QT5=OFF
       - -DENABLE_QT6=ON
       - -DENABLE_BOOST=OFF
@@ -83,6 +85,7 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DBUILD_TOOLS=OFF
       - -DBUILD_REGRESS=OFF
       - -DBUILD_EXAMPLES=OFF
