@@ -22,7 +22,7 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
-  - --socket=speech-dispatcher # Read Aloud
+  - --filesystem=xdg-run/speech-dispatcher:ro # Read Aloud (speech-dispatcher socket)
   - --socket=pulseaudio # QtWebEngine probes audio even without playback
   # No --filesystem access. Every path the app touches comes from a native
   # QFileDialog, which is the xdg-desktop-portal file chooser inside Flatpak:
