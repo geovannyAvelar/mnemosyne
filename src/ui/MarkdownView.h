@@ -3,6 +3,7 @@
 #include "core/Highlight.h"
 #include "core/ReaderView.h"
 #include "ui/PrintSupport.h"
+#include "ui/ReadAloud.h"
 #include "markdown/MarkdownDocument.h"
 
 #include <QWidget>
@@ -20,7 +21,7 @@ struct RemoteEntry;
 // this mirrors EpubView (same QTextBrowser-based rendering, highlight/sync
 // machinery) but with no chapter navigation: goToTocNode()/currentPosition()
 // work in terms of heading index instead of chapter index.
-class MarkdownView : public QWidget, public IReaderView, public IPrintableView
+class MarkdownView : public QWidget, public IReaderView, public IPrintableView, public IReadAloudView
 {
     Q_OBJECT
 
@@ -39,6 +40,10 @@ public:
     // Prints the chapter/part/document currently loaded in the view.
     int printablePageCount() const override { return 0; }
     void print(std::shared_ptr<QPrinter> printer) override;
+
+    // Reads to the end of the open chapter/document; see IReadAloudView.
+    QString readAloudText() const override { return ReadAloud::textFromViewport(m_browser); }
+    bool readAloudAdvance() override { return false; }
 
     // Independent of any MarkdownView instance — see EpubView::searchFile()
     // for why this reopens the file rather than touching a live instance.

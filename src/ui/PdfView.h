@@ -6,6 +6,7 @@
 #include "core/PdfFormField.h"
 #include "core/ReaderView.h"
 #include "ui/PrintSupport.h"
+#include "ui/ReadAloud.h"
 
 #include <QWidget>
 
@@ -20,7 +21,7 @@ class PdfPageStackView;
 class ReadingProgressController;
 class SyncPromptBar;
 
-class PdfView : public QWidget, public IReaderView, public IPrintableView
+class PdfView : public QWidget, public IReaderView, public IPrintableView, public IReadAloudView
 {
     Q_OBJECT
 
@@ -43,6 +44,9 @@ public:
 
     int printablePageCount() const override { return m_document ? m_document->pageCount() : 0; }
     void print(std::shared_ptr<QPrinter> printer) override;
+
+    QString readAloudText() const override;
+    bool readAloudAdvance() override;
 
     // Same search as above, but independent of any PdfView instance: opens
     // its own Poppler document from filePath rather than touching a live

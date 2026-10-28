@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Desktop: File > Print... (Ctrl+P) for every format, with page-range selection for PDF and CBZ.
+- Desktop: View > Read Aloud (F8) speaks PDFs (page by page) and EPUB/MOBI/Markdown/TXT (to the end of the open chapter) via Qt Speech. Built only where Qt Speech is installed.
 - Linux: Flatpak package (`io.github.geovannyavelar.Mnemosyne`) attached to releases, independent of the host's Qt.
 
 ### Changed

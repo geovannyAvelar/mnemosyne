@@ -325,6 +325,14 @@ if(MNEMOSYNE_ENABLE_PLUGINS)
     )
 endif()
 
+if(TARGET Qt6::TextToSpeech)
+    list(APPEND MNEMOSYNE_DESKTOP_UI_SOURCES
+        ui/ReadAloud.h
+        ui/ReadAloudController.h
+        ui/ReadAloudController.cpp
+    )
+endif()
+
 add_library(mnemosynedesktopui STATIC ${MNEMOSYNE_DESKTOP_UI_SOURCES})
 
 target_link_libraries(mnemosynedesktopui PUBLIC
@@ -341,6 +349,11 @@ endif()
 if(MNEMOSYNE_ENABLE_HTML)
     target_link_libraries(mnemosynedesktopui PUBLIC Qt6::WebEngineWidgets)
     target_compile_definitions(mnemosynedesktopui PUBLIC MNEMOSYNE_ENABLE_HTML)
+endif()
+
+if(TARGET Qt6::TextToSpeech)
+    target_link_libraries(mnemosynedesktopui PUBLIC Qt6::TextToSpeech)
+    target_compile_definitions(mnemosynedesktopui PUBLIC MNEMOSYNE_ENABLE_TTS)
 endif()
 
 target_include_directories(mnemosynedesktopui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

@@ -32,6 +32,7 @@ class QMenu;
 class QTabWidget;
 class QToolBar;
 
+class ReadAloudController;
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -89,6 +90,9 @@ private:
     // exportNotesAsAnki() above.
     void exportAnnotatedPdf();
     void printCurrent();
+#ifdef MNEMOSYNE_ENABLE_TTS
+    void toggleReadAloud(bool start);
+#endif
     // Ends the outgoing tab's reading session (if any) and starts one for
     // the incoming tab (if it's a real document, not Library) -- see
     // ReadingSessionTracker's own header comment for why both halves are
@@ -151,6 +155,10 @@ private:
     QAction *m_darkModeAction = nullptr;
     QAction *m_sidebarToggleAction = nullptr;
     QAction *m_fullScreenAction = nullptr;
+#ifdef MNEMOSYNE_ENABLE_TTS
+    QAction *m_readAloudAction = nullptr;
+    ReadAloudController *m_readAloud = nullptr;
+#endif
     QAction *m_bookInfoLookupAction = nullptr;
     // PDF-only top-bar actions -- see updatePdfToolbarActions().
     QAction *m_pdfInvertAction = nullptr;

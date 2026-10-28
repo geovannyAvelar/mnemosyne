@@ -291,3 +291,9 @@ qt_add_executable(print_support_test PrintSupportTest.cpp)
 target_link_libraries(print_support_test PRIVATE mnemosynedesktopui Qt6::Test Qt6::PrintSupport)
 
 add_test(NAME PrintSupportTest COMMAND print_support_test)
+
+qt_add_executable(read_aloud_test ReadAloudTest.cpp)
+
+target_link_libraries(read_aloud_test PRIVATE mnemosynedesktopui Qt6::Test)
+
+add_test(NAME ReadAloudTest COMMAND read_aloud_test)

@@ -125,6 +125,13 @@ else()
   find_package(Qt6 REQUIRED COMPONENTS Widgets PrintSupport Test Network Concurrent Quick)
 endif()
 
+# Read-aloud (src/ui/ReadAloudController) is built only where Qt Speech is
+# installed, so a missing qt6-speech package disables the feature instead of
+# breaking the build.
+if(NOT ANDROID AND NOT IOS)
+  find_package(Qt6 OPTIONAL_COMPONENTS TextToSpeech)
+endif()
+
 find_package(PkgConfig REQUIRED)
 
 if(ANDROID)
@@ -214,6 +221,9 @@ if(UNIX AND NOT APPLE)
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "PDF, EPUB, and HTML reader")
   set(CPACK_DEBIAN_PACKAGE_SECTION "graphics")
   set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/geovannyAvelar/mnemosyne")
+  # Read Aloud needs a Qt Speech backend plugin at runtime; it is a separate
+  # package that shlibdeps cannot see (plugins are dlopen()ed).
+  set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-speech-speechd-plugin, speech-dispatcher")
   set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
   set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
   set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")

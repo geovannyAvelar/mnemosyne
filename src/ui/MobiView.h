@@ -3,6 +3,7 @@
 #include "core/Highlight.h"
 #include "core/ReaderView.h"
 #include "ui/PrintSupport.h"
+#include "ui/ReadAloud.h"
 #include "mobi/MobiDocument.h"
 
 #include <QWidget>
@@ -21,7 +22,7 @@ struct RemoteEntry;
 // document reconstructs into chapter-like "parts" with an NCX-derived table
 // of contents targeting them by index), so this mirrors EpubView almost
 // exactly, with "part" standing in for "chapter"/"spine index".
-class MobiView : public QWidget, public IReaderView, public IPrintableView
+class MobiView : public QWidget, public IReaderView, public IPrintableView, public IReadAloudView
 {
     Q_OBJECT
 
@@ -40,6 +41,10 @@ public:
     // Prints the chapter/part/document currently loaded in the view.
     int printablePageCount() const override { return 0; }
     void print(std::shared_ptr<QPrinter> printer) override;
+
+    // Reads to the end of the open chapter/document; see IReadAloudView.
+    QString readAloudText() const override { return ReadAloud::textFromViewport(m_browser); }
+    bool readAloudAdvance() override { return false; }
 
     // Independent of any MobiView instance — see EpubView::searchFile() for
     // why this reopens the file rather than touching a live instance.

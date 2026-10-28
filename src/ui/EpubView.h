@@ -3,6 +3,7 @@
 #include "core/Highlight.h"
 #include "core/ReaderView.h"
 #include "ui/PrintSupport.h"
+#include "ui/ReadAloud.h"
 #include "epub/EpubDocument.h"
 
 #include <QHash>
@@ -21,7 +22,7 @@ namespace ProgressSyncLog {
 struct RemoteEntry;
 }
 
-class EpubView : public QWidget, public IReaderView, public IPrintableView
+class EpubView : public QWidget, public IReaderView, public IPrintableView, public IReadAloudView
 {
     Q_OBJECT
 
@@ -41,6 +42,10 @@ public:
     // Prints the chapter/part/document currently loaded in the view.
     int printablePageCount() const override { return 0; }
     void print(std::shared_ptr<QPrinter> printer) override;
+
+    // Reads to the end of the open chapter/document; see IReadAloudView.
+    QString readAloudText() const override { return ReadAloud::textFromViewport(m_browser); }
+    bool readAloudAdvance() override { return false; }
 
     // Same search as above, but independent of any EpubView instance: opens
     // its own EpubDocument (and zip archive handle) from filePath rather

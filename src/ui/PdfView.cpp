@@ -726,3 +726,21 @@ void PdfView::print(std::shared_ptr<QPrinter> printer)
         PrintSupport::printPages(printer.get(), *m_document);
     }
 }
+
+QString PdfView::readAloudText() const
+{
+    if (!m_document || m_currentPage < 0 || m_currentPage >= m_document->pageCount()) {
+        return {};
+    }
+    const std::unique_ptr<IPage> page = m_document->page(m_currentPage);
+    return page ? page->text() : QString();
+}
+
+bool PdfView::readAloudAdvance()
+{
+    if (!m_document || m_currentPage + 1 >= m_document->pageCount()) {
+        return false;
+    }
+    goToPage(m_currentPage + 1);
+    return true;
+}

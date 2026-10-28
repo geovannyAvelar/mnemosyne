@@ -38,6 +38,10 @@
 #endif
 #include "ui/PdfView.h"
 #include "ui/PrintSupport.h"
+#include "ui/ReadAloud.h"
+#ifdef MNEMOSYNE_ENABLE_TTS
+#include "ui/ReadAloudController.h"
+#endif
 #ifdef Q_OS_MACOS
 #include "platform/MacTouchBar.h"
 #endif
@@ -820,6 +824,24 @@ void MainWindow::setupMenus()
         refreshBookInfoDock();
     });
 
+#ifdef MNEMOSYNE_ENABLE_TTS
+    m_readAloud = new ReadAloudController(this);
+    m_readAloudAction = viewMenu->addAction(tr("Read &Aloud"));
+    m_readAloudAction->setCheckable(true);
+    m_readAloudAction->setShortcut(QKeySequence(Qt::Key_F8));
+    m_readAloudAction->setEnabled(m_readAloud->isAvailable());
+    if (!m_readAloud->isAvailable()) {
+        m_readAloudAction->setToolTip(tr("No text-to-speech engine found on this system."));
+    }
+    connect(m_readAloudAction, &QAction::toggled, this, &MainWindow::toggleReadAloud);
+    // The controller ends on its own (document end, tab closed, engine
+    // error); keep the menu check in step without re-triggering toggled().
+    connect(m_readAloud, &ReadAloudController::activeChanged, this, [this](bool active) {
+        const QSignalBlocker blocker(m_readAloudAction);
+        m_readAloudAction->setChecked(active);
+    });
+#endif
+
     viewMenu->addSeparator();
     m_fullScreenAction = viewMenu->addAction(tr("&Full Screen"));
     m_fullScreenAction->setCheckable(true);
@@ -1071,6 +1093,10 @@ void MainWindow::onTabChanged(int index)
         m_epubSearchCancelToken->store(true);
     }
 
+#ifdef MNEMOSYNE_ENABLE_TTS
+    m_readAloud->stop(); // speech belongs to the tab it started on
+#endif
+
     if (!widget || widget == m_libraryView) {
         m_currentView = nullptr;
         m_currentFilePath.clear();
@@ -1261,6 +1287,24 @@ void MainWindow::exportAnnotatedPdf()
                               tr("Failed to export the annotated PDF to:\n%1").arg(outputPath));
     }
 }
+
+#ifdef MNEMOSYNE_ENABLE_TTS
+void MainWindow::toggleReadAloud(bool start)
+{
+    if (!start) {
+        m_readAloud->stop();
+        return;
+    }
+    auto *readable = dynamic_cast<IReadAloudView *>(m_currentView);
+    if (!readable) {
+        QMessageBox::information(this, tr("Read Aloud"), tr("Open a document to read it aloud."));
+        const QSignalBlocker blocker(m_readAloudAction);
+        m_readAloudAction->setChecked(false);
+        return;
+    }
+    m_readAloud->start(readable);
+}
+#endif
 
 void MainWindow::printCurrent()
 {
