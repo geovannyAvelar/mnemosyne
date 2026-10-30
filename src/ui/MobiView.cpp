@@ -60,7 +60,8 @@ MobiView::MobiView(std::unique_ptr<MobiDocument> document, QString filePath, QWi
     : QWidget(parent)
     , m_document(std::move(document))
     , m_filePath(std::move(filePath))
-    , m_highlights(HighlightStore::highlightsFor(m_filePath))
+    , m_bookHash(FileIdentity::contentHash(m_filePath))
+    , m_highlights(HighlightStore::highlightsForFile(m_bookHash, m_bookHash))
 {
     setupUi();
     restoreProgressAndCheckSync(); // sets m_currentPart/m_fontZoomSteps before the first render, so there's no visible jump
@@ -357,7 +358,7 @@ void MobiView::applyHighlightsToBrowser()
 
 void MobiView::refreshHighlights()
 {
-    m_highlights = HighlightStore::highlightsFor(m_filePath);
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
     applyHighlightsToBrowser();
 }
 
@@ -373,8 +374,8 @@ void MobiView::addHighlightForSelection()
     highlight.text = cursor.selectedText();
     highlight.createdAt = QDateTime::currentDateTime();
 
-    HighlightStore::addHighlight(m_filePath, highlight);
-    m_highlights = HighlightStore::highlightsFor(m_filePath);
+    HighlightStore::addHighlight(m_bookHash, highlight);
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
     applyHighlightsToBrowser();
     emit highlightsChanged();
 }
@@ -398,8 +399,8 @@ void MobiView::addNoteForSelection()
     highlight.note = result->note;
     highlight.color = result->color;
 
-    HighlightStore::addHighlight(m_filePath, highlight);
-    m_highlights = HighlightStore::highlightsFor(m_filePath);
+    HighlightStore::addHighlight(m_bookHash, highlight);
+    m_highlights = HighlightStore::highlightsFor(m_bookHash);
     applyHighlightsToBrowser();
     emit highlightsChanged();
 }
@@ -442,16 +443,16 @@ void MobiView::showBrowserContextMenu(const QPoint &pos)
                     if (!result) {
                         return;
                     }
-                    HighlightStore::setNote(m_filePath, i, result->note);
-                    HighlightStore::setColor(m_filePath, i, result->color);
-                    m_highlights = HighlightStore::highlightsFor(m_filePath);
+                    HighlightStore::setNote(m_bookHash, i, result->note);
+                    HighlightStore::setColor(m_bookHash, i, result->color);
+                    m_highlights = HighlightStore::highlightsFor(m_bookHash);
                     applyHighlightsToBrowser();
                     emit highlightsChanged();
                 });
                 QAction *removeAction = menu.addAction(hasNote ? tr("Remove Note") : tr("Remove Highlight"));
                 connect(removeAction, &QAction::triggered, this, [this, i] {
-                    HighlightStore::removeHighlight(m_filePath, i);
-                    m_highlights = HighlightStore::highlightsFor(m_filePath);
+                    HighlightStore::removeHighlight(m_bookHash, i);
+                    m_highlights = HighlightStore::highlightsFor(m_bookHash);
                     applyHighlightsToBrowser();
                     emit highlightsChanged();
                 });

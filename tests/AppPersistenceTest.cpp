@@ -13,6 +13,7 @@ class AppPersistenceTest : public QObject
     Q_OBJECT
 
 private slots:
+    void highlightsForFileMovesPathKeyedHighlightsToHash();
     void initTestCase();
     void init();
     void cleanupTestCase();
@@ -452,6 +453,28 @@ void AppPersistenceTest::tagsAreIsolatedPerBook()
 {
     TagStore::setTagsForBook(QStringLiteral("book-1"), {QStringLiteral("fiction")});
     QVERIFY(TagStore::tagsForBook(QStringLiteral("book-2")).isEmpty());
+}
+
+void AppPersistenceTest::highlightsForFileMovesPathKeyedHighlightsToHash()
+{
+    const QString path = QStringLiteral("/books/moved.md");
+    const QString hash = QStringLiteral("hash-of-moved");
+
+    Highlight old;
+    old.targetIndex = 0;
+    old.text = QStringLiteral("saved under the path");
+    old.createdAt = QDateTime::currentDateTime();
+    HighlightStore::addHighlight(path, old);
+    Highlight current = old;
+    current.text = QStringLiteral("saved under the hash");
+    HighlightStore::addHighlight(hash, current);
+
+    QCOMPARE(HighlightStore::highlightsForFile(path, hash).size(), 2);
+    QCOMPARE(HighlightStore::highlightsFor(hash).size(), 2);
+    QVERIFY(HighlightStore::highlightsFor(path).isEmpty());
+
+    // A second open has nothing left to move.
+    QCOMPARE(HighlightStore::highlightsForFile(path, hash).size(), 2);
 }
 
 QTEST_MAIN(AppPersistenceTest)

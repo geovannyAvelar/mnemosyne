@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Linux: Flatpak package (`io.github.geovannyavelar.Mnemosyne`) attached to releases, independent of the host's Qt.
 - Mobile: open CBZ comics, Markdown, and plain text files, with reading progress and highlights shared with the desktop app.
 
+### Fixed
+
+- Desktop: Markdown, TXT, and MOBI highlights now appear in the Notes tab and exports and sync across devices. They were saved under the file path instead of the content hash; existing ones move over the next time the file opens.
+
 ### Changed
 
 - Linux CI: separate `.deb` packages and APT distributions (`noble`, `resolute`) for Ubuntu 24.04 and 26.04, each built against that release's Qt.

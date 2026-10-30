@@ -122,6 +122,24 @@ QVector<Highlight> highlightsFor(const QString &bookHash)
     return result;
 }
 
+QVector<Highlight> highlightsForFile(const QString &filePath, const QString &bookHash)
+{
+    const QVector<Highlight> pathKeyed = highlightsFor(filePath);
+    if (pathKeyed.isEmpty()) {
+        return highlightsFor(bookHash);
+    }
+
+    QVector<Highlight> merged = highlightsFor(bookHash);
+    for (const Highlight &highlight : pathKeyed) {
+        merged.append(highlight);
+        HighlightSync::pushUpsert(bookHash, highlight);
+    }
+    sortByTarget(merged);
+    writeHighlights(bookHash, merged);
+    QSettings().remove(groupKeyForHighlights(filePath));
+    return merged;
+}
+
 void addHighlight(const QString &bookHash, const Highlight &highlightIn)
 {
     Highlight highlight = highlightIn;

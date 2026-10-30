@@ -16,6 +16,11 @@ namespace HighlightStore {
 // Returns all highlights for bookHash, sorted by target position.
 QVector<Highlight> highlightsFor(const QString &bookHash);
 
+// highlightsFor(), first moving over any highlights a previous version saved
+// under the file's path, where Markdown/TXT/MOBI views used to keep them. Those
+// never reached the Notes tab, exports, or sync, which all read by hash.
+QVector<Highlight> highlightsForFile(const QString &filePath, const QString &bookHash);
+
 void addHighlight(const QString &bookHash, const Highlight &highlight);
 void removeHighlight(const QString &bookHash, int index);
 
