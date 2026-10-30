@@ -22,7 +22,7 @@ ApplicationWindow {
         id: libraryScreenComponent
         LibraryScreen {
             onFileActivated: (filePath, title, format) => {
-                if (format === "pdf") {
+                if (format === "pdf" || format === "cbz") {
                     if (pdfDocumentModel.open(filePath, format)) {
                         stackView.push(pdfReaderScreenComponent)
                     } else {
@@ -47,8 +47,17 @@ ApplicationWindow {
                         libraryModel.removeEntry(filePath)
                         stackView.currentItem.showError(qsTr("Couldn't open \"%1\" — it may have been moved or deleted. Removed from Recents.").arg(title))
                     }
+                } else if (format === "md" || format === "markdown" || format === "txt") {
+                    if (textReaderModel.open(filePath, format)) {
+                        stackView.push(textReaderScreenComponent)
+                    } else {
+                        console.log("Failed to open text document:", textReaderModel.errorMessage)
+                        libraryModel.removeEntry(filePath)
+                        stackView.currentItem.showError(qsTr("Couldn't open \"%1\" — it may have been moved or deleted. Removed from Recents.").arg(title))
+                    }
                 } else {
                     console.log("Unrecognized format:", title, "(" + format + ")", filePath)
+                    stackView.currentItem.showError(qsTr("\"%1\" isn't a supported file type.").arg(title))
                 }
             }
             onSettingsRequested: stackView.push(settingsScreenComponent)
@@ -82,6 +91,13 @@ ApplicationWindow {
         id: epubReaderScreenComponent
         EpubReaderScreen {
             documentModel: epubReaderModel
+        }
+    }
+
+    Component {
+        id: textReaderScreenComponent
+        EpubReaderScreen {
+            documentModel: textReaderModel
         }
     }
 

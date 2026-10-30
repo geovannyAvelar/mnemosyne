@@ -1,5 +1,8 @@
 #include "SearchResultsModel.h"
 
+#include "TextParts.h"
+
+#include <QFileInfo>
 #include <QtConcurrentRun>
 
 SearchResultsModel::SearchResultsModel(QObject *parent)
@@ -77,7 +80,8 @@ void SearchResultsModel::search(const QString &filePath, const QString &query)
             this, [this, result, generation] { appendResult(result, generation); }, Qt::QueuedConnection);
     };
 
-    m_watcher.setFuture(QtConcurrent::run(searchEpubFile, filePath, query, onResult, cancelToken));
+    const bool isEpub = QFileInfo(filePath).suffix().compare(QLatin1String("epub"), Qt::CaseInsensitive) == 0;
+    m_watcher.setFuture(QtConcurrent::run(isEpub ? searchEpubFile : searchTextFile, filePath, query, onResult, cancelToken));
 }
 
 void SearchResultsModel::cancel()

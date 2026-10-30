@@ -1,5 +1,6 @@
 #include "Document.h"
 
+#include "comic/CbzDocument.h"
 #include "pdf/PopplerPdfDocument.h"
 
 #include <QFileInfo>
@@ -10,6 +11,10 @@ std::unique_ptr<IDocument> openDocument(const QString &filePath, QString *errorM
 
     if (suffix == QLatin1String("pdf")) {
         return PopplerPdfDocument::load(filePath, errorMessage, password);
+    }
+
+    if (suffix == QLatin1String("cbz")) {
+        return CbzDocument::load(filePath, errorMessage);
     }
 
     if (errorMessage) {

@@ -119,6 +119,10 @@ void IOSStorageAccess::pickDocument()
     NSArray<UTType *> *contentTypes = @[
         UTTypePDF,
         [UTType typeWithIdentifier:@"org.idpf.epub-container"],
+        UTTypePlainText,
+        [UTType typeWithFilenameExtension:@"md"],
+        [UTType typeWithFilenameExtension:@"markdown"],
+        [UTType typeWithFilenameExtension:@"cbz"],
     ];
 
     UIDocumentPickerViewController *picker =

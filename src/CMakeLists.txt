@@ -213,6 +213,10 @@ set(MNEMOSYNE_QUICK_SOURCES
     quick/PdfDocumentModel.cpp
     quick/EpubReaderModel.h
     quick/EpubReaderModel.cpp
+    quick/TextParts.h
+    quick/TextParts.cpp
+    quick/TextReaderModel.h
+    quick/TextReaderModel.cpp
     quick/HighlightsModel.h
     quick/HighlightsModel.cpp
     quick/SearchResultsModel.h

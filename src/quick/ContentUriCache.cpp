@@ -5,8 +5,16 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
+#include <QStringList>
 
 namespace ContentUriCache {
+
+QString localExtensionForFormat(const QString &format)
+{
+    static const QStringList kKnownFormats = {QStringLiteral("epub"), QStringLiteral("cbz"), QStringLiteral("md"),
+                                              QStringLiteral("markdown"), QStringLiteral("txt")};
+    return kKnownFormats.contains(format) ? format : QStringLiteral("pdf");
+}
 
 QString resolveToLocalFile(const QString &filePathOrUri, const QString &format, QString *errorMessage)
 {
@@ -25,7 +33,7 @@ QString resolveToLocalFile(const QString &filePathOrUri, const QString &format, 
 
     const QByteArray uriHash =
         QCryptographicHash::hash(filePathOrUri.toUtf8(), QCryptographicHash::Sha256).toHex();
-    const QString extension = format == QStringLiteral("epub") ? QStringLiteral("epub") : QStringLiteral("pdf");
+    const QString extension = localExtensionForFormat(format);
     const QString localPath =
         cacheDir.filePath(QString::fromLatin1(uriHash) + QLatin1Char('.') + extension);
 

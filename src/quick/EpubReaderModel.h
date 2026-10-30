@@ -31,6 +31,7 @@ class EpubReaderModel : public QObject
     Q_PROPERTY(QString bookHash READ bookHash NOTIFY documentChanged)
     Q_PROPERTY(QString filePath READ filePath NOTIFY documentChanged)
     Q_PROPERTY(int currentSpineIndex READ currentSpineIndex WRITE setCurrentSpineIndex NOTIFY currentSpineIndexChanged)
+    Q_PROPERTY(int highlightTarget READ highlightTarget NOTIFY currentSpineIndexChanged)
     Q_PROPERTY(QString currentChapterHtml READ currentChapterHtml NOTIFY currentSpineIndexChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
@@ -49,6 +50,10 @@ public:
     QString filePath() const { return m_filePath; }
     int currentSpineIndex() const { return m_currentSpineIndex; }
     void setCurrentSpineIndex(int index);
+    // The Highlight::targetIndex this chapter's highlights live on -- a
+    // property because TextReaderModel, which shares the reader screen,
+    // doesn't file them per part.
+    int highlightTarget() const { return m_currentSpineIndex; }
     QString currentChapterHtml() const;
     QString errorMessage() const { return m_errorMessage; }
 

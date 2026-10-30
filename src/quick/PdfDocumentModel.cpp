@@ -57,7 +57,7 @@ bool PdfDocumentModel::open(const QString &filePathOrUri, const QString &format)
     QString openError;
     std::unique_ptr<IDocument> document = openDocument(localPath, &openError);
     if (!document) {
-        setErrorMessage(openError.isEmpty() ? QStringLiteral("Could not open PDF") : openError);
+        setErrorMessage(openError.isEmpty() ? QStringLiteral("Could not open document") : openError);
         return false;
     }
 

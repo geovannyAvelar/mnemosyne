@@ -47,6 +47,10 @@ Item {
         const lower = name.toLowerCase()
         if (lower.endsWith(".epub")) return "epub"
         if (lower.endsWith(".pdf")) return "pdf"
+        if (lower.endsWith(".cbz")) return "cbz"
+        if (lower.endsWith(".md")) return "md"
+        if (lower.endsWith(".markdown")) return "markdown"
+        if (lower.endsWith(".txt")) return "txt"
         return "unknown"
     }
 

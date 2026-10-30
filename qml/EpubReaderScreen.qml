@@ -5,6 +5,9 @@ import QtWebView
 
 import "components"
 
+// Also the Markdown and plain text reader (documentModel is a TextReaderModel
+// then, with the same properties).
+//
 // WebView renders EpubDocument::chapterHtml()'s already-self-contained
 // HTML (inlined CSS, data: URI images) via the platform's native
 // android.webkit.WebView — closer to desktop's QTextBrowser rendering
@@ -99,7 +102,7 @@ Item {
     // only (doesn't span element boundaries), same practical scope as
     // desktop's approach not handling every conceivable rich-text edge case.
     function applyHighlightsToChapter() {
-        const entries = highlightsModel.highlightsForTarget(root.documentModel.currentSpineIndex)
+        const entries = highlightsModel.highlightsForTarget(root.documentModel.highlightTarget)
         const texts = entries.map((entry) => entry.text).filter((text) => text.length > 0)
         if (texts.length === 0) {
             return
@@ -175,7 +178,7 @@ Item {
                 onClicked: {
                     webView.runJavaScript("window.getSelection().toString()", (result) => {
                         if (result && result.length > 0) {
-                            highlightsModel.addHighlight(root.documentModel.currentSpineIndex, Qt.rect(0, 0, 0, 0), result)
+                            highlightsModel.addHighlight(root.documentModel.highlightTarget, Qt.rect(0, 0, 0, 0), result)
                             webView.runJavaScript("window.getSelection().removeAllRanges()")
                         }
                     })
@@ -228,7 +231,7 @@ Item {
             TextField {
                 id: searchField
                 Layout.fillWidth: true
-                placeholderText: qsTr("Search chapters…")
+                placeholderText: qsTr("Search…")
                 onTextChanged: searchDebounce.restart()
             }
 

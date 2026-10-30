@@ -286,6 +286,12 @@ target_compile_definitions(pdf_document_model_test PRIVATE FIXTURES_DIR="${CMAKE
 
 add_test(NAME PdfDocumentModelTest COMMAND pdf_document_model_test)
 
+qt_add_executable(text_reader_model_test TextReaderModelTest.cpp)
+
+target_link_libraries(text_reader_model_test PRIVATE mnemosynequick Qt6::Test)
+
+add_test(NAME TextReaderModelTest COMMAND text_reader_model_test)
+
 qt_add_executable(print_support_test PrintSupportTest.cpp)
 
 target_link_libraries(print_support_test PRIVATE mnemosynedesktopui Qt6::Test Qt6::PrintSupport)

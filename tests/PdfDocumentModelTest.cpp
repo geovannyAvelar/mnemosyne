@@ -35,6 +35,7 @@ private slots:
     void currentPageClampsToValidRange();
     void zoomClampsToBounds();
     void progressPersistsAcrossCloseAndReopen();
+    void opensCbzWithNoTextLayer();
 };
 
 void PdfDocumentModelTest::initTestCase()
@@ -113,6 +114,17 @@ void PdfDocumentModelTest::progressPersistsAcrossCloseAndReopen()
     QVERIFY(model.open(path, QStringLiteral("pdf")));
     QCOMPARE(model.currentPage(), 2);
     QCOMPARE(model.zoom(), 1.75);
+}
+
+void PdfDocumentModelTest::opensCbzWithNoTextLayer()
+{
+    PdfPageImageProvider provider;
+    PdfDocumentModel model(&provider);
+    QVERIFY2(model.open(fixturePath(QStringLiteral("test.cbz")), QStringLiteral("cbz")),
+             qPrintable(model.errorMessage()));
+    QVERIFY(model.pageCount() > 0);
+    QVERIFY(model.pageSizePoints(0).isValid());
+    QVERIFY(model.wordsForPage(0).isEmpty());
 }
 
 QTEST_MAIN(PdfDocumentModelTest)

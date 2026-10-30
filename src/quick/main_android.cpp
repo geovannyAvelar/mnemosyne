@@ -9,6 +9,7 @@
 #include "SearchResultsModel.h"
 #include "SmokeTestBridge.h"
 #include "SyncController.h"
+#include "TextReaderModel.h"
 #include "ThemeSettings.h"
 #include "app/ReadingSessionTracker.h"
 
@@ -36,6 +37,7 @@ int main(int argc, char *argv[])
 
     PdfDocumentModel pdfDocumentModel(pdfPageImageProvider);
     EpubReaderModel epubReaderModel;
+    TextReaderModel textReaderModel;
     HighlightsModel highlightsModel;
     SearchResultsModel searchResultsModel;
     PdfSelectionController pdfSelectionController(&pdfDocumentModel);
@@ -50,6 +52,7 @@ int main(int argc, char *argv[])
     context->setContextProperty("libraryModel", &libraryModel);
     context->setContextProperty("pdfDocumentModel", &pdfDocumentModel);
     context->setContextProperty("epubReaderModel", &epubReaderModel);
+    context->setContextProperty("textReaderModel", &textReaderModel);
     context->setContextProperty("highlightsModel", &highlightsModel);
     context->setContextProperty("searchResultsModel", &searchResultsModel);
     context->setContextProperty("pdfSelectionController", &pdfSelectionController);

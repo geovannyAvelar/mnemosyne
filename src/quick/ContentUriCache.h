@@ -29,4 +29,8 @@ namespace ContentUriCache {
 // cached copy; not handled yet.
 QString resolveToLocalFile(const QString &filePathOrUri, const QString &format, QString *errorMessage);
 
+// Suffix of the cached copy of a document of this format. Readers pick their
+// backend from it.
+QString localExtensionForFormat(const QString &format);
+
 } // namespace ContentUriCache
