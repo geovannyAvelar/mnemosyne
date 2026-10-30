@@ -181,8 +181,7 @@ check `adb logcat`.
 
 ## Status / next steps
 
-Built and verified on `android_x86_64` only (this dev machine has no
-arm64 device/emulator). `arm64-v8a` — the real target for physical
-devices — needs the same five-dependency cross-compile repeated with
-`-DANDROID_ABI=arm64-v8a`, not yet done. See the mobile-port plan for the
-full staged roadmap beyond this smoke test.
+Verified on device on `android_x86_64` only (this dev machine has no arm64
+device/emulator). CI also builds and packages `arm64-v8a`, the target for
+physical devices, with the same five-dependency cross-compile. See the
+mobile-port plan for the full staged roadmap beyond this smoke test.

@@ -361,17 +361,23 @@ jobs:
           path: build/Mnemosyne-Setup-arm64.exe
           if-no-files-found: error
 
-  # Builds the android_x86_64 ABI only, matching every Android stage of the
-  # mobile port so far (docs/android-build.md) -- arm64-v8a, the real
-  # target for physical devices, is still deferred (tracked there, not
-  # silently dropped here). Full on-device instrumented testing stays a
+  # arm64-v8a is the APK for physical devices; x86_64 is for emulators, the
+  # ABI the mobile port was developed against (docs/android-build.md).
+  # Full on-device instrumented testing stays a
   # manual checklist for this milestone: this job proves the app builds,
   # packages, and passes headless logic tests, not that it renders/behaves
   # correctly on a real device — see the mobile-port plan's Stage 9 notes.
   android:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { abi: x86_64, qt_arch: android_x86_64 }
+          - { abi: arm64-v8a, qt_arch: android_arm64_v8a }
     runs-on: ubuntu-latest
     env:
-      ANDROID_ABI: x86_64
+      ANDROID_ABI: ${{ matrix.target.abi }}
+      QT_ANDROID_ARCH: ${{ matrix.target.qt_arch }}
       ANDROID_PLATFORM_LEVEL: android-28
       NDK_VERSION: 27.2.12479018
       DEPS_PREFIX: ${{ github.workspace }}/android-deps-install
@@ -399,7 +405,7 @@ jobs:
           version: "6.8.3"
           host: "all_os"
           target: "android"
-          arch: "android_x86_64"
+          arch: ${{ matrix.target.qt_arch }}
           modules: "qtwebview"
           cache: true
 
@@ -451,13 +457,13 @@ jobs:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
         run: |
           ./scripts/build-android-deps.sh \
-            "$DEPS_PREFIX" "$ANDROID_ABI" "$ANDROID_PLATFORM_LEVEL" "$QT_ROOT_DIR/../android_x86_64"
+            "$DEPS_PREFIX" "$ANDROID_ABI" "$ANDROID_PLATFORM_LEVEL" "$QT_ROOT_DIR/../$QT_ANDROID_ARCH"
 
       - name: Configure
         env:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
         run: |
-          "$QT_ROOT_DIR/../android_x86_64/bin/qt-cmake" -S . -B build-android -G Ninja \
+          "$QT_ROOT_DIR/../$QT_ANDROID_ARCH/bin/qt-cmake" -S . -B build-android -G Ninja \
             -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
             -DQT_ANDROID_BUILD_ALL_ABIS=OFF \
             -DMNEMOSYNE_ANDROID_DEPS_PREFIX="$DEPS_PREFIX" \
@@ -472,6 +478,6 @@ jobs:
       - name: Upload .apk artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mnemosyne-android
+          name: mnemosyne-android-${{ matrix.target.abi }}
           path: build-android/Mnemosyne-android-*.apk
           if-no-files-found: error
